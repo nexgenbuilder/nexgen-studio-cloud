@@ -806,7 +806,7 @@ function openPreview(t, hol) {
     for (const { id, days } of HOL.upcoming()) { const th = HOL.THEMES[id], b = el('button'); b.type = 'button'; b.setAttribute('aria-pressed', String(TP.hol === id)); const bar = el('i'); bar.style.background = `linear-gradient(90deg, ${th.pal.ink}, ${th.pal.accent}, ${th.pal.accent2})`; b.appendChild(bar); b.appendChild(document.createTextNode(th.name)); b.appendChild(el('small', '', days === 0 ? 'today' : 'in ' + days + ' days'));
       b.onclick = () => { TP.hol = id; g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); $('#tpName').textContent = t.name.replace('Holiday', th.name); paintPreviewVis(); }; g.appendChild(b); } }
   const ph = !S.brand.builtin && t.nShots && !NX.brandClips().length;
-  $('#tpNote').textContent = (t.sector === 'estate' && HOOK.previewNote ? HOOK.previewNote() + ' ' : '') + (ph ? 'Shots show branded placeholders until you add ' + (S.brand.short || S.brand.name) + ' footage.' : S.brand.builtin && t.nShots && !t.cf ? 'Starts with DPG library footage. Swap any shot.' : '');
+  $('#tpNote').textContent = (t.sector === 'estate' && HOOK.previewNote ? HOOK.previewNote() + ' ' : '') + (ph ? 'Shots show branded placeholders until you add ' + (S.brand.short || S.brand.name) + ' footage.' : S.brand.builtin && t.nShots && !t.cf ? 'Starts empty. Add your own footage to each shot.' : '');
   $('#tpModal').hidden = false; $('#tpUse').focus();
 }
 function paintPreviewVis() {

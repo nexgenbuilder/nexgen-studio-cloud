@@ -82,5 +82,5 @@ function NextResponseRedirect(url, path) {
 export const config = {
   runtime: 'edge',
   // Gate everything except the login page, the login endpoint, and the favicon.
-  matcher: ['/((?!login\\.html|api/login|favicon\\.ico).*)'],
+  matcher: ['/((?!login\\.html|api/login|favicon\\.(ico|svg)).*)'],
 };
