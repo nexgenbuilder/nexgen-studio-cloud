@@ -535,6 +535,7 @@ function elApply(desc, x, y) {   // write a dragged position into the block's `e
   if (desc.kind === 'focus') { const k = String(desc.id).replace(/^fx/, ''); it.el.fx = it.el.fx || {}; it.el.fx[k] = { x: Math.round(x), y: Math.round(y) }; return true; }
   if (desc.kind === 'box') { it.el.box = { x: Math.round(x), y: Math.round(y), w: desc.w, h: desc.h }; return true; }
   if (desc.kind === 'card') { it.el.card = { y: Math.round(y), h: desc.h }; return true; }
+  if (desc.kind === 'pos') { it.el.pos = it.el.pos || {}; it.el.pos[desc.id] = { x: Math.round(x), y: Math.round(y) }; return true; }
   return false;
 }
 function dupEl(o, d) {   // duplicate a callout: a concurrent copy, offset down-right (duration never changes)
