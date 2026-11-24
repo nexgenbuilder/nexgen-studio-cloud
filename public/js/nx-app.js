@@ -685,7 +685,7 @@ function buildIndustries() {
     const fam = K7.FAM[t.cf], b = el('button', 'fcard'); b.type = 'button'; b.dataset.id = t.id; b.title = t.blurb;
     const fv = el('div', 'fv'); fv.style.background = `linear-gradient(165deg, ${fam.pal.deep1}, ${fam.pal.ink} 55%, ${fam.pal.deep2})`;
     const src = THUMB.map[t.id]; if (src) { const im = el('img'); im.alt = ''; im.src = src; fv.appendChild(im); }
-    else { const fb = el('div', 'fb'), nm = el('b', '', t.name.toUpperCase()); nm.style.color = fam.pal.text; NX.useFont(fam.fonts.display).then(ok => { if (ok) nm.style.fontFamily = '"NXF-' + fam.fonts.display + '"'; }); const bar = el('i'); bar.style.background = fam.pal.accent; fb.appendChild(nm); fb.appendChild(bar); fv.appendChild(fb); }
+    else { const fb = el('div', 'fb'), nm = el('b', '', t.name.toUpperCase()); nm.style.color = fam.pal.text; NX.useFont(fam.fonts.display).then(ok => { const ff = ok && NX.fontCSS ? NX.fontCSS(fam.fonts.display) : null; if (ff) nm.style.fontFamily = ff; }); const bar = el('i'); bar.style.background = fam.pal.accent; fb.appendChild(nm); fb.appendChild(bar); fv.appendChild(fb); }
     if (t.isNew) fv.appendChild(el('span', 'tag', 'NEW'));
     b.appendChild(fv); b.appendChild(el('span', 'fn', t.name)); b.appendChild(el('span', 'fm', t.vibe || ''));
     const fo = el('div', 'fo'); (t.obj || []).slice(0, 2).forEach(o => fo.appendChild(el('span', '', NX.OBJECTIVES[o] || o))); b.appendChild(fo);
@@ -1373,11 +1373,11 @@ function renderKitForm() {
   d.fonts = Object.assign({ sans: 'mont', serif: 'corm', display: 'bebas', script: 'caveat' }, d.fonts || {});
   const pairs = el('div', 'pairs'); s.appendChild(pairs);
   FONT_PAIRS.forEach(([name, f]) => { const b = el('button', '', name); b.type = 'button'; b.setAttribute('aria-pressed', String(JSON.stringify(f) === JSON.stringify(d.fonts)));
-    NX.useFont(f.display).then(ok => { if (ok) b.style.fontFamily = '"NXF-' + f.display + '"'; }); b.onclick = () => { d.fonts = Object.assign({}, f); renderKitForm(); paintLogoPrev(); kitInput(true); }; pairs.appendChild(b); });
+    NX.useFont(f.display).then(ok => { const ff = ok && NX.fontCSS ? NX.fontCSS(f.display) : null; if (ff) b.style.fontFamily = ff; }); b.onclick = () => { d.fonts = Object.assign({}, f); renderKitForm(); paintLogoPrev(); kitInput(true); }; pairs.appendChild(b); });
   const fr = el('div', 'row'); fr.style.marginTop = '12px'; s.appendChild(fr);
   for (const [sl, SL] of Object.entries(NX.SLOTS)) {
     const w = select(SL.label + ' font', Object.entries(NX.FONTS[sl]).map(([k, v]) => [k, v.label]), () => d.fonts[sl], v => { d.fonts[sl] = v; prev(); });
-    const pv = el('div', 'fontpv'), prev = () => { const k = d.fonts[sl]; NX.useFont(k).then(() => { pv.style.fontFamily = '"NXF-' + k + '", sans-serif'; }); };
+    const pv = el('div', 'fontpv'), prev = () => { const k = d.fonts[sl]; NX.useFont(k).then(() => { const ff = NX.fontCSS ? NX.fontCSS(k) : null; if (ff) pv.style.fontFamily = ff; }); };
     pv.textContent = sl === 'script' ? 'see you this weekend!' : sl === 'serif' ? 'Quietly beautiful work.' : sl === 'display' ? 'BUILT TO LAST' : 'BOOK YOUR SPOT';
     pv.style.fontWeight = sl === 'sans' ? '800' : sl === 'serif' ? '600' : '400'; if (sl === 'serif') pv.style.fontStyle = 'italic';
     w.appendChild(pv); fr.appendChild(w); prev();

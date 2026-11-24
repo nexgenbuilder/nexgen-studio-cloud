@@ -139,7 +139,7 @@ function transformGrp(box, o) {
 function fontSelect(o) {
   const w = el('div', 'fld'), id = 'mx-' + A.uid8(), lab = el('label', '', 'Font'); lab.htmlFor = id; w.appendChild(lab); const s = el('select'); s.id = id;
   const og0 = el('optgroup'); og0.label = 'Brand fonts'; [['Mont', 'Headline (brand)'], ['Bebas', 'Display (brand)'], ['Corm', 'Serif (brand)'], ['Hand', 'Script (brand)'], ['Mono', 'Typewriter mono']].forEach(([k, n]) => { const op = el('option', '', n); op.value = 'slot:' + k; og0.appendChild(op); }); s.appendChild(og0);
-  const lib = NX.FONTLIB || {}; for (const [c, n] of Object.entries({ sans: 'Sans', display: 'Display', serif: 'Serif', script: 'Script' })) { const og = el('optgroup'); og.label = n; for (const [k, f] of Object.entries(lib)) if (f.c === c) { const op = el('option', '', f.l); op.value = 'lib:' + k; og.appendChild(op); } s.appendChild(og); }
+  const lib = (window.NX && NX.allFontLib) ? NX.allFontLib() : (NX.FONTLIB || {}); for (const [c, n] of Object.entries({ sans: 'Sans', display: 'Display', serif: 'Serif', script: 'Script', mono: 'Mono' })) { const og = el('optgroup'); og.label = n; for (const [k, f] of Object.entries(lib)) if (f.c === c) { const op = el('option', '', f.l); op.value = 'lib:' + k; og.appendChild(op); } s.appendChild(og); }
   s.value = o.font && lib[o.font] ? 'lib:' + o.font : 'slot:' + (o.slot || 'Mont');
   s.onchange = () => { const [t, k] = s.value.split(':'); if (t === 'lib') NX.useFont(k).then(() => upd(o.id, x => { x.font = k; })); else upd(o.id, x => { delete x.font; x.slot = k; }); };
   w.appendChild(s); return w;

@@ -641,12 +641,12 @@ function textRow(label, val, on, o) {
 }
 function selRow(label, opts, val, on) { const w = el('div', 'fld'), id = 'e-' + A.uid8(), lab = el('label', '', label); lab.htmlFor = id; w.appendChild(lab); const s = el('select'); s.id = id; opts.forEach(([k, n]) => { const o = el('option', '', n); o.value = k; s.appendChild(o); }); s.value = val; s.onchange = () => on(s.value); w.appendChild(s); return w; }
 function fontRow(o) {
-  const lib = NX.FONTLIB || {}, cats = { sans: 'Sans', display: 'Display', serif: 'Serif', script: 'Script' };
+  const lib = (window.NX && NX.allFontLib) ? NX.allFontLib() : (NX.FONTLIB || {}), cats = { sans: 'Sans', display: 'Display', serif: 'Serif', script: 'Script', mono: 'Mono' };
   const w = el('div', 'fld'), id = 'e-' + A.uid8(), lab = el('label', '', 'Font'); lab.htmlFor = id; w.appendChild(lab); const s = el('select'); s.id = id;
   const o0 = el('option', '', 'Brand font'); o0.value = ''; s.appendChild(o0);
   for (const [c, n] of Object.entries(cats)) { const og = el('optgroup'); og.label = n; for (const [k, f] of Object.entries(lib)) if (f.c === c) { const op = el('option', '', f.l); op.value = k; og.appendChild(op); } s.appendChild(og); }
   s.value = o.font || ''; const pv = el('div', 'fontpv', (o.text || 'Aa Bb Cc').split('\n')[0].slice(0, 30));
-  const paint = () => { if (s.value) NX.useFont(s.value).then(() => (pv.style.fontFamily = '"NXF-' + s.value + '", sans-serif')); else pv.style.fontFamily = ''; };
+  const paint = () => { const ff = s.value && window.NX && NX.fontCSS ? NX.fontCSS(s.value) : null; if (ff) NX.useFont(s.value).then(() => (pv.style.fontFamily = ff)); else pv.style.fontFamily = ''; };
   s.onchange = () => { const k = s.value; paint(); (k ? NX.useFont(k) : Promise.resolve()).then(() => upd(o.id, x => { if (k) x.font = k; else delete x.font; })); };
   w.appendChild(s); w.appendChild(pv); paint(); return w;
 }

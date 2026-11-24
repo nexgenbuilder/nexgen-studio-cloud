@@ -144,7 +144,10 @@ function computeShake(t) {
 function fillScreen(col, a) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = a === undefined ? 1 : a; ctx.fillStyle = col; ctx.fillRect(0, 0, W, H); ctx.restore(); }
 
 // ---------------- text ----------------
-const F = (w, s, fam, style) => `${style ? style + ' ' : ''}${w} ${Math.round(s * 10) / 10}px ${fam || 'Mont'}`;
+// Quote the family (multi-word names like "TikTok Sans" are invalid unquoted in a canvas font string, and the
+// assignment would silently be ignored) and always append a generic fallback, so text never renders blank: a face
+// that lacks a glyph — e.g. TikTok Sans ships Latin/Greek/Cyrillic only — falls back to the system sans instead of tofu.
+const F = (w, s, fam, style) => `${style ? style + ' ' : ''}${w} ${Math.round(s * 10) / 10}px "${String(fam || 'Mont').replace(/"/g, '')}", sans-serif`;
 function setF(f, ls) { ctx.font = f; ctx.letterSpacing = (ls || 0) + 'px'; }
 const TWC = new Map();
 function textW(str, f, ls) { const k = str + '|' + f + '|' + (ls || 0); let v = TWC.get(k); if (v === undefined) { const c = MAINCTX; c.save(); c.font = f; c.letterSpacing = (ls || 0) + 'px'; v = c.measureText(str).width; c.restore(); TWC.set(k, v); } return v; }

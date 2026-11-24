@@ -8,6 +8,103 @@ window.NX = window.NX || {};
   // Corm (editorial serif), Bebas (condensed display), Hand (handwritten) and Mono. A brand kit picks a font for each of the first
   // four slots from NX.FONTLIB (fonts.js); editor text layers can also use any library font directly as family "NXF-<key>".
   const LIB = () => NX.FONTLIB || {};
+  // On-demand fonts (chunk #2): NX.GFONTS is the researched Google Fonts catalogue — 12 fonts. Nine keys are ALREADY vendored
+  // in FONTLIB (poppins, mont, anton, bebas, caveat, playfair, archivoblack, fredoka, oswald): those resolve locally and NEVER
+  // hit the network. Three are on-demand only (tiktok, courierprime, tiltneon) and load from Google Fonts at runtime, as a
+  // FALLBACK inside NX.useFont / NX.setFonts — never a replacement for a vendored entry. Deliberately NOT listed: Instagram
+  // Sans / Pen / Mono (proprietary, no legal source) and Proxima Nova (paid licence). TikTok Sans is OFL 1.1 (Google Fonts).
+  // Script coverage: TikTok Sans ships Latin, Greek and Cyrillic only — other scripts fall back to the generic sans-serif in
+  // the canvas font string (engine/core.js F()), so text never renders blank. Neon glow / drop shadow / auto-justify are
+  // EFFECTS, not font properties, and are out of scope here — this chunk ships the font alone.
+  NX.GFONTS = {
+    // core 8 (researched list)
+    tiktok: { l: 'TikTok Sans', c: 'sans', fam: 'TikTok Sans', w: [400, 500, 600, 700, 800, 900], i: [], scripts: 'Latin, Greek, Cyrillic only' },
+    poppins: { l: 'Poppins', c: 'sans', fam: 'Poppins', w: [500, 700, 900], i: [] },
+    mont: { l: 'Montserrat', c: 'sans', fam: 'Montserrat', w: [500, 600, 700, 800, 900], i: [] },
+    anton: { l: 'Anton', c: 'display', fam: 'Anton', w: [400], i: [] },
+    bebas: { l: 'Bebas Neue', c: 'display', fam: 'Bebas Neue', w: [400], i: [] },
+    courierprime: { l: 'Courier Prime', c: 'mono', fam: 'Courier Prime', w: [400, 700], i: [400, 700] },
+    caveat: { l: 'Caveat', c: 'script', fam: 'Caveat', w: [500, 600, 700], i: [] },
+    tiltneon: { l: 'Tilt Neon', c: 'display', fam: 'Tilt Neon', w: [400], i: [] },
+    // second wave
+    playfair: { l: 'Playfair Display', c: 'serif', fam: 'Playfair Display', w: [500, 700, 900], i: [500, 700] },
+    archivoblack: { l: 'Archivo Black', c: 'display', fam: 'Archivo Black', w: [400], i: [] },
+    fredoka: { l: 'Fredoka', c: 'sans', fam: 'Fredoka', w: [500, 600, 700], i: [] },
+    oswald: { l: 'Oswald', c: 'sans', fam: 'Oswald', w: [500, 600, 700], i: [] },
+  };
+  NX.isOnDemand = key => !!(NX.GFONTS[key] && !LIB()[key]);   // in GFONTS but not vendored: needs the network
+  NX.allFontLib = () => {   // merged catalogue for the pickers: vendored keys always win, on-demand-only keys get a ' (web)' tag
+    const out = {};
+    for (const [k, f] of Object.entries(LIB())) out[k] = { l: f.l, c: f.c };
+    for (const [k, g] of Object.entries(NX.GFONTS)) if (!out[k]) out[k] = { l: g.l + ' (web)', c: g.c };
+    return out;
+  };
+  // On-demand loading is a hosted-studio feature only. The in-house copy runs on localhost (host.mjs, port 8765) with a
+  // deliberate zero-external-URL policy: there the gate below is false, no Google Fonts request is ever attempted, and
+  // useFont() for an on-demand key just resolves false — vendored fonts remain its only set, with no errors and no broken UI.
+  NX.googleFontsOK = () => {
+    try {
+      if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) return false;
+      if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return false;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+      return true;
+    } catch (e) { return false; }
+  };
+  const gCache = new Map();   // 'key|alias' -> Promise<FontFace[] | null>; failures are NOT cached, so a later retry can succeed
+  function parseGoogleCSS(css, alias) {   // one FontFace per @font-face block, keeping weight/style/unicode-range
+    const out = [];
+    for (const b of css.match(/@font-face\s*\{[^}]*\}/g) || []) {
+      const src = /url\((https:[^)]+)\)/.exec(b); if (!src) continue;
+      const weight = /font-weight:\s*(\d+)/.exec(b), style = /font-style:\s*(\w+)/.exec(b), ur = /unicode-range:\s*([^;]+);/.exec(b);
+      try {
+        const opts = { weight: weight ? weight[1] : '400', style: style ? style[1] : 'normal' };
+        if (ur) opts.unicodeRange = ur[1].trim();
+        out.push(new FontFace(alias, 'url(' + src[1] + ') format("woff2")', opts));
+      } catch (e) { /* skip one bad face, keep the rest */ }
+    }
+    return out;
+  }
+  async function fetchGoogleFaces(g, alias, key) {   // FontFace[] on success (possibly [] = via <link>), null on failure
+    const fam = encodeURIComponent(g.fam).replace(/%20/g, '+');
+    const axes = g.i && g.i.length ? 'ital,wght@' + g.w.map(w => '0,' + w).concat(g.i.map(w => '1,' + w)).join(';') : 'wght@' + g.w.join(';');
+    const url = 'https://fonts.googleapis.com/css2?family=' + fam + ':' + axes + '&display=swap';
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 10000);
+    let css = null;
+    try { const r = await fetch(url, { signal: ctl.signal, headers: { Accept: 'text/css' } }); if (r.ok) css = await r.text(); } catch (e) { css = null; } finally { clearTimeout(to); }
+    if (css) { const faces = parseGoogleCSS(css, alias); if (faces.length) return faces; }
+    // Fallback: a plain stylesheet <link> + document.fonts.load — only when the face name IS the Google family
+    // (a brand-slot alias such as 'Mont' cannot be served this way, so that path returns null and the caller falls back).
+    if (alias !== g.fam) return null;
+    try {
+      if (!document.getElementById('nx-gf-' + key)) { const l = document.createElement('link'); l.id = 'nx-gf-' + key; l.rel = 'stylesheet'; l.href = url; document.head.appendChild(l); }
+      const loads = g.w.map(w => document.fonts.load(w + ' 16px "' + g.fam + '"'));
+      if (g.i && g.i.length) g.i.forEach(w => loads.push(document.fonts.load('italic ' + w + ' 16px "' + g.fam + '"')));
+      await Promise.race([Promise.all(loads), new Promise(res => setTimeout(res, 8000))]);
+      return [];
+    } catch (e) { return null; }
+  }
+  NX.loadGoogleFont = (key, alias) => {   // loads a GFONTS entry under `alias` (default: the real Google family name)
+    const g = NX.GFONTS[key]; if (!g) return Promise.resolve(null);
+    alias = alias || g.fam;
+    const ck = key + '|' + alias;
+    if (gCache.has(ck)) return gCache.get(ck);
+    const p = (async () => {
+      if (!NX.googleFontsOK()) return null;
+      const faces = await fetchGoogleFaces(g, alias, key);
+      if (!faces) return null;
+      if (faces.length) {
+        try { await Promise.all(faces.map(f => f.load())); } catch (e) { return null; }
+        faces.forEach(f => { try { document.fonts.add(f); } catch (e) {} });
+      }
+      // Success means at least one requested weight is really usable — never trust the fetch alone.
+      const ok = g.w.some(w => { try { return document.fonts.check(w + ' 16px "' + alias + '"', 'x'); } catch (e) { return false; } });
+      if (!ok) { faces.forEach(f => { try { document.fonts.delete(f); } catch (e) {} }); return null; }
+      return faces;
+    })().catch(e => { console.warn('font', key, e); return null; });
+    p.then(r => { if (!r) gCache.delete(ck); });
+    gCache.set(ck, p);
+    return p;
+  };
   const fileOf = (f, w, it) => `fonts/${f.p}-latin-${w}-${it ? 'italic' : 'normal'}.woff2`;
   const nearest = (list, w) => list.slice().sort((a, b) => Math.abs(a - w) - Math.abs(b - w) || b - a)[0];
   function facesFor(family, key, weights, italics) {   // one FontFace per requested weight, each pointing at the nearest shipped file
@@ -24,28 +121,42 @@ window.NX = window.NX || {};
     script: { family: 'Hand', label: 'Script', cats: ['script'], def: 'caveat', w: [400, 500, 600, 700], it: [] },
   };
   NX.FONTS = { sans: {}, serif: {}, display: {}, script: {} };   // per slot: key -> {label}, for pickers
-  setTimeout(() => { for (const [k, f] of Object.entries(LIB())) for (const [sl, S] of Object.entries(NX.SLOTS)) if (S.cats.includes(f.c) && !(sl === 'display' && f.c === 'sans' && !/oswald|barlowc|spartan|archivo|bricolage|syne/.test(k))) NX.FONTS[sl][k] = { label: f.l }; }, 0);
+  setTimeout(() => { const lib = NX.allFontLib(); for (const [k, f] of Object.entries(lib)) for (const [sl, S] of Object.entries(NX.SLOTS)) if (S.cats.includes(f.c) && !(sl === 'display' && f.c === 'sans' && !/oswald|barlowc|spartan|archivo|bricolage|syne/.test(k))) NX.FONTS[sl][k] = { label: f.l }; }, 0);
   const cur = { sans: null, serif: null, display: null, script: null }, faces = { sans: [], serif: [], display: [], script: [] };
   NX.loadFixedFonts = () => Promise.all([['Mono', 500, 'fonts/jetbrains-mono-latin-500-normal.woff2'], ['Mono', 700, 'fonts/jetbrains-mono-latin-700-normal.woff2'], ['Mono', 800, 'fonts/jetbrains-mono-latin-800-normal.woff2']]
     .map(([fam, w, url]) => { const f = new FontFace(fam, `url(${url})`, { weight: String(w) }); document.fonts.add(f); return f.load(); }));
   NX.setFonts = async fonts => {
     fonts = fonts || {};
     for (const [sl, S] of Object.entries(NX.SLOTS)) {
-      let key = fonts[sl]; if (!LIB()[key]) key = S.def; if (cur[sl] === key) continue;
-      const nf = facesFor(S.family, key, S.w, S.it);
+      let key = fonts[sl]; if (!LIB()[key] && !NX.GFONTS[key]) key = S.def; if (cur[sl] === key) continue;
+      let nf = null;
+      if (NX.GFONTS[key] && !LIB()[key]) {   // on-demand slot font: load it under the slot family (e.g. 'Mont')
+        nf = await NX.loadGoogleFont(key, S.family);
+        if (!nf) { key = S.def; nf = null; }   // on-demand failed: fall back to the vendored default, never a broken slot
+      }
+      if (!nf) nf = facesFor(S.family, key, S.w, S.it);
       try { await Promise.all(nf.map(f => f.load())); } catch (e) { console.warn('font', key, e); continue; }
-      faces[sl].forEach(f => document.fonts.delete(f)); nf.forEach(f => document.fonts.add(f)); faces[sl] = nf; cur[sl] = key;
+      faces[sl].forEach(f => document.fonts.delete(f)); nf.forEach(f => { try { document.fonts.add(f); } catch (e) {} }); faces[sl] = nf; cur[sl] = key;
     }
     TWC.clear();
   };
   const used = new Map();
   NX.useFont = key => {   // a library font as its own family, for editor text layers and the pickers' previews
-    if (!LIB()[key]) return Promise.resolve(false); if (used.has(key)) return used.get(key);
-    const nf = facesFor('NXF-' + key, key, [400, 500, 600, 700, 800, 900], LIB()[key].i.length ? [400, 500, 600, 700] : []);
-    const p = Promise.all(nf.map(f => f.load())).then(() => { nf.forEach(f => document.fonts.add(f)); TWC.clear(); return true; }).catch(e => { console.warn('font', key, e); used.delete(key); return false; });
-    used.set(key, p); return p;
+    if (LIB()[key]) {   // vendored first: the reliable default, never the network
+      if (used.has(key)) return used.get(key);
+      const nf = facesFor('NXF-' + key, key, [400, 500, 600, 700, 800, 900], LIB()[key].i.length ? [400, 500, 600, 700] : []);
+      const p = Promise.all(nf.map(f => f.load())).then(() => { nf.forEach(f => document.fonts.add(f)); TWC.clear(); return true; }).catch(e => { console.warn('font', key, e); used.delete(key); return false; });
+      used.set(key, p); return p;
+    }
+    if (NX.GFONTS[key]) {   // on-demand fallback: Google Fonts at runtime (hosted studio only; resolves false offline / in-house)
+      if (used.has(key)) return used.get(key);
+      const p = NX.loadGoogleFont(key).then(faces => { if (faces) { TWC.clear(); return true; } used.delete(key); return false; }).catch(e => { console.warn('font', key, e); used.delete(key); return false; });
+      used.set(key, p); return p;
+    }
+    return Promise.resolve(false);
   };
-  NX.fontFamily = key => (LIB()[key] ? 'NXF-' + key : null);
+  NX.fontFamily = key => (LIB()[key] ? 'NXF-' + key : NX.GFONTS[key] ? NX.GFONTS[key].fam : null);
+  NX.fontCSS = key => { const ff = NX.fontFamily(key); return ff ? '"' + ff + '", sans-serif' : null; };   // DOM preview family (quoted, with fallback)
 
   // ------------------------------------------------------------ built-in brand: DPG Outdoor Living
   NX.DPG = {

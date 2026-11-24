@@ -87,7 +87,7 @@ window.NX = window.NX || {};
     const b = el('button', 'vibe'); b.type = 'button'; b.setAttribute('aria-pressed', String(!!pressed));
     const vs = el('div', 'vs'); vs.style.background = `linear-gradient(160deg, ${pal.deep1 || pal.ink} 0%, ${pal.ink} 70%)`;
     const big = el('span', 'big', 'Aa'); big.style.color = pal.text || '#fff'; vs.appendChild(big);
-    if (fonts && fonts.display) NX.useFont(fonts.display).then(ok => { if (ok) big.style.fontFamily = '"NXF-' + fonts.display + '"'; });
+    if (fonts && fonts.display) NX.useFont(fonts.display).then(ok => { const ff = ok && NX.fontCSS ? NX.fontCSS(fonts.display) : null; if (ff) big.style.fontFamily = ff; });
     const dots = el('span', 'dots'); [pal.accent, pal.accent2 || pal.accent, pal.paper].forEach(c => { const i = el('i'); i.style.background = c; dots.appendChild(i); }); vs.appendChild(dots);
     b.appendChild(vs); const vn = el('div', 'vn'); vn.appendChild(el('span', '', name)); if (sub) vn.appendChild(el('small', '', sub)); b.appendChild(vn);
     b.onclick = onclick; return b;
@@ -176,16 +176,16 @@ window.NX = window.NX || {};
     const pairs = el('div', 'pairs'); s.appendChild(pairs);
     for (const [name, f] of NX.FONT_PAIRS) {
       const b = el('button', '', name); b.type = 'button'; b.setAttribute('aria-pressed', String(JSON.stringify(f) === JSON.stringify(L.fonts)));
-      NX.useFont(f.display).then(ok => { if (ok) b.style.fontFamily = '"NXF-' + f.display + '"'; }); b.onclick = () => { st.fonts = Object.assign({}, f); changed(); }; pairs.appendChild(b);
+      NX.useFont(f.display).then(ok => { const ff = ok && NX.fontCSS ? NX.fontCSS(f.display) : null; if (ff) b.style.fontFamily = ff; }); b.onclick = () => { st.fonts = Object.assign({}, f); changed(); }; pairs.appendChild(b);
     }
     const det = el('details'); det.style.marginTop = '12px'; const sm2 = el('summary', '', 'Pick each font'); sm2.style.cssText = 'cursor:pointer;font-size:13px;font-weight:600;color:var(--mute)'; det.appendChild(sm2); s.appendChild(det);
     for (const [sl, SL] of Object.entries(NX.SLOTS)) {
       const w = el('div', 'fld'); w.style.marginTop = '10px'; const id = 'st-' + sl, lab = el('label', '', SL.label); lab.htmlFor = id; w.appendChild(lab);
-      const sel = el('select'); sel.id = id; const opts = Object.assign({}, NX.FONTS[sl]); if (!opts[L.fonts[sl]] && NX.FONTLIB[L.fonts[sl]]) opts[L.fonts[sl]] = { label: NX.FONTLIB[L.fonts[sl]].l };
+      const sel = el('select'); sel.id = id; const opts = Object.assign({}, NX.FONTS[sl]); if (!opts[L.fonts[sl]]) { const lib = (window.NX && NX.allFontLib) ? NX.allFontLib() : NX.FONTLIB; if (lib[L.fonts[sl]]) opts[L.fonts[sl]] = { label: lib[L.fonts[sl]].l }; }
       Object.entries(opts).forEach(([k, v]) => { const o = el('option', '', v.label); o.value = k; sel.appendChild(o); }); sel.value = L.fonts[sl];
       const pv = el('div', 'fontpv'); pv.textContent = sl === 'script' ? 'see you this weekend!' : sl === 'serif' ? 'Quietly beautiful work.' : sl === 'display' ? 'BUILT TO LAST' : 'BOOK YOUR SPOT';
       pv.style.fontWeight = sl === 'sans' ? '800' : sl === 'serif' ? '600' : '400'; if (sl === 'serif') pv.style.fontStyle = 'italic';
-      const prev = () => NX.useFont(sel.value).then(ok => { if (ok) pv.style.fontFamily = '"NXF-' + sel.value + '", sans-serif'; }); prev();
+      const prev = () => NX.useFont(sel.value).then(ok => { const ff = ok && NX.fontCSS ? NX.fontCSS(sel.value) : null; if (ff) pv.style.fontFamily = ff; }); prev();
       sel.onchange = () => { st.fonts = Object.assign({}, st.fonts || {}, { [sl]: sel.value }); prev(); changed(); };
       w.appendChild(sel); w.appendChild(pv); det.appendChild(w);
     }
