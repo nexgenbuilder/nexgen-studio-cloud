@@ -803,6 +803,8 @@ body.mode-edit .stage-top #toEditBtn { display: none; }
 <script>window.STUDIO = true; window.STUDIO_REG = {}; try { const t = localStorage.getItem('nx.theme'); if (t === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}</script>
 <!-- three.js r128 (UMD) for the 3D kit; if it cannot load, 3D switches itself off and everything else works -->
 <!-- three.js r128 (UMD) vendored locally so 3D works offline / in-house; was a cdnjs CDN link -->
+<!-- cloud host shim: window.claude (db/assets/downloads/user) backed by /_db + R2; must load before any studio script (chunk #4 fix — the tag was missing, so CAP.db/assets/downloads were all null live) -->
+<script src="/shim-cloud.js"></script>
 <script src="vendor/three.min.js"></script>
 <script src="engine/core.js"></script>
 <script src="engine/vid.js"></script>
