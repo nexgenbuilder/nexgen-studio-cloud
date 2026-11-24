@@ -103,7 +103,7 @@ export async function listAssets(s3) {
     const res = await client.send(new ListObjectsV2Command({ Bucket: bucket(), Prefix: ASSET_PREFIX, ContinuationToken: token }));
     for (const o of res.Contents || []) {
       const p = parseAssetKey(o.Key);
-      if (p) out.push({ id: p.id, name: p.name, size: o.Size || 0, url: '/_blob/' + p.id });
+      if (p) out.push({ id: p.id, name: p.name, size: o.Size || 0, url: '/_blob/' + p.id, key: o.Key });
     }
     token = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (token);
@@ -126,6 +126,62 @@ export async function deleteAsset(id, s3) {
   if (!key) return false;
   await client.send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
   return true;
+}
+
+// Projects that reference a clip id anywhere in their doc (shot maps,
+// free-timeline items, any field). The clip id is a random base36 token,
+// so an exact string match inside a project doc is a real reference.
+export function findClipRefs(docs, clipId) {
+  const refs = [];
+  for (const [key, p] of Object.entries(docs || {})) {
+    if (!key.startsWith('projects/') || !p || typeof p !== 'object') continue;
+    let hit = false;
+    const walk = (v) => {
+      if (hit) return;
+      if (typeof v === 'string') { if (v === clipId) hit = true; return; }
+      if (v && typeof v === 'object') for (const k in v) walk(v[k]);
+    };
+    walk(p);
+    if (hit) refs.push({ projectId: key.slice(9), projectName: p.name || key.slice(9) });
+  }
+  return refs;
+}
+
+// Delete assets end to end: R2 object + every clip row that points at it,
+// in ONE batched db write. Blocks (in `blocked`) when a project's shots
+// reference any of the asset's clips, unless force is true — the caller
+// must get an explicit per-asset override from the user first.
+// Returns { deleted: [{asset, clips}], blocked: [{asset, reason, projects}],
+//           notFound: [assetId] }.
+export async function deleteAssets(ids, { force = false } = {}, s3) {
+  const client = s3 || getS3();
+  const keyById = new Map((await listAssets(client)).map((a) => [a.id, a.key]));
+  const db = await getDb(client);
+  const docs = db.docs || {};
+  const deleted = [], blocked = [], notFound = [];
+  let changed = false;
+  for (const id of ids) {
+    const clipRows = Object.entries(docs)
+      .filter(([k, v]) => k.startsWith('clips/') && v && v.asset === id);
+    const key = keyById.get(id);
+    if (!key && clipRows.length === 0) { notFound.push(id); continue; }
+    const projects = [];
+    for (const [, v] of clipRows) {
+      for (const r of findClipRefs(docs, v.id || v.asset)) {
+        if (!projects.some((p) => p.projectId === r.projectId)) projects.push(r);
+      }
+    }
+    if (projects.length && !force) {
+      blocked.push({ asset: id, reason: 'in_use', projects: projects.map((p) => p.projectName) });
+      continue;
+    }
+    if (key) await client.send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
+    const clipIds = [];
+    for (const [k, v] of clipRows) { clipIds.push(v.id || k.slice(6)); delete docs[k]; changed = true; }
+    deleted.push({ asset: id, clips: clipIds });
+  }
+  if (changed) await putDb({ docs }, client);
+  return { deleted, blocked, notFound };
 }
 
 // ---- auth: browser session (password cookie) OR operator API key --------

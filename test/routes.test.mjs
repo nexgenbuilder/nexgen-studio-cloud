@@ -84,6 +84,9 @@ const projectOne = (await import('../api/projects/[id].js')).default;
 const exportsList = (await import('../api/exports.js')).default;
 const exportOne = (await import('../api/exports/[id].js')).default;
 const exportFile = (await import('../api/exports/[id]/file.js')).default;
+const importBatch = (await import('../api/import-batch.js')).default;
+const storage = (await import('../api/storage.js')).default;
+const assetOne = (await import('../api/assets/[id].js')).default;
 const { isAuthorized } = await import('../middleware.js');
 const middlewareDefault = (await import('../middleware.js')).default;
 
@@ -119,8 +122,12 @@ await t('POST /_up rejects non media type', async () => {
   const res = mockRes(); await up(authed({ method: 'POST', body: { name: 'x.exe', type: 'application/octet-stream', size: 100 } }), res);
   assertEq(res.statusCode, 400);
 });
-await t('POST /_up rejects oversize', async () => {
+await t('POST /_up accepts 200 MB (cap is 1 GB now)', async () => {
   const res = mockRes(); await up(authed({ method: 'POST', body: { name: 'x.mp4', type: 'video/mp4', size: 200 * 1024 * 1024 } }), res);
+  assertEq(res.statusCode, 200);
+});
+await t('POST /_up rejects over 1 GB', async () => {
+  const res = mockRes(); await up(authed({ method: 'POST', body: { name: 'x.mp4', type: 'video/mp4', size: 2 * 1024 * 1024 * 1024 } }), res);
   assertEq(res.statusCode, 400);
 });
 let assetId;
@@ -367,6 +374,121 @@ await t('middleware: /api/projects with Bearer -> passes through', async () => {
 await t('middleware: / with Bearer -> passes through', async () => {
   const r = await middlewareDefault(new Request('https://studio.example/', { headers: { authorization: 'Bearer test-operator-key' } }));
   assert(r.status !== 302, 'status ' + r.status);
+});
+
+console.log('import-batch / storage / delete-assets (bulk import system)');
+store.clear();
+store.set('assets/abc123-photo.jpg', { body: Buffer.alloc(1000, 0), contentType: 'image/jpeg' });
+store.set('assets/def456-clip.mp4', { body: Buffer.alloc(2000, 0), contentType: 'video/mp4' });
+store.set('assets/ghi789-new.jpg', { body: Buffer.alloc(500, 0), contentType: 'image/jpeg' });
+store.set('assets/jkl012-orphan.png', { body: Buffer.alloc(300, 0), contentType: 'image/png' });
+store.set('exports/old.mp4', { body: Buffer.alloc(3000, 0), contentType: 'video/mp4' });
+store.set('db.json', { body: Buffer.from(JSON.stringify({ docs: {
+  'clips/cabc': { id: 'cabc', asset: 'abc123', brand: 'dpg', name: 'Driveway', still: true, w: 100, h: 100, n: 9000 },
+  'clips/cdef': { id: 'cdef', asset: 'def456', brand: 'webflix', name: 'Reveal', still: false, w: 1920, h: 1080, n: 300 },
+  'projects/pp1': { id: 'pp1', name: 'Poolside Living', brand: 'dpg', tpl: 'walkx_h', shot: { s1: { c: 'cabc', in: 0 } } },
+} })), contentType: 'application/json' });
+async function readDocs() {
+  const res = mockRes(); await db(authed(), res);
+  return JSON.parse(res.body).docs;
+}
+await t('POST /api/import-batch unauthenticated -> 401', async () => {
+  const res = mockRes(); await importBatch(req({ method: 'POST', body: { clips: [] } }), res);
+  assertEq(res.statusCode, 401);
+});
+await t('POST /api/import-batch empty clips -> 400', async () => {
+  const res = mockRes(); await importBatch(oper({ method: 'POST', body: { clips: [] } }), res);
+  assertEq(res.statusCode, 400);
+});
+await t('POST /api/import-batch unknown asset -> 400', async () => {
+  const res = mockRes();
+  await importBatch(oper({ method: 'POST', body: { clips: [{ asset: 'nope99', name: 'X', kind: 'photo', w: 10, h: 10, n: 9000 }] } }), res);
+  assertEq(res.statusCode, 400);
+});
+await t('POST /api/import-batch bad kind -> 400', async () => {
+  const res = mockRes();
+  await importBatch(oper({ method: 'POST', body: { clips: [{ asset: 'ghi789', name: 'X', kind: 'audio', w: 10, h: 10, n: 9000 }] } }), res);
+  assertEq(res.statusCode, 400);
+});
+await t('POST /api/import-batch creates 1, skips 1 already_exists, one db write', async () => {
+  const res = mockRes();
+  await importBatch(oper({ method: 'POST', body: { clips: [
+    { asset: 'ghi789', name: 'New Photo', kind: 'photo', brand: 'dpg', w: 800, h: 600, n: 9000 },
+    { asset: 'def456', name: 'Reveal', kind: 'video', brand: 'webflix', w: 1920, h: 1080, n: 300 },
+  ] } }), res);
+  assertEq(res.statusCode, 200);
+  const j = JSON.parse(res.body);
+  assertEq(j.created.length, 1); assertEq(j.created[0].asset, 'ghi789');
+  assertEq(j.skipped.length, 1); assertEq(j.skipped[0].asset, 'def456'); assertEq(j.skipped[0].reason, 'already_exists');
+  const docs = await readDocs();
+  const row = Object.values(docs).find((v) => v && v.asset === 'ghi789');
+  assert(row, 'created clip row present');
+  assertEq(row.still, true); assertEq(row.hw, 800); assertEq(row.hh, 600);
+  assertEq(row.project, 'NEW_PHOTO'); assertEq(row.segs[0][1], 8999);
+});
+await t('POST /api/import-batch twice -> second call skips both', async () => {
+  const res = mockRes();
+  await importBatch(oper({ method: 'POST', body: { clips: [
+    { asset: 'ghi789', name: 'New Photo', kind: 'photo', brand: 'dpg', w: 800, h: 600, n: 9000 },
+    { asset: 'def456', name: 'Reveal', kind: 'video', brand: 'webflix', w: 1920, h: 1080, n: 300 },
+  ] } }), res);
+  const j = JSON.parse(res.body);
+  assertEq(j.created.length, 0); assertEq(j.skipped.length, 2);
+});
+await t('GET /api/storage unauthenticated -> 401', async () => {
+  const res = mockRes(); await storage(req(), res);
+  assertEq(res.statusCode, 401);
+});
+await t('GET /api/storage returns real totals matching the store', async () => {
+  const res = mockRes(); await storage(oper(), res);
+  assertEq(res.statusCode, 200);
+  const j = JSON.parse(res.body);
+  let total = 0; for (const v of store.values()) total += v.body.length;
+  assertEq(j.usedBytes, total);
+  assertEq(j.fileCount, store.size);
+  assertEq(j.limitBytes, 10 * 1024 ** 3);
+  assertEq(j.warn, false);
+  assertEq(j.pctUsed, Math.round((total / (10 * 1024 ** 3)) * 1000) / 10);
+  assertEq(j.byPrefix.assets.bytes, 3800);
+  assertEq(j.byPrefix.exports.bytes, 3000);
+  assertEq(j.byType.image.bytes, 1800);
+  assertEq(j.byType.video.bytes, 5000);
+  assertEq(j.byBrand.dpg.bytes, 1500);
+  assertEq(j.byBrand.webflix.bytes, 2000);
+  assertEq(j.byBrand.unassigned.bytes, 300);
+});
+await t('DELETE /api/assets/<id> in use -> 409 naming the project', async () => {
+  const res = mockRes(); await assetOne(oper({ method: 'DELETE', query: { id: 'abc123' } }), res);
+  assertEq(res.statusCode, 409);
+  const j = JSON.parse(res.body);
+  assertEq(j.error, 'in_use');
+  assert(j.projects.includes('Poolside Living'), 'projects ' + JSON.stringify(j.projects));
+  assert(store.has('assets/abc123-photo.jpg'), 'object still there after blocked delete');
+});
+await t('DELETE /api/assets/<id>?force=1 removes R2 object + clip row', async () => {
+  const res = mockRes(); await assetOne(oper({ method: 'DELETE', query: { id: 'abc123', force: '1' } }), res);
+  assertEq(res.statusCode, 200);
+  assert(!store.has('assets/abc123-photo.jpg'), 'R2 object gone');
+  const docs = await readDocs();
+  assert(!docs['clips/cabc'], 'clip row gone');
+});
+await t('DELETE /api/assets bulk removes objects + rows', async () => {
+  const res = mockRes(); await assets(oper({ method: 'DELETE', body: { ids: ['def456', 'jkl012'] } }), res);
+  assertEq(res.statusCode, 200);
+  const j = JSON.parse(res.body);
+  assertEq(j.deleted.length, 2);
+  assert(!store.has('assets/def456-clip.mp4'), 'video object gone');
+  assert(!store.has('assets/jkl012-orphan.png'), 'orphan object gone');
+  const docs = await readDocs();
+  assert(!docs['clips/cdef'], 'clip row gone');
+});
+await t('DELETE /api/assets/<id> unknown -> 404', async () => {
+  const res = mockRes(); await assetOne(oper({ method: 'DELETE', query: { id: 'nope99' } }), res);
+  assertEq(res.statusCode, 404);
+});
+await t('DELETE /api/assets empty ids -> 400', async () => {
+  const res = mockRes(); await assets(oper({ method: 'DELETE', body: { ids: [] } }), res);
+  assertEq(res.statusCode, 400);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

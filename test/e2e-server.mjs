@@ -75,6 +75,9 @@ const projectOne = (await import('../api/projects/[id].js')).default;
 const exportsList = (await import('../api/exports.js')).default;
 const exportOne = (await import('../api/exports/[id].js')).default;
 const exportFile = (await import('../api/exports/[id]/file.js')).default;
+const importBatch = (await import('../api/import-batch.js')).default;
+const storage = (await import('../api/storage.js')).default;
+const assetOne = (await import('../api/assets/[id].js')).default;
 
 const ROUTES = [
   [/^\/_db$/, db], [/^\/_up$/, up], [/^\/_assets$/, assets],
@@ -85,6 +88,10 @@ const ROUTES = [
   [/^\/api\/exports$/, exportsList],
   [/^\/api\/exports\/([a-z0-9]+)\/file$/, exportFile, (m, q) => { q.id = m[1]; }],
   [/^\/api\/exports\/([a-z0-9]+)$/, exportOne, (m, q) => { q.id = m[1]; }],
+  [/^\/api\/import-batch$/, importBatch],
+  [/^\/api\/storage$/, storage],
+  [/^\/api\/assets$/, assets],
+  [/^\/api\/assets\/([a-z0-9]+)$/, assetOne, (m, q) => { q.id = m[1]; }],
 ];
 
 function readBody(req) {
@@ -115,6 +122,9 @@ const server = http.createServer(async (req, res) => {
         const ct = String(req.headers['content-type'] || '');
         if (raw.length && ct.includes('application/json')) { try { req.body = JSON.parse(raw.toString()); } catch (e) { req.body = {}; } }
         else if (raw.length) req.body = raw.toString();
+        // No body: mark it parsed so readJsonBody (which attaches stream
+        // listeners) never waits on an already-consumed stream.
+        else req.body = {};
       }
       await handler(req, res);
       return;

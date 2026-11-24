@@ -62,6 +62,10 @@ nexgen-studio-cloud/
     db.js                  GET/POST /_db            (project db)
     up.js                  POST /_up                (presigned PUT for an upload)
     assets.js              GET  /_assets            (list assets)
+                           DELETE /api/assets       (bulk delete: R2 object + clip rows)
+    assets/[id].js         DELETE /api/assets/<id>  (delete one asset: R2 object + clip rows)
+    import-batch.js        POST /api/import-batch   (create many clip rows, one db write)
+    storage.js             GET  /api/storage       (storage meter: bytes, files, breakdowns)
     blob.js                GET/DELETE /_blob/<id>   (302 to presigned GET)
     login.js               POST /api/login          (password -> auth cookie)
     projects.js            GET/POST /api/projects
@@ -71,6 +75,9 @@ nexgen-studio-cloud/
     exports/[id]/file.js   GET  /api/exports/<id>/file (302 to finished MP4)
   middleware.js            Routing Middleware: password gate (edge) + Bearer for /api/*
   scripts/migrate-local-to-r2.mjs   one-off: copy local uploads/ + db.json to R2
+  scripts/bulk-import.mjs       import a local directory: parallel raw uploads
+                                via presigned PUTs, then one /api/import-batch
+                                call (no ffmpeg by default)
   test/
     routes.test.mjs        42 route/auth tests (fake in-memory R2) — `npm test`
     middleware-smoke.mjs   middleware behaviour check (not in npm test)
@@ -123,7 +130,11 @@ Base URL: the Vercel deployment URL. Auth: `Authorization: Bearer <NX_OPERATOR_K
 | `POST /_up { name, type, size }` | Returns `{ id, uploadUrl, url: '/_blob/<id>' }`; PUT the bytes to `uploadUrl` with the same Content-Type |
 | `GET /_assets` | `{ assets: [{ id, name, size, url }] }` |
 | `GET /_blob/<id>` | 302 to a presigned R2 GET URL (1 h) |
-| `DELETE /_blob/<id>` | Delete an asset |
+| `DELETE /_blob/<id>` | Delete the R2 object only (leaves the clip row — legacy; use `DELETE /api/assets/<id>` for a real delete) |
+| `POST /api/import-batch { clips: [...] }` | Create many clip rows in ONE batched db write -> `{ created, skipped, total }` (max 500 per call; rows for an asset that already has one are skipped, never duplicated) |
+| `GET /api/storage` | Storage meter: `{ usedBytes, fileCount, limitBytes, warnBytes, pctUsed, warn, byPrefix, byType, byBrand }` |
+| `DELETE /api/assets/<id>[?force=1]` | Delete the R2 object AND its clip rows in one batched db write; 409 (naming the projects) when a project references the asset's clips, unless `force=1` |
+| `DELETE /api/assets { ids: [...], force? }` | Bulk delete, same rules, max 100 ids -> `{ deleted, blocked, notFound }` |
 
 **Projects:**
 
@@ -134,12 +145,53 @@ Base URL: the Vercel deployment URL. Auth: `Authorization: Bearer <NX_OPERATOR_K
 | `GET /api/projects/<id>` | Full project document |
 | `PATCH /api/projects/<id> { name?, text?, shot?, style? }` | Merge per-key into the text/shot/style maps (never wipes unmentioned fields). Shot values are `{ c: clipId, in: seconds }`; text values are strings. |
 
-**Footage.** There is no separate "create clip" endpoint: upload an asset
-(`/_up`), then write the clip row into the db (`GET /_db`, add
-`clips/<clipId>`, `POST /_db`). A clip row is
+**Footage.** For one clip at a time: upload an asset (`/_up`), then write the
+clip row into the db (`GET /_db`, add `clips/<clipId>`, `POST /_db`). For a
+whole directory, use the bulk path instead — `scripts/bulk-import.mjs` uploads
+the files in parallel (raw, no compression) and creates all clip rows with a
+single `POST /api/import-batch` call; see "Bulk import" below. A clip row is
 `{ id, brand, name, project, file: '', w, h, n, segs: [[0, n-1]], asset, poster: '', src: 'up' }`
 — `w`/`h` are the transcoded dimensions, `n` the frame count at 30 fps.
 (`test/e2e-mobile.mjs` shows the full sequence working.)
+
+**Bulk import (2026-11-24).** The old per-file path took 55 minutes for 145
+DPG files (ffmpeg compression + one upload + one db write per file,
+sequential, because parallel full-db writes lose data). The bulk path is:
+`node scripts/bulk-import.mjs --dir <dir> --brand <brand-id>` — ffprobe each
+file (dimensions/duration), upload raw files in parallel via presigned PUTs
+(4 at a time, 3 attempts with a fresh URL each time), then ONE
+`POST /api/import-batch` with all clip rows. No compression by default; only
+a file over the 1 GB upload cap is compressed (`--compress`: ffmpeg veryfast,
+crf 23, max 1920x1080, just that file). Dry-run first with `--dry-run`.
+The route itself validates every item, verifies every asset exists in R2, and
+skips assets that already have a clip row. Do not run it concurrently with
+another full-db writer (browser persist, another import) — same
+last-write-wins caveat as `POST /_db`.
+
+**Deleting footage.** In the studio: Footage view -> Select (multi-select,
+then "Delete selected") or open a clip -> "Remove from library". Deletion is
+blocked, naming the project, when a project's shots reference the asset;
+the manage dialog offers an explicit per-asset "Delete anyway" override.
+The API path (`DELETE /api/assets/<id>` or bulk `DELETE /api/assets`) removes
+the R2 object AND the clip rows in one batched db write. The old
+`DELETE /_blob/<id>` removes the R2 object only — do not use it for deletes.
+
+**Storage meter.** `GET /api/storage` returns used bytes, file count,
+per-prefix / per-type / per-brand breakdowns, percentage of the 10 GB R2 free
+tier, and `warn` at 8 GB (80%). The Footage view shows the same meter (red
+when near full). Assets with no clip row show under `byBrand.unassigned` —
+that is where orphaned uploads show up.
+
+**Upload limits.**
+
+| Limit | Value | Where it lives |
+|---|---|---|
+| Raw file upload (`/_up`) | 1 GB | `api/up.js` `MAX_SIZE` (was 100 MB; raised 2026-11-24). Presigned PUT URL lives 3600 s. Files over 1 GB must be compressed first (`bulk-import --compress`, veryfast preset). |
+| In-browser transcode (studio's own upload path) | ~18.5 MB target | `public/js/nx-app.js` — the phone re-encodes video before upload; unchanged by the bulk system. Bulk imports bypass it (raw upload via presigned PUT). |
+| Batch size (`/api/import-batch`) | 500 clips per call | `api/import-batch.js` `MAX_CLIPS` |
+| Bulk delete (`DELETE /api/assets`) | 100 ids per call | `api/assets.js` |
+| R2 free tier | 10 GB total | Cloudflare; the meter warns at 8 GB. |
+| Vercel function bodies | ~4.5 MB | Vercel; uploads never go through a function body — bytes go straight to R2 via presigned PUT. |
 
 **Exports (render jobs):**
 
@@ -183,7 +235,7 @@ Never commit real values (`.env.example` is the template).
 
 ```bash
 npm install
-npm test            # 42 route/auth tests, fake in-memory R2, no network
+npm test            # 56 route/auth tests, fake in-memory R2, no network
 node test/middleware-smoke.mjs   # middleware redirect / pass-through behaviour
 ```
 
@@ -195,7 +247,8 @@ node test/e2e-mobile.mjs --full-export   # ALSO runs a real 15.5s render on the 
                                           # viewport (~25 min here). Only run when no
                                           # other render is using the machine.
 ```
-Last verified 2026-11-24: `npm test` 42/42 pass; `e2e-mobile.mjs` 20/20 checks
+Last verified 2026-11-24: `npm test` 56/56 pass (incl. 13 import-batch /
+storage / delete tests); `e2e-mobile.mjs` 20/20 checks
 pass (API-created `walkx_h` project with 1 shot + 8 texts opens intact on
 desktop and on Android emulation; Export button top-right on mobile; export
 dialog opens with Footage/Words/Look checks; `downloads.save` fires a real
@@ -226,7 +279,7 @@ machine is free as a final confirmation.
   deploys are the recommended path; if a deploy ever fails on size, move
   `audio/` to R2 or drop unused packs (they are referenced by prefix, so check
   before trimming).
-- **Presigned URLs expire.** GET links last 1 h, upload links 10 min (export
+- **Presigned URLs expire.** GET links last 1 h, upload links 1 h (export
   upload links 1 h). Download promptly; request a fresh one when needed.
 - **Video decoding needs Chrome/Edge.** The studio renders with WebCodecs;
   Safari/Firefox won't export. Ricardo's Android Chrome is fine.

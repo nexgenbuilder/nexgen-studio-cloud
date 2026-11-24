@@ -895,8 +895,9 @@ function buildFootage() {
   const rows = NX.brandClips().sort((x, y) => (x.src === 'up') === (y.src === 'up') ? String(y.addedAt || '').localeCompare(String(x.addedAt || '')) : x.src === 'up' ? -1 : 1);
   UPQ.forEach(u => grid.appendChild(u.tile2));
   grid.appendChild(addTile());
-  for (const r of rows) grid.appendChild(clipTile(r, () => openManage(r.id)));
+  for (const r of rows) { const t = clipTile(r, footSelMode ? () => toggleSel(r.id) : () => openManage(r.id)); if (footSelMode && footSel.has(r.id)) { t.classList.add('sel'); t.appendChild(el('span', 'tick', '✓')); } grid.appendChild(t); }
   $('#footAdd').hidden = !CAP.assets;
+  $('#footSelBtn').hidden = !CAP.assets;
   for (const f of onClips) try { f(); } catch (e) { console.error(e); }
   paintBrand();
 }
@@ -909,11 +910,53 @@ function clipTile(r, onclick, pressed) {
 }
 async function refreshMeter() {
   if (!CAP.assets) { $('#meter').hidden = true; return; }
-  try { const { usage } = await CAP.assets.list(); const u = usage.maxBytes ? usage.bytes / usage.maxBytes : 0;
-    $('#meter').hidden = false; $('#meterBar').style.width = (Math.min(1, u) * 100) + '%';
-    $('#meterTxt').textContent = mb(usage.bytes) + ' of ' + mb(usage.maxBytes) + ' storage used · ' + usage.files + ' files (all brands)'; }
+  try { const { usage } = await CAP.assets.list(); if (!usage.maxBytes) { $('#meter').hidden = true; return; }
+    const u = usage.bytes / usage.maxBytes, warn = usage.warn || u >= 0.8;
+    $('#meter').hidden = false; $('#meter').classList.toggle('warn', warn); $('#meterBar').style.width = (Math.min(1, u) * 100) + '%';
+    $('#meterTxt').textContent = mb(usage.bytes) + ' of ' + mb(usage.maxBytes) + ' storage used · ' + Math.round(u * 100) + '% · ' + usage.files + ' files (all brands)' + (warn ? ' — nearly full' : ''); }
   catch (e) { $('#meter').hidden = true; }
 }
+// Projects that reference a clip id anywhere in their doc (shot maps,
+// free-timeline items, any field) — used to block deletion of footage a
+// project still needs. Mirrors api/_lib/r2.js findClipRefs server-side.
+const clipRefs = id => {
+  const out = [];
+  for (const p of (S.projects || [])) {
+    let hit = false;
+    const walk = v => { if (hit) return; if (typeof v === 'string') { if (v === id) hit = true; return; } if (v && typeof v === 'object') for (const k in v) walk(v[k]); };
+    walk(p);
+    if (hit) out.push(p.name || p.id);
+  }
+  return out;
+};
+// ---------------------------------------------------------------- multi-select delete (footage grid)
+let footSelMode = false; const footSel = new Set();
+function toggleSel(id) { if (footSel.has(id)) footSel.delete(id); else footSel.add(id); paintSelBar(); buildFootage(); }
+function paintSelBar() { const n = footSel.size; $('#footSelTxt').textContent = n ? n + ' selected' : 'Tap footage to select it'; const d = $('#footSelDel'); d.dataset.arm = ''; d.textContent = 'Delete selected'; }
+function setSelMode(on) { footSelMode = on; footSel.clear(); $('#footSelBtn').textContent = on ? 'Done' : 'Select'; $('#footSelBar').hidden = !on; paintSelBar(); buildFootage(); }
+$('#footSelBtn').onclick = () => setSelMode(!footSelMode);
+$('#footSelCancel').onclick = () => setSelMode(false);
+$('#footSelDel').onclick = async () => {
+  const d = $('#footSelDel'); if (!footSel.size) return;
+  if (d.dataset.arm !== '1') { d.dataset.arm = '1'; d.textContent = 'Tap again to delete for good'; return; }
+  const blocked = [], rows = [];
+  for (const id of [...footSel]) { const row = CLIPS.get(id); if (!row) continue; const refs = clipRefs(id); if (refs.length) blocked.push(row.name + ' (used in ' + refs.join(', ') + ')'); else rows.push(row); }
+  try {
+    for (const row of rows) await CAP.db.doc('clips/' + row.id).delete(); // local first
+    const r = rows.length ? await CAP.assets.deleteMany(rows.map(x => x.asset)) : null;
+    const serverBlocked = new Set((r && r.body && r.body.blocked || []).map(b => b.asset));
+    for (const row of rows) {
+      if (serverBlocked.has(row.asset)) { // raced: referenced elsewhere — restore the row
+        await CAP.db.doc('clips/' + row.id).set(row);
+        const b = (r.body.blocked || []).find(x => x.asset === row.asset);
+        blocked.push(row.name + ' (used in ' + ((b && b.projects) || []).join(', ') + ')');
+      } else { NX.dropClip(row.id); FB.forget(row.id); }
+    }
+    const n = rows.length - serverBlocked.size;
+    toast('Removed ' + n + ' clip' + (n === 1 ? '' : 's') + (blocked.length ? '. Kept ' + blocked.length + ' in use: ' + blocked.join('; ') : '.'));
+    setSelMode(false); buildFootage(); refreshMeter(); edited(true);
+  } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
+};
 $('#footAdd').onclick = () => pickFiles();
 
 // ---------------------------------------------------------------- saving (db)
@@ -1050,9 +1093,22 @@ $('#pkProj').addEventListener('change', async e => {
 });
 $('#pkDel').onclick = async () => {
   const b = $('#pkDel'), row = CLIPS.get(PK.clip); if (!row || row.src === 'lib') return;
-  if (b.dataset.arm !== '1') { b.dataset.arm = '1'; b.textContent = 'Remove it for good'; return; }
-  try { await CAP.db.doc('clips/' + row.id).delete(); if (CAP.assets) await CAP.assets.delete(row.asset).catch(() => {}); NX.dropClip(row.id); FB.forget(row.id);
-    toast('Removed “' + row.name + '”. Clips that used it go back to placeholders or the template’s footage.');
+  const refs = clipRefs(row.id);
+  if (b.dataset.arm !== '1' && b.dataset.arm !== 'force') {
+    if (refs.length) { b.dataset.arm = 'force'; b.textContent = 'Delete anyway'; toast('“' + row.name + '” is used in ' + refs.join(', ') + '. Tap again to delete it anyway.'); return; }
+    b.dataset.arm = '1'; b.textContent = 'Remove it for good'; return;
+  }
+  const force = b.dataset.arm === 'force';
+  try {
+    await CAP.db.doc('clips/' + row.id).delete(); // local first: persist posts the db without the clip
+    const r = CAP.assets ? await CAP.assets.delete(row.asset, force) : null;
+    if (r && r.status === 409) { // raced: referenced elsewhere since the check — restore the row
+      await CAP.db.doc('clips/' + row.id).set(row);
+      toast('Still used in ' + ((r.body && r.body.projects) || []).join(', ') + ' — not deleted.');
+      b.dataset.arm = ''; b.textContent = 'Remove from library'; return;
+    }
+    NX.dropClip(row.id); FB.forget(row.id);
+    toast(force ? 'Removed “' + row.name + '”. Shots that used it go back to placeholders.' : 'Removed “' + row.name + '”.');
     if (PK.manage) closePicker(); else { const f = PK.f; selectClip(NX.isPh(f.def[0]) ? null : f.def[0], f.def[1]); buildPickerLib(); }
     buildFootage(); refreshMeter(); edited(true); }
   catch (e) { toast('Could not remove: ' + (e.code || e.message)); }

@@ -175,7 +175,7 @@ raw library files become clips by going through the studio's upload pipeline
   prefix — check before trimming).
 - **CORS must match the real deployment URL exactly** (no trailing slash).
   Wrong origin -> footage fails to load with a CORS error in the console.
-- **Presigned URLs expire** (GET 1 h, upload 10 min, export upload 1 h).
+- **Presigned URLs expire** (GET 1 h, upload 1 h, export upload 1 h).
   Download promptly.
 - **Hobby function limits** (1M invocations/month, 10 s default duration) are
   far above this workload: the API only stores/loads data; rendering happens
@@ -186,7 +186,47 @@ raw library files become clips by going through the studio's upload pipeline
   is not valid" until Ricardo connects Vercel (step 1). Don't work around it
   by pasting tokens anywhere.
 
-## 10. Rollback
+## 10. Bulk import + asset management (2026-11-24)
+
+The DPG import took 55 minutes for 145 files under the old path (ffmpeg
+medium preset + one upload + one db write per file). The bulk path is:
+
+```bash
+# Dry-run first: what would upload, what clip rows would be created.
+node scripts/bulk-import.mjs --dir /path/to/media --brand dpg --dry-run
+# Real run: parallel raw uploads (4 at a time), then ONE import-batch call.
+node scripts/bulk-import.mjs --dir /path/to/media --brand dpg
+```
+
+- Files go up RAW (no compression). A file over the 1 GB `/_up` cap is the
+  only case for compression: pass `--compress` (ffmpeg veryfast, crf 23,
+  max 1920x1080, just that file). The studio's in-browser ~18.5 MB transcode
+  target is a separate, unchanged phone-upload path — bulk imports bypass it.
+- The script needs the operator key: `--key-file` (mode-600 secrets file,
+  default `~/workspace/nexgen-studio-secrets.env`) or `NX_OPERATOR_KEY`.
+- **One writer at a time.** The batch route does one full getDb+putDb. Do
+  not run it while another import is running, while a browser persist is
+  mid-save, or while anyone is editing the same db — last-write-wins.
+- Verify after a run: `nexgen_studio.py storage` (used bytes + % of 10 GB)
+  and `nexgen_studio.py get-db` (clip rows present, photos carry
+  `"still": true`).
+
+**Deleting footage.** Studio: Footage view -> Select -> "Delete selected",
+or open a clip -> "Remove from library". A delete is blocked, naming the
+project, when a project's shots reference the asset; the manage dialog
+offers an explicit per-asset "Delete anyway" override. API:
+`nexgen_studio.py delete-asset <id> [--force]` /
+`delete-assets <id> [...] [--force]` — removes the R2 object AND the clip
+rows. Do not use `DELETE /_blob/<id>` for deletes (R2 object only, leaves
+the clip row).
+
+**Storage.** `nexgen_studio.py storage` — used bytes, file count, per-client
+and per-type breakdown, % of the 10 GB free tier. Warn at 8 GB (80%): clean
+up or stop importing before the tier caps. The Footage view shows the same
+meter (red when near full). `byBrand.unassigned` is where orphaned uploads
+show up.
+
+## 11. Rollback
 
 If the cloud deployment misbehaves, nothing about the local setup changes:
 the in-house host on port 8765 keeps working exactly as before, with the same

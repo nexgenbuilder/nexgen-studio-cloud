@@ -85,8 +85,33 @@
       if (!put.ok) throw new Error('Upload to storage failed (' + put.status + ')');
       return { id: j.id, url: '/_blob/' + j.id, sizeBytes: blob.size, contentType: blob.type };
     },
-    list: async () => { try { const r = await fetch('/_assets'); const j = await r.json(); return { assets: j.assets || [], usage: { bytes: 0 } }; } catch (e) { return { assets: [], usage: { bytes: 0 } }; } },
-    delete: async (id) => { try { await fetch('/_blob/' + id, { method: 'DELETE' }); } catch (e) {} }
+    list: async () => {
+      let assets = [];
+      try { const r = await fetch('/_assets'); const j = await r.json(); assets = j.assets || []; } catch (e) {}
+      // Real usage comes from /api/storage (bytes, limit, files, warn flag).
+      // The meter used to hard-code bytes: 0 here — that is why it never moved.
+      try { const r = await fetch('/api/storage'); if (r.ok) { const s = await r.json(); return { assets, usage: { bytes: s.usedBytes, maxBytes: s.limitBytes, warnBytes: s.warnBytes, files: s.fileCount, pctUsed: s.pctUsed, warn: s.warn } }; } } catch (e) {}
+      return { assets, usage: { bytes: 0 } };
+    },
+    // DELETE /api/assets/<id> removes the R2 object AND the clip rows that
+    // point at it (the old DELETE /_blob/<id> removed the object only and
+    // left the clip row behind). Returns { ok, status, body } so the UI can
+    // surface a 409 "in use" with the project names. force is only sent
+    // after an explicit per-asset override from the user.
+    delete: async (id, force) => {
+      try {
+        const r = await fetch('/api/assets/' + id + (force ? '?force=1' : ''), { method: 'DELETE' });
+        let body = null; try { body = await r.json(); } catch (e) {}
+        return { ok: r.ok, status: r.status, body };
+      } catch (e) { return { ok: false, status: 0, body: null }; }
+    },
+    deleteMany: async (ids, force) => {
+      try {
+        const r = await fetch('/api/assets', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, force: !!force }) });
+        let body = null; try { body = await r.json(); } catch (e) {}
+        return { ok: r.ok, status: r.status, body };
+      } catch (e) { return { ok: false, status: 0, body: null }; }
+    }
   };
   const user = { id: async () => 'ricardo', me: async () => ({ id: 'ricardo' }), isOwner: () => true, canEdit: () => true, can: () => true, profiles: async () => ({}) };
   const downloads = { save: async o => {

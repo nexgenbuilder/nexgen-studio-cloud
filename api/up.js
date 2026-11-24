@@ -7,7 +7,14 @@
 import { newAssetId, assetKey, presignPut, isAuthenticated, unauthorized, sanitizeName } from './_lib/r2.js';
 
 const ALLOWED_TYPES = /^(video|image|audio)\//;
-const MAX_SIZE = 100 * 1024 * 1024; // raw file cap; the studio re-encodes video to ~20 MB before upload
+// Uploads go straight to R2 via presigned PUT — the function never carries
+// file bytes (Vercel serverless bodies cap around 4.5 MB). MAX_SIZE is the
+// cap on the *declared* file size; R2 itself accepts multi-hundred-MB
+// objects. 1 GB is the supported ceiling (see README "Upload limits"): raw
+// files up to 1 GB upload as-is; anything bigger must be compressed first
+// (bulk-import --compress, veryfast preset). The presigned URL lives 3600 s
+// so a big upload has time to finish.
+const MAX_SIZE = 1024 * 1024 * 1024;
 
 export default async function handler(req, res) {
   if (!isAuthenticated(req)) return unauthorized(res);
@@ -21,7 +28,7 @@ export default async function handler(req, res) {
     if (!Number.isFinite(size) || size <= 0 || size > MAX_SIZE) { res.statusCode = 400; res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ error: 'bad size' })); }
     const id = newAssetId();
     const key = assetKey(id, name);
-    const uploadUrl = await presignPut(key, type, 600);
+    const uploadUrl = await presignPut(key, type, 3600);
     res.setHeader('content-type', 'application/json');
     return res.end(JSON.stringify({ id, uploadUrl, url: '/_blob/' + id }));
   } catch (e) {

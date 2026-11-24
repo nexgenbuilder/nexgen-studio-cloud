@@ -238,9 +238,14 @@ button.lp:not(.add) { cursor: pointer; }
 .meter { flex: 1; min-width: 220px; max-width: 420px; }
 .meter .mb { height: 6px; border-radius: 3px; background: var(--sunk); overflow: hidden; }
 .meter .mb i { display: block; height: 100%; background: var(--grad); width: 0; }
+.meter.warn .mb i { background: var(--bad); }
+.meter.warn p { color: var(--bad); }
 .meter p { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+.selbar { display: flex; gap: 8px; align-items: center; padding: 8px 0; font-size: 13px; color: var(--mute); }
+.ftile.sel { outline: 2px solid var(--bad); outline-offset: -2px; }
+.ftile .tick { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; background: var(--bad); color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 700; z-index: 1; }
 .pk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
-.ftile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0; overflow: hidden; text-align: left; display: flex; flex-direction: column; min-width: 0; transition: box-shadow .15s, transform .15s, border-color .15s; }
+.ftile { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0; overflow: hidden; text-align: left; display: flex; flex-direction: column; min-width: 0; transition: box-shadow .15s, transform .15s, border-color .15s; }
 .ftile:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
 .ftile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .ftile .fi { aspect-ratio: 16 / 10; background: #0d0d10; display: grid; place-items: center; overflow: hidden; }
@@ -649,7 +654,8 @@ body.mode-edit .stage-top #toEditBtn { display: none; }
   <!-- ===================== FOOTAGE ===================== -->
   <section class="view" id="vFootage" aria-label="Footage">
     <div class="page">
-      <div class="lib-head"><h1 id="footTitle">Footage</h1><div class="meter" id="meter" hidden><div class="mb"><i id="meterBar"></i></div><p id="meterTxt"></p></div><span class="grow"></span><button class="btn primary" id="footAdd" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add footage or photos</button></div>
+      <div class="lib-head"><h1 id="footTitle">Footage</h1><div class="meter" id="meter" hidden><div class="mb"><i id="meterBar"></i></div><p id="meterTxt"></p></div><span class="grow"></span><button class="btn" id="footSelBtn" type="button">Select</button><button class="btn primary" id="footAdd" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add footage or photos</button></div>
+      <div class="selbar" id="footSelBar" hidden><span id="footSelTxt">Tap footage to select it</span><span class="grow"></span><button class="btn sm danger" id="footSelDel" type="button">Delete selected</button><button class="btn sm" id="footSelCancel" type="button">Cancel</button></div>
       <div class="pk-grid" id="footGrid"></div>
     </div>
   </section>
