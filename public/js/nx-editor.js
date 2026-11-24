@@ -19,7 +19,7 @@ body.mode-edit .screen { cursor: default; touch-action: none; }
 body.mode-edit #ov { pointer-events: none; }
 #einsp { display: none; }
 body.mode-edit #einsp { display: block; }
-.ep-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 12px 0 10px; }
+.ep-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 12px 0 10px; position: sticky; top: 0; z-index: 3; background: var(--surface); }
 .ep-tabs button { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 7px 4px; font: 700 10px/1.1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 .ep-tabs button[aria-selected="true"] { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
 .ep-body { overflow: auto; min-height: 0; flex: 1; padding-bottom: 20px; scrollbar-width: thin; }
@@ -89,6 +89,7 @@ body.mode-edit #einsp { display: block; }
 .tl-ph { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; z-index: 6; }
 .tl-ph::before { content: ""; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top: 8px solid var(--fg); }
 .tl-drop { position: absolute; width: 3px; margin-left: -1.5px; background: var(--accent); z-index: 7; pointer-events: none; border-radius: 2px; }
+.tl-snap { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 6; }
 .tl-empty { position: absolute; left: 14px; font-size: 12px; color: var(--dim); pointer-events: none; }
 /* inspector */
 .ei-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
@@ -155,6 +156,9 @@ const STICKERS = [
   { type: 'tag', name: 'Price tag', text: '$19', y: 640, size: 1, d: 3, note: 'A price, on a tag' },
   { type: 'gift', name: 'Gift', y: 640, size: 1, d: 3, note: 'Offer, giveaway' },
 ];
+// How many animated overlays the Graphics tab offers (K9.ORDER). Counted live
+// so the number can't go stale — a hardcoded 61 was already wrong (71 offered).
+const mgCount = () => (typeof K9 !== 'undefined' && K9.ORDER ? K9.ORDER.length : 61);
 const TRANS = [['cut', 'Cut'], ['dissolve', 'Dissolve'], ['fade', 'Dip to black'], ['flash', 'Flash'], ['whip', 'Whip'], ['swipe', 'Swipe'], ['slices', 'Slices'], ['blinds', 'Blinds'],
   ['iris', 'Iris'], ['brush', 'Brush'], ['liquid', 'Liquid'], ['leak', 'Light leak'], ['glitch', 'Glitch'], ['paver', 'Tile flip'], ['toss', 'Photo toss'], ['word', 'Through the name'], ['logo', 'Through the logo'],
   ['textmask', 'Through your word'], ['wipe', 'Accent wipe'], ['split', 'Split open'], ['stripes', 'Colour stripes'], ['push', 'Push up'], ['slide', 'Slide over'], ['circle', 'Circle reveal']];
@@ -183,17 +187,26 @@ const F = () => window.FREE;
 function blankTL() { return { v: 1, main: [{ id: uid(), type: 'end', style: 'kinetic', d: 4 }], layers: [], sfx: [], music: { bed: 'lounge', vol: 0.7 }, autoSfx: true }; }
 function normTL(t) { t = t || {}; t.main = Array.isArray(t.main) ? t.main : []; t.layers = Array.isArray(t.layers) ? t.layers : []; t.sfx = Array.isArray(t.sfx) ? t.sfx : [];
   t.music = Object.assign({ bed: 'none', vol: 0.7 }, t.music || {}); if (t.autoSfx === undefined) t.autoSfx = true; [...t.main, ...t.layers, ...t.sfx].forEach(x => { if (!x.id) x.id = uid(); }); return t; }
+// ---- command-based undo ----
+// The undo stack holds commands, not bare snapshots: { label, before, after }.
+// Every user gesture commits exactly ONE command (a drag is one undo step),
+// and the Undo/Redo buttons say what they will undo. `before`/`after` are
+// still whole-timeline JSON — the state representation never changed, so old
+// behaviour is preserved; only the bookkeeping is explicit.
 function change(mut, o) {
   o = o || {}; const t = TL(); if (!t) return; const before = JSON.stringify(t);
   mut(t);
-  if (JSON.stringify(t) === before) return;
+  const after = JSON.stringify(t); if (after === before) return;
   const now = performance.now(), merge = o.key && o.key === ED.lastKey && now - ED.lastAt < 1500;
-  if (!o.noUndo && !merge) { ED.undo.push(before); if (ED.undo.length > 150) ED.undo.shift(); ED.redo = []; }
+  if (!o.noUndo) {
+    if (merge && ED.undo.length) ED.undo[ED.undo.length - 1].after = after;   // same gesture, still one command
+    else { ED.undo.push({ label: o.label || 'Edit', before, after }); if (ED.undo.length > 150) ED.undo.shift(); ED.redo = []; }
+  }
   ED.lastKey = o.key || ''; ED.lastAt = now;
   A.edited(true); scheduleMix(); paintBar();
 }
-function undo() { if (!ED.undo.length) return; ED.redo.push(JSON.stringify(TL())); S.proj.tl = JSON.parse(ED.undo.pop()); afterHistory(); }
-function redo() { if (!ED.redo.length) return; ED.undo.push(JSON.stringify(TL())); S.proj.tl = JSON.parse(ED.redo.pop()); afterHistory(); }
+function undo() { if (!ED.undo.length) return; const c = ED.undo.pop(); ED.redo.push(c); S.proj.tl = JSON.parse(c.before); afterHistory(); }
+function redo() { if (!ED.redo.length) return; const c = ED.redo.pop(); ED.undo.push(c); S.proj.tl = JSON.parse(c.after); afterHistory(); }
 function afterHistory() { ED.lastKey = ''; if (ED.sel && !findAny(ED.sel)) ED.sel = null; A.edited(true); scheduleMix(); paintBar(); }
 function findAny(id) { const t = TL(); if (!t) return null; if (id === 'music') return { kind: 'music' }; return t.main.find(x => x.id === id) || t.layers.find(x => x.id === id) || t.sfx.find(x => x.id === id) || null; }
 const kindOf = o => (!o ? null : o.kind === 'music' ? 'music' : o.type && !o.kind && TL().main.includes(o) ? 'main' : TL().sfx.includes(o) ? 'sfx' : 'layer');
@@ -207,13 +220,13 @@ function insertIndex() {
   const last = t.main.length - 1; if (t.main[last].type === 'end' && i > last) i = last;
   return clamp(i, 0, t.main.length);
 }
-function addMain(item) { item.id = item.id || uid(); ED.multi.clear(); change(t => t.main.splice(insertIndex(), 0, item)); ED.sel = item.id; ED.seekTo = item.id; }
+function addMain(item) { item.id = item.id || uid(); ED.multi.clear(); change(t => t.main.splice(insertIndex(), 0, item), { label: 'Add to timeline' }); ED.sel = item.id; ED.seekTo = item.id; }
 function addClip(r) {
   if (ED.replace) { const id = ED.replace; ED.replace = null; change(t => { const it = t.main.find(x => x.id === id) || t.layers.find(x => x.id === id); if (it) { it.c = r.id; it.in = 0; if (it.type === 'clip') it.d = Math.min(it.d, r.dur); } }); select(id); return; }
   addMain({ type: 'clip', c: r.id, in: 0, d: r3(TL().split && !TL().main.length ? Math.min(60, r.dur) : Math.min(4, r.dur)), layout: 'fit', pos: 'center', tr: TL().main.length > 1 ? { type: 'dissolve', d: 0.45 } : null });
 }
 function layerTimes(d) { const t0 = Math.max(0, Math.min(S.t, S.dur - 0.5)); return { t0: r3(t0), d: r3(Math.max(0.6, Math.min(d, Math.max(1, S.dur - t0)))) }; }
-function addLayer(L) { L.id = uid(); ED.itab = 'edit'; ED.multi.clear(); change(t => t.layers.push(L)); ED.sel = L.id; renderInspector(); }
+function addLayer(L) { L.id = uid(); ED.itab = 'edit'; ED.multi.clear(); change(t => t.layers.push(L), { label: 'Add layer' }); ED.sel = L.id; renderInspector(); }
 function addText(p) { const L = Object.assign({ kind: 'text', x: 540, color: 'white' }, clone(p), layerTimes(p.style === 'quote' ? 5 : 2.6)); delete L.name; delete L.pv;
   if (p.style === 'quote') { const r = (A.B().reviews || [])[0]; L.text = r ? r.text : 'Paste a real review here, word for word.'; L.by = r ? r.by : 'NAME  ·  WHERE IT WAS POSTED'; } addLayer(L); }
 function addSticker(p) { const L = Object.assign({ kind: 'sticker', x: 540 }, clone(p), layerTimes(p.d || 3)); if (p.type === 'progress' || p.type === 'logobug') { L.t0 = 0; L.d = r3(S.dur); }
@@ -221,7 +234,7 @@ function addSticker(p) { const L = Object.assign({ kind: 'sticker', x: 540 }, cl
   if (p.type === 'badge') L.text = (A.B().contact && A.B().contact.badge) || A.B().name; delete L.name; delete L.note; addLayer(L); }
 function addPip(r) { addLayer(Object.assign({ kind: 'pip', c: r.id, in: 0, x: 540, y: 1250, w: r.kind === 'vert' ? 340 : 600, frame: 'white' }, layerTimes(Math.min(4, r.dur)))); }
 function addBlock(tpl) { addMain({ type: 'tpl', tpl: tpl.id, text: {}, shot: {}, d: tpl.dur || 15, tr: TL().main.length > 1 ? { type: 'dissolve', d: 0.4 } : null }); }
-function addSfx(name) { const s = { id: uid(), name, at: r3(S.t), vol: 0.9 }; change(t => t.sfx.push(s)); ED.sel = s.id; renderInspector(); }
+function addSfx(name) { const s = { id: uid(), name, at: r3(S.t), vol: 0.9 }; change(t => t.sfx.push(s), { label: 'Add sound' }); ED.sel = s.id; renderInspector(); }
 
 // ------------------------------------------------------------------------------------------------ entering / leaving edit mode
 const tlx = $('#tlx'), ePanel = $('#ePanel'), einsp = el('div'); einsp.id = 'einsp'; $('#insp').appendChild(einsp);
@@ -280,6 +293,9 @@ function paintBar() {
   if (!bar) return; const o = findAny(ED.sel), k = o ? kindOf(o) : null;
   const set = (id, on) => { const x = document.getElementById(id); if (x) x.disabled = !on; };
   set('edUndo', ED.undo.length); set('edRedo', ED.redo.length); set('edSplit', o && (k === 'layer' || (k === 'main' && o.type !== 'tpl'))); set('edDup', o && (k === 'main' || k === 'layer')); set('edDel', o && k !== 'music');
+  const u = document.getElementById('edUndo'), r = document.getElementById('edRedo');
+  if (u) u.title = ED.undo.length ? 'Undo: ' + ED.undo[ED.undo.length - 1].label + ' (Ctrl/Cmd+Z)' : 'Undo (Ctrl/Cmd+Z)';
+  if (r) r.title = ED.redo.length ? 'Redo: ' + ED.redo[ED.redo.length - 1].label + ' (Shift+Ctrl/Cmd+Z)' : 'Redo (Shift+Ctrl/Cmd+Z)';
 }
 function zoom(v) { const b = body, mid = b ? (b.scrollLeft + b.clientWidth / 2) / ED.pxs : 0; ED.pxs = clamp(v, 8, 300); const z = document.getElementById('edZoom'); if (z) z.value = ED.pxs; renderTimeline(); if (b) b.scrollLeft = mid * ED.pxs - b.clientWidth / 2; }
 function fitZoom() { if (!body) return; ED.pxs = clamp((body.clientWidth - 60) / Math.max(1, S.dur), 8, 300); const z = document.getElementById('edZoom'); if (z) z.value = ED.pxs; }
@@ -364,6 +380,11 @@ function snapList(skipId) {
   TL().layers.forEach(L => { if (L.id !== skipId) xs.push(L.t0, L.t0 + L.d); }); return xs;
 }
 const snap = (v, list) => { let best = v, bd = 7 / ED.pxs; for (const x of list) { const d = Math.abs(x - v); if (d < bd) { bd = d; best = x; } } return best; };
+// ---- drag polish: snap lines on the timeline ----
+// A vertical accent line at the time an edge snapped to, shown while dragging
+// (layers + sound effects; main-track moves already show the .tl-drop marker).
+function showTlSnap(t) { if (!inner) return; let s = inner.querySelector('.tl-snap'); if (!s) { s = el('div', 'tl-snap'); inner.appendChild(s); } s.style.left = (t * ED.pxs) + 'px'; }
+function hideTlSnap() { const s = inner && inner.querySelector('.tl-snap'); if (s) s.remove(); }
 function onTlDown(e) {
   if (e.button !== 0) return;
   const trc = e.target.closest('.trc'); if (trc) return;
@@ -374,10 +395,24 @@ function onTlDown(e) {
   const id = ti.dataset.id, kind = ti.dataset.kind;
   if ((e.shiftKey || e.metaKey || e.ctrlKey) && (kind === 'main' || kind === 'layer')) { const cur = findAny(ED.sel), ck = cur ? kindOf(cur) : null; if (ck !== kind) ED.multi.clear(); else if (ED.sel) ED.multi.add(ED.sel);
     if (ED.multi.has(id) && ED.multi.size > 1) { ED.multi.delete(id); ED.sel = [...ED.multi][ED.multi.size - 1]; } else { ED.multi.add(id); ED.sel = id; } ED.drag = null; paintSel(); renderInspector(); drawOv(); if (ED.panel === 'trans') renderPanel(); return; }
-  if (ED.sel !== id || ED.multi.size) select(id);
+  // ---- drag polish: multi-select drag on the timeline ----
+  // Layers and sound effects drag as a group when the grabbed item is part of
+  // the multi-selection: each item keeps its own snapshot (its own offset from
+  // the drag start) and the whole group commits as ONE undo command. Main-track
+  // items still move one at a time (reordering a scattered group has no safe
+  // meaning); shift-click still selects them, but the drag moves only the one.
+  // NOTE: the group is captured BEFORE select() below — select() clears the
+  // multi-selection, so reading it afterwards would always give a group of one.
+  const groupIds = (kind === 'layer' || kind === 'sfx') && ED.multi.size && ED.multi.has(id)
+    ? [...ED.multi].filter(mid => { const it = findAny(mid); return it && kindOf(it) === kind; }) : [id];
+  if (groupIds[0] !== id) groupIds.unshift(id);
+  if (ED.sel !== id || ED.multi.size) select(id, groupIds.length > 1);
   if (kind === 'music') { ED.drag = null; return; }
   const h = e.target.closest('.h'), o = findAny(id), b = builtOf(id);
-  ED.drag = { mode: h ? (h.classList.contains('l') ? 'trimL' : 'trimR') : 'move', id, kind, x0: e.clientX, el: ti, orig: clone(o), built: b ? { start: b.start, d: b.d } : null, moved: false, snaps: snapList(id) };
+  const items = groupIds.map(gid => { const it = findAny(gid); return { id: gid, orig: clone(it), el: inner.querySelector('[data-id="' + gid + '"]'), built: kind === 'main' ? builtOf(gid) : null }; });
+  const glabel = items.length > 1 ? (kind === 'layer' ? 'Move ' + items.length + ' layers' : 'Move ' + items.length + ' sounds') : (h ? 'Trim' : kind === 'sfx' ? 'Move sound' : 'Move');
+  ED.drag = { mode: h ? (h.classList.contains('l') ? 'trimL' : 'trimR') : 'move', id, kind, x0: e.clientX, el: ti, orig: clone(o), built: b ? { start: b.start, d: b.d } : null, moved: false, snaps: snapList(id), items, label: glabel, snapT: null };
+  hideTlSnap();
 }
 function onTlMove(e) {
   const g = ED.drag; if (!g) return;
@@ -385,12 +420,44 @@ function onTlMove(e) {
   if (g.mode === 'seek') { A.setT(clamp((e.clientX - rect.left) / ED.pxs, 0, S.dur)); return; }
   const dx = e.clientX - g.x0, dt = dx / ED.pxs; if (Math.abs(dx) > 3) g.moved = true; if (!g.moved) return;
   const pxs = ED.pxs, o = g.orig;
-  if (g.kind === 'sfx') { g.val = clamp(snap(o.at + dt, g.snaps), 0, S.dur); g.el.style.left = (g.val * pxs) + 'px'; return; }
+  // ---- drag polish: a snap line shows whenever an edge IS aligned with a snap
+  // target — including when the drag lands exactly on it (snap() then returns
+  // the value unchanged, so comparing against the raw value would miss it).
+  const aligned = v => { for (const s of g.snaps) if (Math.abs(s - v) < 1e-6) return s; return null; };
+  if (g.kind === 'sfx') {
+    const raw = o.at + dt, sn = snap(raw, g.snaps), at0 = clamp(sn, 0, S.dur);
+    g.val = g.items.map(it => { const v = it.id === g.id ? at0 : clamp(it.orig.at + (at0 - o.at), 0, S.dur); if (it.el) it.el.style.left = (v * pxs) + 'px'; return { id: it.id, at: v }; });
+    const sT = aligned(at0); if (sT !== null) showTlSnap(sT); else hideTlSnap();
+    return;
+  }
   if (g.kind === 'layer') {
-    if (g.mode === 'move') { let t0 = o.t0 + dt; const s1 = snap(t0, g.snaps), s2 = snap(t0 + o.d, g.snaps) - o.d; t0 = Math.abs(s1 - t0) <= Math.abs(s2 - t0) ? s1 : s2; g.val = { t0: clamp(t0, 0, Math.max(0, S.dur - 0.2)), d: o.d }; }
-    else if (g.mode === 'trimL') { const t0 = clamp(snap(o.t0 + dt, g.snaps), 0, o.t0 + o.d - 0.3); g.val = { t0, d: o.t0 + o.d - t0 }; }
-    else { const e2 = clamp(snap(o.t0 + o.d + dt, g.snaps), o.t0 + 0.3, Math.max(o.t0 + 0.3, S.dur + 30)); g.val = { t0: o.t0, d: e2 - o.t0 }; }
-    g.el.style.left = (g.val.t0 * pxs) + 'px'; g.el.style.width = Math.max(6, g.val.d * pxs - 1) + 'px'; return;
+    const prim = g.items[0].orig;   // == o; the primary drives the snap, the group follows by the same delta
+    let pv, snapT = null;
+    if (g.mode === 'move') {
+      let t0 = prim.t0 + dt; const s1 = snap(t0, g.snaps), s2 = snap(t0 + prim.d, g.snaps) - prim.d;
+      const useEnd = Math.abs(s2 - t0) < Math.abs(s1 - t0); t0 = useEnd ? s2 : s1;
+      pv = { t0: clamp(t0, 0, Math.max(0, S.dur - 0.2)), d: prim.d };
+      snapT = aligned(pv.t0); if (snapT === null) snapT = aligned(pv.t0 + pv.d);
+    } else if (g.mode === 'trimL') {
+      const raw = prim.t0 + dt, sn = snap(raw, g.snaps);
+      const t0 = clamp(sn, 0, prim.t0 + prim.d - 0.3); pv = { t0, d: prim.t0 + prim.d - t0 };
+      snapT = aligned(pv.t0);
+    } else {
+      const raw = prim.t0 + prim.d + dt, sn = snap(raw, g.snaps);
+      const e2 = clamp(sn, prim.t0 + 0.3, Math.max(prim.t0 + 0.3, S.dur + 30)); pv = { t0: prim.t0, d: e2 - prim.t0 };
+      snapT = aligned(pv.t0 + pv.d);
+    }
+    const dtEff = g.mode === 'move' || g.mode === 'trimL' ? pv.t0 - prim.t0 : (pv.t0 + pv.d) - (prim.t0 + prim.d);
+    g.val = g.items.map(it => {
+      const oo = it.orig; let v;
+      if (g.mode === 'move') v = { t0: clamp(oo.t0 + dtEff, 0, Math.max(0, S.dur - 0.2)), d: oo.d };
+      else if (g.mode === 'trimL') { const t0 = clamp(oo.t0 + dtEff, 0, oo.t0 + oo.d - 0.3); v = { t0, d: oo.t0 + oo.d - t0 }; }
+      else { const e2 = clamp(oo.t0 + oo.d + dtEff, oo.t0 + 0.3, Math.max(oo.t0 + 0.3, S.dur + 30)); v = { t0: oo.t0, d: e2 - oo.t0 }; }
+      if (it.el) { it.el.style.left = (v.t0 * pxs) + 'px'; it.el.style.width = Math.max(6, v.d * pxs - 1) + 'px'; }
+      return { id: it.id, t0: v.t0, d: v.d };
+    });
+    g.snapT = snapT; if (snapT !== null) showTlSnap(snapT); else hideTlSnap();
+    return;
   }
   // main track
   const b = g.built; if (!b) return;
@@ -407,36 +474,36 @@ function onTlMove(e) {
     g.val = { dd }; g.el.style.left = ((b.start + dd) * pxs) + 'px'; g.el.style.width = Math.max(4, (b.d - dd) * pxs - 1) + 'px'; }
 }
 function onTlUp() {
-  const g = ED.drag; ED.drag = null; if (!g || !g.moved || g.val === undefined) { if (g && g.el) { g.el.classList.remove('drag'); g.el.style.transform = ''; } return; }
+  const g = ED.drag; ED.drag = null; hideTlSnap(); if (!g || !g.moved || g.val === undefined) { if (g && g.el) { g.el.classList.remove('drag'); g.el.style.transform = ''; } return; }
   const id = g.id;
   change(t => {
-    if (g.kind === 'sfx') { const x = t.sfx.find(s => s.id === id); if (x) x.at = r3(g.val); return; }
-    if (g.kind === 'layer') { const L = t.layers.find(s => s.id === id); if (L) { L.t0 = r3(g.val.t0); L.d = r3(g.val.d); } return; }
+    if (g.kind === 'sfx') { for (const v of g.val) { const x = t.sfx.find(s => s.id === v.id); if (x) x.at = r3(v.at); } return; }
+    if (g.kind === 'layer') { for (const v of g.val) { const L = t.layers.find(s => s.id === v.id); if (L) { L.t0 = r3(v.t0); L.d = r3(v.d); } } return; }
     const i = t.main.findIndex(m => m.id === id); if (i < 0) return; const it = t.main[i];
     if (g.mode === 'move') { t.main.splice(i, 1); t.main.splice(g.val, 0, it); if (t.main[0] && t.main[0].tr) t.main[0].tr = null; }
     else if (g.mode === 'trimR') it.d = r3(g.val.d);
     else { if (it.type === 'clip') it.in = r3(Math.max(0, (it.in || 0) + g.val.dd * K13.spOf(it))); it.d = r3((g.built.d) - g.val.dd); }
-  });
+  }, { label: g.label || 'Drag' });
 }
 function split() {
   const o = findAny(ED.sel); if (!o) return; const k = kindOf(o), t = S.t;
   if (k === 'layer') { if (t <= o.t0 + 0.1 || t >= o.t0 + o.d - 0.1) { A.toast('Move the playhead inside the layer to split it.'); return; }
-    const n = Object.assign(clone(o), { id: uid(), t0: r3(t), d: r3(o.t0 + o.d - t) }); if (o.c && (o.kind === 'seg' || o.kind === 'pip')) n.in = r3((+o.in || 0) + (t - o.t0)); change(tl => { const L = tl.layers.find(x => x.id === o.id); L.d = r3(t - L.t0); tl.layers.push(n); }); return; }
+    const n = Object.assign(clone(o), { id: uid(), t0: r3(t), d: r3(o.t0 + o.d - t) }); if (o.c && (o.kind === 'seg' || o.kind === 'pip')) n.in = r3((+o.in || 0) + (t - o.t0)); change(tl => { const L = tl.layers.find(x => x.id === o.id); L.d = r3(t - L.t0); tl.layers.push(n); }, { label: 'Split' }); return; }
   if (k !== 'main') return; const b = builtOf(o.id); if (!b) return;
   if (o.type === 'tpl') { A.toast('Template blocks can be trimmed from the end, not split.'); return; }
   if (t <= b.start + 0.15 || t >= b.start + b.d - 0.15) { A.toast('Move the playhead inside the clip to split it.'); return; }
   const lt = t - b.start, n = Object.assign(clone(o), { id: uid(), d: r3(b.d - lt), tr: null }); if (o.type === 'clip') { n.in = r3((o.in || 0) + K13.srcT(Object.assign({}, o, { d: b.d }), lt)); delete n.ramp; }   // a speed ramp belongs to the whole clip: the halves keep the speed, not the ramp
-  change(tl => { const i = tl.main.findIndex(x => x.id === o.id); tl.main[i].d = r3(lt); if (o.type === 'clip') delete tl.main[i].ramp; tl.main.splice(i + 1, 0, n); }); ED.sel = n.id;
+  change(tl => { const i = tl.main.findIndex(x => x.id === o.id); tl.main[i].d = r3(lt); if (o.type === 'clip') delete tl.main[i].ramp; tl.main.splice(i + 1, 0, n); }, { label: 'Split' }); ED.sel = n.id;
 }
 function duplicate() {
   const o = findAny(ED.sel); if (!o) return; const k = kindOf(o), n = Object.assign(clone(o), { id: uid() });
-  if (k === 'layer') { n.t0 = r3(o.t0 + o.d); change(tl => tl.layers.push(n)); }
-  else if (k === 'main') change(tl => { const i = tl.main.findIndex(x => x.id === o.id); tl.main.splice(i + 1, 0, n); });
+  if (k === 'layer') { n.t0 = r3(o.t0 + o.d); change(tl => tl.layers.push(n), { label: 'Duplicate' }); }
+  else if (k === 'main') change(tl => { const i = tl.main.findIndex(x => x.id === o.id); tl.main.splice(i + 1, 0, n); }, { label: 'Duplicate' });
   else return; ED.sel = n.id;
 }
 function del() {
   const o = findAny(ED.sel); if (!o) return; const k = kindOf(o);
-  change(tl => { if (k === 'layer') tl.layers = tl.layers.filter(x => x.id !== o.id); else if (k === 'sfx') tl.sfx = tl.sfx.filter(x => x.id !== o.id); else if (k === 'main') { tl.main = tl.main.filter(x => x.id !== o.id); if (tl.main[0]) tl.main[0].tr = null; } });
+  change(tl => { if (k === 'layer') tl.layers = tl.layers.filter(x => x.id !== o.id); else if (k === 'sfx') tl.sfx = tl.sfx.filter(x => x.id !== o.id); else if (k === 'main') { tl.main = tl.main.filter(x => x.id !== o.id); if (tl.main[0]) tl.main[0].tr = null; } }, { label: 'Delete' });
   ED.sel = null;
 }
 document.addEventListener('keydown', e => {
@@ -493,13 +560,15 @@ function drawOv() {
   og.clearRect(0, 0, 1080, 1920); if (!ED.on || !TL()) return;
   const L = TL().layers.find(x => x.id === ED.sel);
   const g = ED.cdrag;
-  if (g && g.guides) { og.strokeStyle = 'rgba(255,255,255,.6)'; og.lineWidth = 2; og.setLineDash([10, 8]); if (g.guides.x) { og.beginPath(); og.moveTo(540, 0); og.lineTo(540, 1920); og.stroke(); } if (g.guides.y) { og.beginPath(); og.moveTo(0, 960); og.lineTo(1080, 960); og.stroke(); } og.setLineDash([]); }
+  if (g && g.guides) { og.strokeStyle = 'rgba(255,255,255,.6)'; og.lineWidth = 2; og.setLineDash([10, 8]); if (g.guides.v) for (const gx of g.guides.v) { og.beginPath(); og.moveTo(gx, 0); og.lineTo(gx, 1920); og.stroke(); } if (g.guides.h) for (const gy of g.guides.h) { og.beginPath(); og.moveTo(0, gy); og.lineTo(1080, gy); og.stroke(); } og.setLineDash([]); }
   const ed = elDesc();
   if (ed) { const b = ed.box, ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
     og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]); og.strokeRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24); og.setLineDash([]);
     og.fillStyle = ac; og.beginPath(); og.arc(ed.x, ed.y, 12, 0, 7); og.fill();
     og.fillStyle = '#fff'; og.font = '700 22px Mont, sans-serif'; og.textAlign = 'left'; og.textBaseline = 'top'; og.fillText(ed.label, b[0] - 12, b[1] - 44); return; }
   if (!L || !(S.t >= L.t0 && S.t < L.t0 + L.d) || L.type === 'progress') return;
+  // ---- drag polish: the rest of a multi-selection gets a dashed outline ----
+  if (ED.multi.size > 1) { og.strokeStyle = 'rgba(255,255,255,.75)'; og.lineWidth = 3; og.setLineDash([6, 8]); for (const mid of ED.multi) { if (mid === ED.sel) continue; const M = TL().layers.find(x => x.id === mid); if (!M || !(S.t >= M.t0 && S.t < M.t0 + M.d)) continue; const mb = boxOf(M); og.strokeRect(mb[0] - 8, mb[1] - 8, mb[2] + 16, mb[3] + 16); } og.setLineDash([]); }
   const b = boxOf(L), ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
   og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]); og.strokeRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24); og.setLineDash([]);
   if (resizable(L)) { og.fillStyle = ac; for (const [x, y] of corners(b)) og.fillRect(x - 14, y - 14, 28, 28); }
@@ -511,9 +580,9 @@ scr.addEventListener('pointerdown', e => {
   if (!ED.on || e.button !== 0) return;
   const [x, y] = toCanvas(e), sel = TL().layers.find(L => L.id === ED.sel);
   if (sel && rotatable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel), [hx, hy] = rotHandle(b); if (Math.hypot(hx - x, hy - y) < 40) {
-    ED.cdrag = { mode: 'rotate', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], a0: Math.atan2(y - (b[1] + b[3] / 2), x - (b[0] + b[2] / 2)), before: JSON.stringify(TL()) }; scr.setPointerCapture(e.pointerId); return; } }
+    ED.cdrag = { mode: 'rotate', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], a0: Math.atan2(y - (b[1] + b[3] / 2), x - (b[0] + b[2] / 2)), before: JSON.stringify(TL()), label: 'Rotate layer' }; scr.setPointerCapture(e.pointerId); return; } }
   if (sel && resizable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel); if (corners(b).some(([cx, cy]) => Math.abs(cx - x) < 34 && Math.abs(cy - y) < 34)) {
-    ED.cdrag = { mode: 'resize', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], d0: Math.hypot(x - (b[0] + b[2] / 2), y - (b[1] + b[3] / 2)), before: JSON.stringify(TL()) }; scr.setPointerCapture(e.pointerId); return; } }
+    ED.cdrag = { mode: 'resize', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], d0: Math.hypot(x - (b[0] + b[2] / 2), y - (b[1] + b[3] / 2)), before: JSON.stringify(TL()), label: 'Resize layer' }; scr.setPointerCapture(e.pointerId); return; } }
   const hit = visibleLayers().slice().reverse().sort((a, b) => (a.kind === 'seg') - (b.kind === 'seg')).find(L => { if (L.type === 'progress' || L.type === 'scrim' || isFull(L)) return false; const b = boxOf(L); return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
   if (!hit) {   // no layer hit: an element of the template block under the playhead, active right now?
     const f = F();
@@ -521,12 +590,20 @@ scr.addEventListener('pointerdown', e => {
       if (cur && cur.type === 'tpl') { const els = blockEls(cur.id).filter(e => S.t >= e.t0 && S.t < e.t0 + e.d);
         const eh = els.slice().reverse().find(e => { const b = e.box; return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
         if (eh) { if (S.playing) A.pause(); select(cur.id); ED.selEl = { blockId: cur.id, elId: eh.id };
-          ED.cdrag = { mode: 'el', id: cur.id, elId: eh.id, x0: x, y0: y, orig: { x: eh.x, y: eh.y }, desc: eh, before: JSON.stringify(TL()), moved: false };
+          ED.cdrag = { mode: 'el', id: cur.id, elId: eh.id, x0: x, y0: y, orig: { x: eh.x, y: eh.y }, desc: eh, before: JSON.stringify(TL()), moved: false, label: 'Move element' };
           scr.setPointerCapture(e.pointerId); renderInspector(); drawOv(); return; } } }
     if (f && f.M.length) select(f.M[f.at(Math.min(S.t, S.dur - 0.01))].id); else select(null); return; }
   if (S.playing) A.pause();
-  if (ED.sel !== hit.id) select(hit.id);
-  ED.cdrag = { mode: 'move', id: hit.id, x0: x, y0: y, orig: clone(hit), before: JSON.stringify(TL()), moved: false };
+  // ---- drag polish: shift/ctrl/cmd-click toggles a layer in the multi-selection ----
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    if (ED.multi.has(hit.id)) { ED.multi.delete(hit.id); if (ED.sel === hit.id) ED.sel = [...ED.multi].pop() || null; }
+    else { if (ED.sel && !ED.multi.has(ED.sel)) ED.multi.add(ED.sel); ED.multi.add(hit.id); ED.sel = hit.id; }
+    paintSel(); renderInspector(); drawOv(); return;
+  }
+  if (ED.multi.has(hit.id)) select(hit.id, true); else if (ED.sel !== hit.id) select(hit.id);
+  // ---- drag polish: multi-select drag — each dragged layer keeps its own snapshot ----
+  const group = ED.multi.size && ED.multi.has(hit.id) ? [...ED.multi].filter(mid => { const it = findAny(mid); return it && kindOf(it) === 'layer'; }) : [hit.id];
+  ED.cdrag = { mode: 'move', id: hit.id, x0: x, y0: y, orig: clone(hit), before: JSON.stringify(TL()), moved: false, guides: null, items: group.map(mid => ({ id: mid, orig: clone(findAny(mid)) })), label: group.length > 1 ? 'Move ' + group.length + ' layers' : 'Move layer' };
   scr.setPointerCapture(e.pointerId);
 });
 let cRaf = 0;
@@ -548,8 +625,26 @@ scr.addEventListener('pointermove', e => {
     const fx0 = g.orig.fx === undefined ? 0.5 : +g.orig.fx, fy0 = g.orig.fy === undefined ? 0.5 : +g.orig.fy;
     L.fx = Math.round(clamp(fx0 - (x - g.x0) / S0 / m.w, 0.5 - spanX / 2, 0.5 + spanX / 2) * 1000) / 1000; L.fy = Math.round(clamp(fy0 - (y - g.y0) / S0 / m.h, 0.5 - spanY / 2, 0.5 + spanY / 2) * 1000) / 1000; }
   else if (g.mode === 'move') { let nx = g.orig.x + (x - g.x0), ny = g.orig.y + (y - g.y0); if (Math.abs(x - g.x0) + Math.abs(y - g.y0) > 6) g.moved = true; if (!g.moved) return;
-    g.guides = { x: Math.abs(nx - 540) < 18, y: Math.abs(ny - 960) < 18 }; if (g.guides.x) nx = 540; if (g.guides.y) ny = 960;
-    L.x = Math.round(clamp(nx, 0, 1080)); L.y = Math.round(clamp(ny, 0, 1920)); shiftKeys(L, g.orig, 'x', v => v + (L.x - g.orig.x)); shiftKeys(L, g.orig, 'y', v => v + (L.y - g.orig.y)); }
+    // ---- drag polish: snap LINES in the preview ----
+    // Frame edges/center plus every other visible layer's edges/center: the
+    // dragged layer's edges and centre snap to them and a dashed guide draws
+    // along each snapped axis (earlier code only snapped the centre to 540/960).
+    const b0 = boxOf(g.orig), w = b0[2], h = b0[3];
+    const tx = [0, 540, 1080], ty = [0, 960, 1920];
+    for (const o of visibleLayers()) { if (o.id === g.id) continue; const ob = boxOf(o); tx.push(ob[0] + ob[2] / 2, ob[0], ob[0] + ob[2]); ty.push(ob[1] + ob[3] / 2, ob[1], ob[1] + ob[3]); }
+    const snapAxis = (v, list, size) => { const near = val => { let best = null, bd = 18; for (const t of list) { const d = Math.abs(t - val); if (d < bd) { bd = d; best = t; } } return best; };
+      let t = near(v); if (t !== null) return [t, t];
+      t = near(v - size / 2); if (t !== null) return [t + size / 2, t];
+      t = near(v + size / 2); if (t !== null) return [t - size / 2, t];
+      return [v, null]; };
+    const guides = { v: [], h: [] }; let gv, gh;
+    [nx, gv] = snapAxis(nx, tx, w); if (gv !== null) guides.v.push(gv);
+    [ny, gh] = snapAxis(ny, ty, h); if (gh !== null) guides.h.push(gh);
+    g.guides = guides.v.length || guides.h.length ? guides : null;
+    const dx = Math.round(clamp(nx, 0, 1080)) - g.orig.x, dy = Math.round(clamp(ny, 0, 1920)) - g.orig.y;
+    L.x = g.orig.x + dx; L.y = g.orig.y + dy; shiftKeys(L, g.orig, 'x', v => v + dx); shiftKeys(L, g.orig, 'y', v => v + dy);
+    // ---- drag polish: the multi-selected layers follow the primary by the same delta ----
+    if (g.items) for (const it of g.items) { if (it.id === g.id) continue; const L2 = TL().layers.find(l => l.id === it.id); if (!L2) continue; L2.x = Math.round(clamp(it.orig.x + dx, 0, 1080)); L2.y = Math.round(clamp(it.orig.y + dy, 0, 1920)); shiftKeys(L2, it.orig, 'x', v => v + dx); shiftKeys(L2, it.orig, 'y', v => v + dy); } }
   else if (g.mode === 'rotate') { g.moved = true; let deg = (g.orig.rot || 0) + (Math.atan2(y - g.c[1], x - g.c[0]) - g.a0) * 180 / Math.PI; deg = ((deg + 540) % 360) - 180; for (const sn of [-180, -90, 0, 90, 180]) if (Math.abs(deg - sn) < 4) deg = sn; L.rot = Math.round(deg * 10) / 10; if (L.rot === 0) delete L.rot; shiftKeys(L, g.orig, 'rot', v => v + ((L.rot || 0) - (g.orig.rot || 0))); }
   else { g.moved = true; const k = clamp(Math.hypot(x - g.c[0], y - g.c[1]) / Math.max(10, g.d0), 0.25, 4), o = g.orig;
     if (L.kind === 'mg') { const sx = clamp((o.sx || 1) * k, 0.15, 6), f = sx / (o.sx || 1); L.sx = Math.round(sx * 1000) / 1000; L.sy = Math.round(clamp((o.sy || 1) * f, 0.15, 6) * 1000) / 1000; shiftKeys(L, o, 'sx', v => v * f); shiftKeys(L, o, 'sy', v => v * f); }
@@ -559,7 +654,7 @@ scr.addEventListener('pointermove', e => {
     else L.size = Math.round(clamp((o.size || 80) * k, 12, L.style === 'type' ? 900 : 320)); }
   cancelAnimationFrame(cRaf); cRaf = requestAnimationFrame(() => { A.refresh(true); drawOv(); });
 });
-const cUp = () => { const g = ED.cdrag; ED.cdrag = null; if (!g) return; if (g.moved) { ED.undo.push(g.before); ED.redo = []; ED.lastKey = ''; A.markDirty(); scheduleMix(); renderInspector(); paintBar(); } drawOv(); };
+const cUp = () => { const g = ED.cdrag; ED.cdrag = null; if (!g) return; if (g.moved) { ED.undo.push({ label: g.label || 'Drag', before: g.before, after: JSON.stringify(TL()) }); if (ED.undo.length > 150) ED.undo.shift(); ED.redo = []; ED.lastKey = ''; A.markDirty(); scheduleMix(); renderInspector(); paintBar(); } drawOv(); };
 scr.addEventListener('pointerup', cUp); scr.addEventListener('pointercancel', cUp);
 scr.addEventListener('dblclick', () => { if (!ED.on) return; const ta = einsp.querySelector('textarea, input[type=text]'); if (ta) { ta.focus(); ta.select(); } });
 
@@ -603,10 +698,10 @@ function renderPanel() {
       b.appendChild(pv); b.appendChild(el('small', '', p.name)); b.onclick = () => addText(p); g.appendChild(b); }
   } else if (ED.panel === 'graphics' || ED.panel === 'stickers') {
     if (ED.panel === 'stickers') {
-      note('Stickers sit on top of the video. Tap one to add it at the playhead, then drag it on the preview. The 61 animated overlays live in Graphics; animated GIFs live in the GIFs tab.');
+      note('Stickers sit on top of the video. Tap one to add it at the playhead, then drag it on the preview. The ' + mgCount() + ' animated overlays live in Graphics; animated GIFs live in the GIFs tab.');
       stickerGrid(box, note, btn);
       sec('More');
-      btn(box, 'Animated graphics', '61 overlays in Graphics', () => { ED.panel = 'graphics'; renderPanel(); });
+      btn(box, 'Animated graphics', mgCount() + ' overlays in Graphics', () => { ED.panel = 'graphics'; renderPanel(); });
       btn(box, 'GIFs', 'Search, link or upload an animated GIF', () => { ED.panel = 'gifs'; renderPanel(); });
     } else stickerGrid(box, note, btn);
   } else if (ED.panel === 'trans') {

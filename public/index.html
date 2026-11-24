@@ -504,6 +504,7 @@ body.mode-edit .stage-top #toEditBtn { display: none; }
   .stage { position: sticky; top: 60px; z-index: 5; order: 1; padding: 10px 12px; gap: 8px; border-bottom: 1px solid var(--line); }
   .stage-top { position: absolute; right: 12px; top: 10px; width: auto; z-index: 2; }
   .screen { height: 46vh; height: 46dvh; }
+  body.mode-edit .screen { height: 34vh; height: 34dvh; }   /* drag polish: in edit mode the preview shrinks so the panel rail starts in view instead of below the fold */
   .transport { padding: 6px 10px; grid-template-columns: auto auto minmax(0, 1fr) auto; }
   #safeBtn { display: none; }
   body.view-work { padding-bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
@@ -516,7 +517,7 @@ body.mode-edit .stage-top #toEditBtn { display: none; }
   .insp-body { overflow: visible; }
   .insp-foot { position: sticky; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); z-index: 3; }
   body.mode-edit .tools { display: none; }
-  body.mode-edit .rail { display: flex; order: 2; padding: 0 12px; border-right: 0; border-bottom: 1px solid var(--line); max-height: 48vh; overflow: auto; }
+  body.mode-edit .rail { display: flex; order: 2; padding: 0 12px; border-right: 0; border-bottom: 1px solid var(--line); max-height: 56vh; overflow: auto; }   /* drag polish: 48vh -> 56vh so more of the panel shows; .ep-tabs is sticky inside it */
   body.mode-edit .insp { order: 4; border-left: 0; }
   body.mode-edit .tlx { order: 3; min-height: 300px; }
   .tp { grid-template-columns: minmax(0, 1fr); overflow: auto; }
