@@ -63,7 +63,10 @@ nexgen-studio-cloud/
     up.js                  POST /_up                (presigned PUT for an upload)
     assets.js              GET  /_assets            (list assets)
                            DELETE /api/assets       (bulk delete: R2 object + clip rows)
-    assets/[id].js         DELETE /api/assets/<id>  (delete one asset: R2 object + clip rows)
+                           DELETE /api/assets/<id>  (single delete, via vercel.json
+                                                     rewrite -> /api/assets?id=:id;
+                                                     shares this file because Hobby
+                                                     caps 12 serverless functions)
     import-batch.js        POST /api/import-batch   (create many clip rows, one db write)
     storage.js             GET  /api/storage       (storage meter: bytes, files, breakdowns)
     blob.js                GET/DELETE /_blob/<id>   (302 to presigned GET)
@@ -191,6 +194,7 @@ that is where orphaned uploads show up.
 | Batch size (`/api/import-batch`) | 500 clips per call | `api/import-batch.js` `MAX_CLIPS` |
 | Bulk delete (`DELETE /api/assets`) | 100 ids per call | `api/assets.js` |
 | R2 free tier | 10 GB total | Cloudflare; the meter warns at 8 GB. |
+| Serverless functions | 12 max per deployment on Hobby | Vercel Hobby cap — currently exactly 12 (db, up, assets, blob, login, projects, projects/[id], exports, exports/[id], exports/[id]/file, import-batch, storage). A new route must share an existing file (rewrite) or the deployment needs Pro. |
 | Vercel function bodies | ~4.5 MB | Vercel; uploads never go through a function body — bytes go straight to R2 via presigned PUT. |
 
 **Exports (render jobs):**

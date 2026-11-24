@@ -77,7 +77,6 @@ const exportOne = (await import('../api/exports/[id].js')).default;
 const exportFile = (await import('../api/exports/[id]/file.js')).default;
 const importBatch = (await import('../api/import-batch.js')).default;
 const storage = (await import('../api/storage.js')).default;
-const assetOne = (await import('../api/assets/[id].js')).default;
 
 const ROUTES = [
   [/^\/_db$/, db], [/^\/_up$/, up], [/^\/_assets$/, assets],
@@ -91,7 +90,7 @@ const ROUTES = [
   [/^\/api\/import-batch$/, importBatch],
   [/^\/api\/storage$/, storage],
   [/^\/api\/assets$/, assets],
-  [/^\/api\/assets\/([a-z0-9]+)$/, assetOne, (m, q) => { q.id = m[1]; }],
+  [/^\/api\/assets\/([a-z0-9]+)$/, assets, (m, q) => { q.id = m[1]; }],
 ];
 
 function readBody(req) {

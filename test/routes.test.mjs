@@ -86,7 +86,6 @@ const exportOne = (await import('../api/exports/[id].js')).default;
 const exportFile = (await import('../api/exports/[id]/file.js')).default;
 const importBatch = (await import('../api/import-batch.js')).default;
 const storage = (await import('../api/storage.js')).default;
-const assetOne = (await import('../api/assets/[id].js')).default;
 const { isAuthorized } = await import('../middleware.js');
 const middlewareDefault = (await import('../middleware.js')).default;
 
@@ -458,7 +457,7 @@ await t('GET /api/storage returns real totals matching the store', async () => {
   assertEq(j.byBrand.unassigned.bytes, 300);
 });
 await t('DELETE /api/assets/<id> in use -> 409 naming the project', async () => {
-  const res = mockRes(); await assetOne(oper({ method: 'DELETE', query: { id: 'abc123' } }), res);
+  const res = mockRes(); await assets(oper({ method: 'DELETE', query: { id: 'abc123' } }), res);
   assertEq(res.statusCode, 409);
   const j = JSON.parse(res.body);
   assertEq(j.error, 'in_use');
@@ -466,7 +465,7 @@ await t('DELETE /api/assets/<id> in use -> 409 naming the project', async () => 
   assert(store.has('assets/abc123-photo.jpg'), 'object still there after blocked delete');
 });
 await t('DELETE /api/assets/<id>?force=1 removes R2 object + clip row', async () => {
-  const res = mockRes(); await assetOne(oper({ method: 'DELETE', query: { id: 'abc123', force: '1' } }), res);
+  const res = mockRes(); await assets(oper({ method: 'DELETE', query: { id: 'abc123', force: '1' } }), res);
   assertEq(res.statusCode, 200);
   assert(!store.has('assets/abc123-photo.jpg'), 'R2 object gone');
   const docs = await readDocs();
@@ -483,7 +482,7 @@ await t('DELETE /api/assets bulk removes objects + rows', async () => {
   assert(!docs['clips/cdef'], 'clip row gone');
 });
 await t('DELETE /api/assets/<id> unknown -> 404', async () => {
-  const res = mockRes(); await assetOne(oper({ method: 'DELETE', query: { id: 'nope99' } }), res);
+  const res = mockRes(); await assets(oper({ method: 'DELETE', query: { id: 'nope99' } }), res);
   assertEq(res.statusCode, 404);
 });
 await t('DELETE /api/assets empty ids -> 400', async () => {
