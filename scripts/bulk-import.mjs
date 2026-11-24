@@ -50,6 +50,9 @@
 // verifies that early with a small GET to the base URL: if fetch fails with
 // a TLS/proxy error it falls back to `curl` (system binary, honours the
 // proxy env vars) for every request and prints which transport it used.
+// PRESIGNED PUTS need an explicit Content-Length header: the upload body is
+// a file stream (unknown length), which fetch would send chunked — real R2
+// rejects that with HTTP 411. The script always passes the known file size.
 //
 // EXIT CODE. 0 only when everything imported (or every clip skipped as
 // already_exists). Non-zero if any file failed (probe, upload, compress)
@@ -151,11 +154,14 @@ function isProxyError(e) {
   return /WRONG_VERSION_NUMBER|ECONNRESET|socket hang up|fetch failed|TLS|proxy|UND_ERR/i.test(m);
 }
 
-async function doFetch(url, { method = 'GET', headers = {}, body = null, filePath = null } = {}) {
+async function doFetch(url, { method = 'GET', headers = {}, body = null, filePath = null, contentLength = null } = {}) {
   const init = { method, headers: { ...headers } };
   if (filePath) {
     init.body = fs.createReadStream(filePath);
     init.duplex = 'half'; // streaming upload body (Node >= 18)
+    // R2 presigned PUTs reject chunked transfer encoding (HTTP 411):
+    // a stream body has no known length, so state it explicitly.
+    if (contentLength !== null) init.headers['content-length'] = String(contentLength);
   } else if (body !== null) {
     init.body = body;
   }
@@ -319,11 +325,13 @@ async function uploadOne(baseUrl, key, item) {
         if (!up?.id || !up?.uploadUrl) throw new Error(`/_up returned no id/uploadUrl: ${JSON.stringify(up).slice(0, 200)}`);
         console.log(`  [${uploadName}] ${mb(uploadSize)} MB — PUT attempt ${attempt}/${UP_ATTEMPTS}`);
         // No Authorization header on the presigned PUT: the URL carries
-        // its own signature.
+        // its own signature. content-length is explicit: a stream body
+        // would otherwise go out chunked and R2 rejects it with 411.
         const put = await fetchOrCurl(up.uploadUrl, {
           method: 'PUT',
           headers: { 'content-type': type },
           filePath: uploadPath,
+          contentLength: uploadSize,
         });
         if (put.status < 200 || put.status >= 300) {
           throw new Error(`PUT to presigned URL -> HTTP ${put.status}: ${put.text.slice(0, 200)}`);
