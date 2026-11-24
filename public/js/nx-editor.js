@@ -166,7 +166,7 @@ const swatchOf = k => (k === 'accent' ? OR : k === 'ink' ? BLK : k === 'paper' ?
 // extension points (V10): nx-motion.js adds the typography and graphics panels, the motion inspector and keyframes
 const XT = { panels: {}, inspect: {}, textTop: null, trans: null, checks: [], tabs: [] };
 // ------------------------------------------------------------------------------------------------ state + edits
-const ED = { on: false, userZoom: false, sel: null, multi: new Set(), itab: 'edit', pxs: 60, undo: [], redo: [], drag: null, panel: 'media', lastKey: '', lastAt: 0, replace: null, seekTo: null, fitNext: true };
+const ED = { on: false, userZoom: false, sel: null, selEl: null, multi: new Set(), itab: 'edit', pxs: 60, undo: [], redo: [], drag: null, panel: 'media', lastKey: '', lastAt: 0, replace: null, seekTo: null, fitNext: true };
 const TL = () => S.proj && S.proj.tl;
 const F = () => window.FREE;
 function blankTL() { return { v: 1, main: [{ id: uid(), type: 'end', style: 'kinetic', d: 4 }], layers: [], sfx: [], music: { bed: 'lounge', vol: 0.7 }, autoSfx: true }; }
@@ -187,7 +187,7 @@ function afterHistory() { ED.lastKey = ''; if (ED.sel && !findAny(ED.sel)) ED.se
 function findAny(id) { const t = TL(); if (!t) return null; if (id === 'music') return { kind: 'music' }; return t.main.find(x => x.id === id) || t.layers.find(x => x.id === id) || t.sfx.find(x => x.id === id) || null; }
 const kindOf = o => (!o ? null : o.kind === 'music' ? 'music' : o.type && !o.kind && TL().main.includes(o) ? 'main' : TL().sfx.includes(o) ? 'sfx' : 'layer');
 const builtOf = id => (F() ? F().M.find(m => m.id === id) : null);
-function select(id, keepMulti) { const was = ED.sel; ED.sel = id; ED.replace = null; if (!keepMulti) ED.multi.clear(); paintSel(); renderInspector(); drawOv(); if (was !== id && (ED.panel === 'trans' || ED.panel === 'text')) renderPanel(); }
+function select(id, keepMulti) { const was = ED.sel; ED.sel = id; ED.selEl = null; ED.replace = null; if (!keepMulti) ED.multi.clear(); paintSel(); renderInspector(); drawOv(); if (was !== id && (ED.panel === 'trans' || ED.panel === 'text')) renderPanel(); }
 
 // ------------------------------------------------------------------------------------------------ adding things
 function insertIndex() {
@@ -219,8 +219,8 @@ function enter() {
   const had = !!TL(); if (!had) S.proj.tl = blankTL(); normTL(S.proj.tl);
   buildBar(); renderPanel(); ED.fitNext = true; if (!had) A.refresh(true);
 }
-function exit() { if (!ED.on) return; ED.on = false; document.body.classList.remove('mode-edit'); tlx.hidden = true; ePanel.hidden = true; ED.sel = null; drawOv(); }
-A.onOpen.push(p => { ED.undo = []; ED.redo = []; ED.sel = null; if (p.tpl === 'free') { enter(); scheduleMix(true); preloadFonts(); } else exit(); });
+function exit() { if (!ED.on) return; ED.on = false; document.body.classList.remove('mode-edit'); tlx.hidden = true; ePanel.hidden = true; ED.sel = null; ED.selEl = null; drawOv(); }
+A.onOpen.push(p => { ED.undo = []; ED.redo = []; ED.sel = null; ED.selEl = null; if (p.tpl === 'free') { enter(); scheduleMix(true); preloadFonts(); } else exit(); });
 function preloadFonts() { const t = TL(); if (!t) return; const keys = [...new Set(t.layers.map(L => L.font).filter(Boolean))]; if (keys.length) Promise.all(keys.map(k => NX.useFont(k))).then(() => A.refresh(true)); }
 A.onRebuild.push(() => {
   if (!ED.on || !S.proj || S.proj.tpl !== 'free') return;
@@ -442,6 +442,36 @@ const scr = $('#screen'), ov = $('#ov'), og = ov.getContext('2d');
 const visibleLayers = () => (TL() ? TL().layers.filter(L => S.t >= L.t0 && S.t < L.t0 + L.d) : []);
 const boxOf = L => (window.FREE && FREE.bbox ? FREE.bbox(L, S.t) : [L.x - 100, L.y - 50, 200, 100]);
 const isFull = L => L.kind === 'mg' && K9.EL[L.type] && K9.EL[L.type].full;
+// ---- per-element model (b): elements inside a nested template block ----
+// A block's template declares its elements via dir.elements() (computed from
+// the same values render() uses, so it cannot drift). Positions live on the
+// block item as `el` (plain JSON, API-writable); absent `el` = old behaviour.
+const blockEls = id => { try { const b = F() && F().BLOCKS[id]; return b && b.dir && typeof b.dir.elements === 'function' ? (b.dir.elements() || []) : []; } catch (e) { return []; } };
+const elDesc = () => { if (!ED.selEl) return null; return blockEls(ED.selEl.blockId).find(e => e.id === ED.selEl.elId) || null; };
+const elItem = () => (ED.selEl && TL() ? TL().main.find(x => x.id === ED.selEl.blockId) : null);
+function elApply(desc, x, y) {   // write a dragged position into the block's `el`, in place (same object the template captured)
+  const it = elItem(); if (!it || !desc) return false; it.el = it.el || {};
+  if (desc.kind === 'callout') { if (String(desc.id).startsWith('x')) { const ex = (it.el.extra || []).find(e => 'x' + e.id === desc.id); if (ex) { ex.x = Math.round(x); ex.y = Math.round(y); } }
+    else { it.el.pos = it.el.pos || {}; it.el.pos[desc.id] = { x: Math.round(x), y: Math.round(y) }; } return true; }
+  if (desc.kind === 'focus') { const k = String(desc.id).replace(/^fx/, ''); it.el.fx = it.el.fx || {}; it.el.fx[k] = { x: Math.round(x), y: Math.round(y) }; return true; }
+  if (desc.kind === 'box') { it.el.box = { x: Math.round(x), y: Math.round(y), w: desc.w, h: desc.h }; return true; }
+  if (desc.kind === 'card') { it.el.card = { y: Math.round(y), h: desc.h }; return true; }
+  return false;
+}
+function dupEl(o, d) {   // duplicate a callout: a concurrent copy, offset down-right (duration never changes)
+  if (d.kind !== 'callout') return;
+  const nid = A.uid8().slice(0, 6);
+  change(t => { const it = t.main.find(x => x.id === o.id); if (!it) return; it.el = it.el || {}; it.el.extra = it.el.extra || [];
+    it.el.extra.push({ id: nid, text: d.label, x: Math.round(clamp(d.x + 90, 0, 1080)), y: Math.round(clamp(d.y + 90, 0, 1920)), t0: d.t0 }); });
+  ED.selEl = { blockId: o.id, elId: 'x' + nid }; A.refresh(true); renderInspector(); drawOv(); A.toast('Callout duplicated. Drag it to its new spot.');
+}
+function delEl(o, d) {   // delete a callout: an original is hidden (reset brings it back), a duplicate is removed
+  if (d.kind !== 'callout') return;
+  change(t => { const it = t.main.find(x => x.id === o.id); if (!it) return; it.el = it.el || {};
+    if (String(d.id).startsWith('x')) it.el.extra = (it.el.extra || []).filter(e => 'x' + e.id !== d.id);
+    else { it.el.hide = it.el.hide || []; if (!it.el.hide.includes(d.id)) it.el.hide.push(d.id); } });
+  ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); A.toast('Callout removed. “Reset all element positions” brings it back.');
+}
 const resizable = L => L.kind === 'text' || L.kind === 'pip' || (L.kind === 'mg' && !isFull(L)) || ['logo', 'badge', 'brackets', 'label', 'cta'].includes(L.type);
 const rotatable = L => !isFull(L) && L.kind !== 'seg' && !['progress', 'scrim', 'banner', 'logobug'].includes(L.type);
 const rotHandle = b => [b[0] + b[2] / 2, b[1] - 70];
@@ -452,6 +482,11 @@ function drawOv() {
   const L = TL().layers.find(x => x.id === ED.sel);
   const g = ED.cdrag;
   if (g && g.guides) { og.strokeStyle = 'rgba(255,255,255,.6)'; og.lineWidth = 2; og.setLineDash([10, 8]); if (g.guides.x) { og.beginPath(); og.moveTo(540, 0); og.lineTo(540, 1920); og.stroke(); } if (g.guides.y) { og.beginPath(); og.moveTo(0, 960); og.lineTo(1080, 960); og.stroke(); } og.setLineDash([]); }
+  const ed = elDesc();
+  if (ed) { const b = ed.box, ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
+    og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]); og.strokeRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24); og.setLineDash([]);
+    og.fillStyle = ac; og.beginPath(); og.arc(ed.x, ed.y, 12, 0, 7); og.fill();
+    og.fillStyle = '#fff'; og.font = '700 22px Mont, sans-serif'; og.textAlign = 'left'; og.textBaseline = 'top'; og.fillText(ed.label, b[0] - 12, b[1] - 44); return; }
   if (!L || !(S.t >= L.t0 && S.t < L.t0 + L.d) || L.type === 'progress') return;
   const b = boxOf(L), ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
   og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]); og.strokeRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24); og.setLineDash([]);
@@ -468,7 +503,15 @@ scr.addEventListener('pointerdown', e => {
   if (sel && resizable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel); if (corners(b).some(([cx, cy]) => Math.abs(cx - x) < 34 && Math.abs(cy - y) < 34)) {
     ED.cdrag = { mode: 'resize', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], d0: Math.hypot(x - (b[0] + b[2] / 2), y - (b[1] + b[3] / 2)), before: JSON.stringify(TL()) }; scr.setPointerCapture(e.pointerId); return; } }
   const hit = visibleLayers().slice().reverse().sort((a, b) => (a.kind === 'seg') - (b.kind === 'seg')).find(L => { if (L.type === 'progress' || L.type === 'scrim' || isFull(L)) return false; const b = boxOf(L); return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
-  if (!hit) { const f = F(); if (f && f.M.length) select(f.M[f.at(Math.min(S.t, S.dur - 0.01))].id); else select(null); return; }
+  if (!hit) {   // no layer hit: an element of the template block under the playhead, active right now?
+    const f = F();
+    if (f && f.M.length) { const cur = f.M[f.at(Math.min(S.t, S.dur - 0.01))];
+      if (cur && cur.type === 'tpl') { const els = blockEls(cur.id).filter(e => S.t >= e.t0 && S.t < e.t0 + e.d);
+        const eh = els.slice().reverse().find(e => { const b = e.box; return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
+        if (eh) { if (S.playing) A.pause(); select(cur.id); ED.selEl = { blockId: cur.id, elId: eh.id };
+          ED.cdrag = { mode: 'el', id: cur.id, elId: eh.id, x0: x, y0: y, orig: { x: eh.x, y: eh.y }, desc: eh, before: JSON.stringify(TL()), moved: false };
+          scr.setPointerCapture(e.pointerId); renderInspector(); drawOv(); return; } } }
+    if (f && f.M.length) select(f.M[f.at(Math.min(S.t, S.dur - 0.01))].id); else select(null); return; }
   if (S.playing) A.pause();
   if (ED.sel !== hit.id) select(hit.id);
   ED.cdrag = { mode: 'move', id: hit.id, x0: x, y0: y, orig: clone(hit), before: JSON.stringify(TL()), moved: false };
@@ -476,7 +519,17 @@ scr.addEventListener('pointerdown', e => {
 });
 let cRaf = 0;
 scr.addEventListener('pointermove', e => {
-  const g = ED.cdrag; if (!g) return; const [x, y] = toCanvas(e), L = TL().layers.find(l => l.id === g.id); if (!L) return;
+  const g = ED.cdrag; if (!g) return; const [x, y] = toCanvas(e);
+  if (g.mode === 'el') {   // dragging a template-block element: preview live, commit one undo entry on release (cUp)
+    if (Math.abs(x - g.x0) + Math.abs(y - g.y0) > 6) g.moved = true; if (!g.moved) return;
+    let nx = g.orig.x + (x - g.x0), ny = g.orig.y + (y - g.y0);
+    if (g.desc.kind === 'card') nx = g.orig.x;
+    if (g.desc.kind === 'box') { nx = clamp(nx, 0, 1080 - (g.desc.w || 960)); ny = clamp(ny, 0, 1920 - (g.desc.h || 900)); }
+    else { nx = clamp(nx, 40, 1040); ny = clamp(ny, 40, 1880); }
+    elApply(g.desc, Math.round(nx), Math.round(ny));
+    cancelAnimationFrame(cRaf); cRaf = requestAnimationFrame(() => { A.refresh(true); drawOv(); }); return;
+  }
+  const L = TL().layers.find(l => l.id === g.id); if (!L) return;
   if (g.mode === 'move' && L.kind === 'seg') { if (Math.abs(x - g.x0) + Math.abs(y - g.y0) > 6) g.moved = true; if (!g.moved || !L.c || (L.fit || 'fill') !== 'fill') return;
     const m = NX.META[L.c], b = boxOf(L), z = Math.max(1, +L.z || 1); if (!m || b[3] < 4) return;
     const S0 = Math.max(b[2] / m.w, b[3] / m.h) * z, spanX = Math.max(1e-3, 1 - b[2] / S0 / m.w), spanY = Math.max(1e-3, 1 - b[3] / S0 / m.h);   // how far the window can travel, as a share of the clip
@@ -660,6 +713,20 @@ function renderInspector() {
         const shots = blk.fields.filter(fl => fl.type === 'shot'), ph = shots.filter(fl => { const v = o.shot && o.shot[fl.key]; return !(v && NX.meta(v.c)) && NX.isPh(fl.def[0]); });
         const gs = grp(box, 'Footage in the block'); gs.appendChild(el('p', 'note', shots.length + ' shots' + (ph.length ? ' · ' + ph.length + ' still placeholders' : '') + '. Fill uses this brand’s footage in order.'));
         acts(gs, [['Fill with my footage', () => fillBlock(o, shots)], ['Use the template’s footage', () => upd(o.id, x => { x.shot = {}; })]]);
+        const els = blk.dir && typeof blk.dir.elements === 'function' ? (() => { try { return blk.dir.elements() || []; } catch (e) { return []; } })() : [];
+        if (els.length) { const ge = grp(box, 'Elements — drag on the preview');
+          ge.appendChild(el('p', 'note', 'Each element can be moved by dragging it on the preview (or tap Select, then drag). Callouts can also be duplicated or deleted. Moving one never changes how the rest of the block looks.'));
+          for (const d of els) { const row = el('div', 'fld');
+            row.appendChild(el('span', 'lab', d.label + '  ·  ' + Math.round(d.x) + ', ' + Math.round(d.y)));
+            const a = el('div', 'ei-acts');
+            const sb = el('button', 'btn sm', 'Select'); sb.type = 'button';
+            sb.onclick = () => { ED.sel = o.id; ED.selEl = { blockId: o.id, elId: d.id }; if (S.t < d.t0 || S.t >= d.t0 + d.d) A.setT(d.t0 + Math.min(0.3, d.d / 3)); renderInspector(); drawOv(); };
+            a.appendChild(sb);
+            if (d.dup) { const du = el('button', 'btn sm', 'Duplicate'); du.type = 'button'; du.onclick = () => dupEl(o, d); a.appendChild(du); }
+            if (d.del) { const de = el('button', 'btn sm danger', 'Delete'); de.type = 'button'; de.onclick = () => delEl(o, d); a.appendChild(de); }
+            row.appendChild(a); ge.appendChild(row); }
+          acts(ge, [['Reset all element positions', () => { upd(o.id, x => { delete x.el; }); ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); }]]);
+        }
       }
       if (i > 0) trRow(box, o);
       acts(box, [['Duplicate', duplicate], ['Delete', del, 'danger']]);

@@ -23,6 +23,16 @@
 
 STUDIO_REG['nx9'] = (() => {
   const V = QS.get('v') || 'lotx';
+  // Per-element model (b): when this template runs as a nested block inside a
+  // free edit, tpl_free sets window.__NX_BLOCK_EL to the block's `el` data
+  // before calling this function and clears it after. The template captures
+  // that (live) object at build time; render() reads positions from it.
+  // No `el` (standalone projects, old blocks) -> EL is null and every
+  // position below falls back to the original hardcoded value, so rendering
+  // is byte-for-byte the old path.
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
   const { TAU, pk, up, seg, SP, SS, SB, onAcc, INKD, CARD, MUTE, tx, fit, rr, logoImg, shot, pic, touch, stage, words, pillBtn, close, closeCues, bed } = SHOWKIT();
   const dash = s => !s || String(s).trim() === '-';
   const CAT = BRAND.cat || BRAND.industry || 'general', NAME = BRAND.name || 'Your business';
@@ -152,23 +162,34 @@ STUDIO_REG['nx9'] = (() => {
     const NM = TX('name', dealer ? 'YEAR MAKE MODEL' : pk({ general: 'WHAT THIS IS', auto: 'THE FULL DETAIL', home: 'THE FINISHED JOB', estate: 'THE PROPERTY' }), { label: 'Name', group: 'Name & price', upper: true, max: 32 });
     const PR = TX('price', dealer ? '$00,000' : '-', { label: 'Price (a dash leaves it off)', group: 'Name & price', max: 14, hint: 'A placeholder: type the real price, or a dash.' }), PL = TX('plabel', 'OUR PRICE', { label: 'Label above the price', group: 'Name & price', upper: true, max: 18 });
     const DEF = dealer ? ['FEATURE ONE', 'FEATURE TWO', 'FEATURE THREE', 'FEATURE FOUR'] : (BRAND.services || []).map(up).slice(0, 4).concat(['POINT ONE', 'POINT TWO', 'POINT THREE', 'POINT FOUR']).slice(0, 4);
-    const FT = [1, 2, 3, 4].map(i => TX('f' + i, DEF[i - 1], { label: 'Callout ' + i + ' (a dash leaves it off)', group: 'Callouts', upper: true, max: 26 })).filter(s => !dash(s));
+    const hideSet = new Set(Array.isArray(EL && EL.hide) ? EL.hide.filter(k => typeof k === 'string') : []);
+    const RAW = [1, 2, 3, 4].map(i => ({ key: 'f' + i, text: TX('f' + i, DEF[i - 1], { label: 'Callout ' + i + ' (a dash leaves it off)', group: 'Callouts', upper: true, max: 26 }) }));
+    const FT = RAW.filter(o => !dash(o.text) && !hideSet.has(o.key));
+    const EXTRA = (Array.isArray(EL && EL.extra) ? EL.extra : []).filter(x => x && typeof x.text === 'string' && !dash(x.text) && typeof x.id === 'string');
     const END = TX('end', dealer ? 'COME TAKE A TEST DRIVE' : 'SEE IT FOR YOURSELF', { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
     const SH = shot('s1', 'Your walkaround clip', 12, 'l'), STEP = 2.3, T0 = 1.6, OUT = Math.max(7.5, T0 + FT.length * STEP + 0.6), DUR = OUT + 4.1, POS = [[250, 520], [830, 700], [270, 880], [810, 1010]];
+    // every callout to draw, originals (filtered-index timing, as before) plus duplicates (concurrent with their source, so DUR never changes)
+    const items = FT.map((o, fi) => { const oi = RAW.indexOf(o), [px, py] = posOf(EL && EL.pos && EL.pos[o.key], POS[oi % 4]); return { id: o.key, text: o.text, x: px, y: py, t0: T0 + fi * STEP }; })
+      .concat(EXTRA.map(x => ({ id: 'x' + x.id, text: x.text, x: num(x.x, 540), y: num(x.y, 960), t0: num(x.t0, T0) })));
+    // the label card's box for a callout pin, in canvas px (same geometry as the draw below: dot + leader + card)
+    function calloutBox(s, px, py) { const fs = fit(s, 800, 'Mont', 520, 34, 2), w = textW(s, F(800, fs, 'Mont'), 2) + 56, left = px < 540, lx = left ? px + 70 : px - 70, cx = lx + (left ? w / 2 - 20 : -w / 2 + 20);
+      const x0 = Math.min(px - 24, cx - w / 2), x1 = Math.max(px + 24, cx + w / 2); return [x0, py - 152, x1 - x0, 176]; }
+    function drawCallout(it, lt) { const s = it.text, e = SP(lt, 0, 0.7), a = clamp(lt * 7) * (1 - seg(lt, STEP - 0.05, 0.28)), [px, py] = [it.x, it.y], left = px < 540, fs = fit(s, 800, 'Mont', 520, 34, 2), w = textW(s, F(800, fs, 'Mont'), 2) + 56, lx = left ? px + 70 : px - 70;
+      const c = ctx; c.save(); c.globalAlpha *= a; c.strokeStyle = WHT; c.lineWidth = 4; const rk = seg(lt, 0, 0.35); c.beginPath(); c.arc(px, py, 16 + 6 * Math.sin(lt * 5), 0, TAU); c.stroke(); c.fillStyle = OR; c.beginPath(); c.arc(px, py, 9, 0, TAU); c.fill();
+      c.beginPath(); c.moveTo(px + (left ? 18 : -18), py - 12); c.lineTo(lerp(px, lx, rk), py - 12 - 58 * rk); c.stroke();
+      c.translate(lx + (left ? w / 2 - 20 : -w / 2 + 20), py - 112); c.scale(0.6 + 0.4 * e, 0.6 + 0.4 * e); shadow(c, 20, 8, 0.4); c.fillStyle = CARD; rr(-w / 2, -40, w, 80, 16); c.fill(); noShadow(c); c.fillStyle = OR; rr(-w / 2, -40, 12, 80, 6); c.fill();
+      tx(s, 6, fs * 0.36, { size: fs, wt: 800, ls: 2, col: INKD }); c.restore(); }
+    function elements() { return items.map(it => ({ id: it.id, kind: 'callout', label: it.text, x: it.x, y: it.y, t0: it.t0, d: STEP + 0.25, box: calloutBox(it.text, it.x, it.y), dup: true, del: true })); }
     function render(t) {
       stage(t); const c = ctx, box = whole(SH, t, 0, 0, W, H, { py: 0.36 }); if (VID.collecting) return;
       shade(1040, 1620, 0, 0.6); bar(t, 0.15);
-      FT.forEach((s, i) => { const t0 = T0 + i * STEP, lt = t - t0; if (lt < 0 || lt > STEP + 0.25) return; const e = SP(lt, 0, 0.7), a = clamp(lt * 7) * (1 - seg(lt, STEP - 0.05, 0.28)), [px, py] = POS[i % 4], left = px < 540, fs = fit(s, 800, 'Mont', 520, 34, 2), w = textW(s, F(800, fs, 'Mont'), 2) + 56, lx = left ? px + 70 : px - 70;
-        c.save(); c.globalAlpha *= a; c.strokeStyle = WHT; c.lineWidth = 4; const rk = seg(lt, 0, 0.35); c.beginPath(); c.arc(px, py, 16 + 6 * Math.sin(lt * 5), 0, TAU); c.stroke(); c.fillStyle = OR; c.beginPath(); c.arc(px, py, 9, 0, TAU); c.fill();
-        c.beginPath(); c.moveTo(px + (left ? 18 : -18), py - 12); c.lineTo(lerp(px, lx, rk), py - 12 - 58 * rk); c.stroke();
-        c.translate(lx + (left ? w / 2 - 20 : -w / 2 + 20), py - 112); c.scale(0.6 + 0.4 * e, 0.6 + 0.4 * e); shadow(c, 20, 8, 0.4); c.fillStyle = CARD; rr(-w / 2, -40, w, 80, 16); c.fill(); noShadow(c); c.fillStyle = OR; rr(-w / 2, -40, 12, 80, 6); c.fill();
-        tx(s, 6, fs * 0.36, { size: fs, wt: 800, ls: 2, col: INKD }); c.restore(); });
+      items.forEach(it => { const lt = t - it.t0; if (lt < 0 || lt > STEP + 0.25) return; drawCallout(it, lt); });
       const e = SP(t, 0.6, 0.8), a = clamp((t - 0.6) * 6); if (a > 0) { c.save(); c.globalAlpha *= a; c.translate(0, (1 - e) * 200);
         tx(NM, 80, 1340, { size: fit(NM, 400, 'Bebas', dash(PR) ? 920 : 580, 104, 2), wt: 400, fam: 'Bebas', ls: 2, col: WHT, align: 'left', shadow: 'rgba(0,0,0,0.55)' }); c.fillStyle = OR; c.fillRect(82, 1368, 150 * E.outC(seg(t, 0.9, 0.5)), 8);
         if (FT.length) tx((clamp(Math.floor((t - T0) / STEP), 0, FT.length - 1) + 1) + ' OF ' + FT.length, 82, 1420, { size: 28, wt: 700, ls: 3, col: WA(0.85), align: 'left', a: seg(t, T0, 0.3) }); c.restore(); tag(PL, PR, 1020, 1196 + (1 - e) * 200, t, 1.1); }
       close(t, OUT, END);
     }
-    return { dur: DUR, render, cues() { const ev = [['whoosh', 0.2, 0.24, 0], ['pop', 1.15, 0.28, 0.4]]; FT.forEach((s, i) => ev.push(['pop', T0 + i * STEP, 0.3, i % 2 ? 0.4 : -0.4], ['tick', T0 + i * STEP + 0.2, 0.24, 0])); closeCues(ev, OUT); return { dur: DUR, beds: [bed('lounge', DUR)], events: ev }; } };
+    return { dur: DUR, render, elements, cues() { const ev = [['whoosh', 0.2, 0.24, 0], ['pop', 1.15, 0.28, 0.4]]; FT.forEach((s, i) => ev.push(['pop', T0 + i * STEP, 0.3, i % 2 ? 0.4 : -0.4], ['tick', T0 + i * STEP + 0.2, 0.24, 0])); closeCues(ev, OUT); return { dur: DUR, beds: [bed('lounge', DUR)], events: ev }; } };
   }
 
   // ================================================================ THE REVEAL
@@ -177,7 +198,9 @@ STUDIO_REG['nx9'] = (() => {
     const TITLE = TX('title', pk({ general: 'THE DIFFERENCE', auto: 'THE DETAIL DIFFERENCE', home: 'THE DIFFERENCE' }), { label: 'Title', group: 'Title', upper: true, max: 24 }), JOB = TX('job', SV[0] || 'WHAT WE DID', { label: 'What was done (a dash leaves it off)', group: 'Title', upper: true, max: 28 });
     const LA = TX('la', 'BEFORE', { label: 'First label', group: 'Labels', upper: true, max: 12 }), LB = TX('lb', 'AFTER', { label: 'Second label', group: 'Labels', upper: true, max: 12 });
     const END = TX('end', pk({ general: 'YOURS COULD BE NEXT', auto: 'YOUR CAR IS NEXT', home: 'YOUR HOME IS NEXT' }), { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
-    const SA = shot('s1', 'Before', 8, 'l'), SBf = shot('s2', 'After', 8, 'l'), TW = 2.6, WD = 1.5, OUT = 7.6, DUR = OUT + 4.1, BX = [60, 470, 960, 900];
+    const SA = shot('s1', 'Before', 8, 'l'), SBf = shot('s2', 'After', 8, 'l'), TW = 2.6, WD = 1.5, OUT = 7.6, DUR = OUT + 4.1;
+    const BX0 = [60, 470, 960, 900], BX = EL && EL.box ? [num(EL.box.x, BX0[0]), num(EL.box.y, BX0[1]), num(EL.box.w, BX0[2]), num(EL.box.h, BX0[3])] : BX0;
+    function elements() { return [{ id: 'box', kind: 'box', label: 'Before / After frame', x: BX[0], y: BX[1], w: BX[2], h: BX[3], t0: 0, d: DUR, box: [BX[0] - 14, BX[1] - 14, BX[2] + 28, BX[3] + 28], dup: false, del: false }]; }
     function render(t) {
       stage(t); const c = ctx, [x, y, w, h] = BX, e = SP(t, 0.2, 0.85), k = E.inOutC(seg(t, TW, WD)), wx = x + w * k;
       c.save(); c.translate(0, (1 - e) * 700 + 5 * Math.sin(t * 1.1)); c.globalAlpha *= clamp((t - 0.2) * 6);
@@ -195,7 +218,7 @@ STUDIO_REG['nx9'] = (() => {
       if (!dash(JOB)) { const kk = SB(t, 1.2, 0.9); if (t > 1.2) pillBtn(JOB, 540, 1480, { s: 0.5 + 0.5 * kk, a: clamp((t - 1.2) * 6), size: 32, maxW: 900 }); }
       close(t, OUT, END);
     }
-    return { dur: DUR, render, cues() { const ev = [['whoosh', 0.2, 0.3, 0], ['thud', 0.8, 0.24, 0], ['pop', 1.25, 0.26, 0], ['swish', TW, 0.42, 0], ['sparkle', TW + 0.5, 0.2, 0.2], ['sparkle', TW + WD, 0.24, -0.2], ['pop', TW + WD, 0.3, 0]]; closeCues(ev, OUT); return { dur: DUR, beds: [bed('lounge', DUR)], events: ev }; } };
+    return { dur: DUR, render, elements, cues() { const ev = [['whoosh', 0.2, 0.3, 0], ['thud', 0.8, 0.24, 0], ['pop', 1.25, 0.26, 0], ['swish', TW, 0.42, 0], ['sparkle', TW + 0.5, 0.2, 0.2], ['sparkle', TW + WD, 0.24, -0.2], ['pop', TW + WD, 0.3, 0]]; closeCues(ev, OUT); return { dur: DUR, beds: [bed('lounge', DUR)], events: ev }; } };
   }
 
   // ================================================================ THROUGH THE LENS
@@ -203,7 +226,9 @@ STUDIO_REG['nx9'] = (() => {
     const SV = (BRAND.services || []).map(up), photo = CAT === 'photo';
     const LBL = [1, 2, 3, 4].map(i => TX('l' + i, SV[i - 1] || (photo ? ['PORTRAITS', 'WEDDINGS', 'EVENTS', 'BRANDS'] : ['OUR WORK', 'UP CLOSE', 'ON THE JOB', 'THE RESULT'])[i - 1], { label: 'Label on shot ' + i + ' (a dash leaves it off)', group: 'Labels', upper: true, max: 22 }));
     const TITLE = TX('title', photo ? 'THROUGH OUR LENS' : pk({ general: 'A CLOSER LOOK', auto: 'UP CLOSE' }), { label: 'Title', group: 'Title', upper: true, max: 22 }), END = TX('end', photo ? 'BOOK YOUR SESSION' : 'SEE MORE OF OUR WORK', { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
-    const SH4 = [1, 2, 3, 4].map(i => shot('s' + i, 'Shot ' + i, 3, 'l')), T0 = 1.4, LEN = 2.2, OUT = T0 + LEN * 4, DUR = OUT + 4.1, FX = [[540, 780], [430, 900], [640, 700], [540, 860]];
+    const SH4 = [1, 2, 3, 4].map(i => shot('s' + i, 'Shot ' + i, 3, 'l')), T0 = 1.4, LEN = 2.2, OUT = T0 + LEN * 4, DUR = OUT + 4.1;
+    const FX0 = [[540, 780], [430, 900], [640, 700], [540, 860]], FX = FX0.map((p, i) => posOf(EL && EL.fx && EL.fx[String(i + 1)], p));
+    function elements() { return FX.map((p, i) => ({ id: 'fx' + (i + 1), kind: 'focus', label: 'Focus point · shot ' + (i + 1), x: p[0], y: p[1], t0: T0 + i * LEN, d: LEN, box: [p[0] - 90, p[1] - 90, 180, 180], dup: false, del: false })); }
     function render(t) {
       stage(t); const c = ctx, i = clamp(Math.floor((t - T0) / LEN), 0, 3), lt = t - T0 - i * LEN, pre = t < T0;
       SH4.forEach((s, j) => { if (j !== i) touch(s, 0); });
@@ -225,7 +250,7 @@ STUDIO_REG['nx9'] = (() => {
         if (a > 0) { c.save(); c.globalAlpha *= a; c.translate(540, 1400); c.rotate(-0.025); c.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k); shadow(c, 20, 8, 0.4); c.fillStyle = OR; rr(-w / 2, -fs * 0.62, w, fs * 1.24, 14); c.fill(); noShadow(c); tx(s, 0, fs * 0.36, { size: fs, wt: 400, fam: 'Bebas', ls: 3, col: onAcc() }); c.restore(); } }
       close(t, OUT, END);
     }
-    return { dur: DUR, render, cues() { const ev = [['whoosh', 0.2, 0.24, 0], ['thud', 0.7, 0.2, 0]]; for (let i = 0; i < 4; i++) ev.push(['click', T0 + i * LEN, 0.6, 0], ['tick', T0 + i * LEN + 0.85, 0.3, 0], ['pop', T0 + i * LEN + 0.8, 0.22, 0]); closeCues(ev, OUT); return { dur: DUR, beds: [bed('night', DUR)], events: ev }; } };
+    return { dur: DUR, render, elements, cues() { const ev = [['whoosh', 0.2, 0.24, 0], ['thud', 0.7, 0.2, 0]]; for (let i = 0; i < 4; i++) ev.push(['click', T0 + i * LEN, 0.6, 0], ['tick', T0 + i * LEN + 0.85, 0.3, 0], ['pop', T0 + i * LEN + 0.8, 0.22, 0]); closeCues(ev, OUT); return { dur: DUR, beds: [bed('night', DUR)], events: ev }; } };
   }
 
   // ================================================================ VEHICLE LISTING
@@ -238,7 +263,9 @@ STUDIO_REG['nx9'] = (() => {
     const MI = TX('miles', '00,000 MILES', { label: 'Mileage (a dash leaves it off)', group: 'Details', upper: true, max: 20 }), TI = TX('title', 'TITLE STATUS', { label: 'Title status (a dash leaves it off)', group: 'Details', upper: true, max: 20 });
     const VIN = TX('vin', 'VIN 00000000000000000', { label: 'VIN (a dash leaves it off)', group: 'Details', upper: true, max: 26 }), STK = TX('stock', '-', { label: 'Stock number (a dash leaves it off)', group: 'Details', upper: true, max: 22 });
     const FINE = TX('fine', '-', { label: 'Terms or disclaimer (a dash leaves it off)', group: 'Details', max: 170 }), END = TX('end', 'MESSAGE US TODAY', { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
-    const SH3 = [shot('s1', 'Outside', 4.4, 'l'), shot('s2', 'Inside', 4.6, 'l'), shot('s3', 'A detail', 4.2, 'l')], CUT = [4.2, 8.6], OUT = 12.6, DUR = OUT + 4.1, Y0 = 930, CH = 500;
+    const SH3 = [shot('s1', 'Outside', 4.4, 'l'), shot('s2', 'Inside', 4.6, 'l'), shot('s3', 'A detail', 4.2, 'l')], CUT = [4.2, 8.6], OUT = 12.6, DUR = OUT + 4.1;
+    const Y0 = num(EL && EL.card && EL.card.y, 930), CH = num(EL && EL.card && EL.card.h, 500);
+    function elements() { return [{ id: 'card', kind: 'card', label: 'Listing card', x: 60, y: Y0, w: 960, h: CH, t0: 0, d: DUR, box: [60, Y0, 960, CH], dup: false, del: false }]; }
     function render(t) {
       stage(t); const c = ctx, i = t < CUT[0] ? 0 : t < CUT[1] ? 1 : 2, st = [0, CUT[0], CUT[1]], en = [CUT[0], CUT[1], OUT + 1];
       SH3.forEach((s, j) => { if (j !== i) touch(s, t - st[j]); });
@@ -264,9 +291,9 @@ STUDIO_REG['nx9'] = (() => {
         c.restore(); }
       fine(FINE, t, 2.2); close(t, OUT, END);
     }
-    return { dur: DUR, render, cues() { const ev = [['whoosh', 0.2, 0.26, 0], ['thud', 0.75, 0.22, 0], ['pop', 1.45, 0.3, -0.3], ['pop', 1.67, 0.3, 0.3], ['swish', CUT[0] - 0.2, 0.34, 0.3], ['swish', CUT[1] - 0.2, 0.34, -0.3], ['pop', CUT[1] + 0.3, 0.26, -0.2], ['pop', CUT[1] + 0.48, 0.26, 0.2]]; FT.forEach((s, j) => ev.push(['tick', CUT[0] + 0.3 + j * 0.16, 0.3, j % 2 ? 0.2 : -0.2])); closeCues(ev, OUT); return { dur: DUR, beds: [bed('pulse', DUR)], events: ev }; } };
+    return { dur: DUR, render, elements, cues() { const ev = [['whoosh', 0.2, 0.26, 0], ['thud', 0.75, 0.22, 0], ['pop', 1.45, 0.3, -0.3], ['pop', 1.67, 0.3, 0.3], ['swish', CUT[0] - 0.2, 0.34, 0.3], ['swish', CUT[1] - 0.2, 0.34, -0.3], ['pop', CUT[1] + 0.3, 0.26, -0.2], ['pop', CUT[1] + 0.48, 0.26, 0.2]]; FT.forEach((s, j) => ev.push(['tick', CUT[0] + 0.3 + j * 0.16, 0.3, j % 2 ? 0.2 : -0.2])); closeCues(ev, OUT); return { dur: DUR, beds: [bed('pulse', DUR)], events: ev }; } };
   }
 
   const P = ({ lotx, reelx, eventx, walkx, wipex, lensx, listx }[V] || lotx)(); BT = K17.fields();
-  DIR = { dur: P.dur, bg: BLK, finish: { vig: 0.14, grain: 0.1 }, edl: [], shakes: [], preload: () => K3.init(), render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: BLK, finish: { vig: 0.14, grain: 0.1 }, edl: [], shakes: [], preload: () => K3.init(), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

@@ -32,12 +32,14 @@ STUDIO_REG['free'] = (() => {
       QS.set('v', T.v);
       const pack = window.NX && NX.app ? NX.app.packCopy(T.id, NX.app.B()) : {};
       PRM.text = Object.assign({}, pack, it.text || {}); PRM.shot = it.shot || {}; PRM.tl = null;
+      window.__NX_BLOCK_EL = it.el || null;   // per-element data for this block; the template captures it at build time (null = old behaviour)
       STUDIO_REG[T.file]();
+      window.__NX_BLOCK_EL = null;
       const fields = FIELDS.slice(keep.fl);
       if (window.NX && NX.phLabels) for (const f of fields) if (f.type === 'shot' && NX.isPh(f.def[0])) NX.phLabels[f.def[0]] = /^(footage|shot)$/i.test(f.label || '') ? f.group : f.label;
       return { dir: DIR, fields, tpl: T, pack };
     } catch (e) { console.warn('block', it.tpl, e); return null; }
-    finally { if (keep.v === null) QS.delete('v'); else QS.set('v', keep.v); PRM.text = keep.text; PRM.shot = keep.shot; PRM.tl = keep.tl; DIR = keep.dir; FIELDS.length = keep.fl; }
+    finally { window.__NX_BLOCK_EL = null; if (keep.v === null) QS.delete('v'); else QS.set('v', keep.v); PRM.text = keep.text; PRM.shot = keep.shot; PRM.tl = keep.tl; DIR = keep.dir; FIELDS.length = keep.fl; }
   }
 
   // ---------------- main track layout ----------------
