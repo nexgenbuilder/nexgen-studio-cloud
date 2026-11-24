@@ -954,7 +954,7 @@ $('#footSelDel').onclick = async () => {
     }
     const n = rows.length - serverBlocked.size;
     toast('Removed ' + n + ' clip' + (n === 1 ? '' : 's') + (blocked.length ? '. Kept ' + blocked.length + ' in use: ' + blocked.join('; ') : '.'));
-    setSelMode(false); buildFootage(); refreshMeter(); edited(true);
+    setSelMode(false); buildFootage(); refreshMeter(); refresh(true); // library action, not a project edit: must not mark the project dirty (that would save a pristine boot draft as a stray project)
   } catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
 };
 $('#footAdd').onclick = () => pickFiles();
@@ -970,8 +970,17 @@ function markDirty() {
 async function flush() {
   if (!CAP.db || !dirty) return;
   if (saving) { clearTimeout(saveT); saveT = setTimeout(flush, 600); return; }
+  const p = S.proj;
+  // A pristine boot draft must never become a real project. If this project
+  // was never saved and carries no user content — no lines, shots or style,
+  // no timeline or listing, no holiday theme, still its auto-generated name —
+  // there is nothing to save. Library actions such as deleting footage mark
+  // the session dirty but must not create a project in the db.
+  if (!p.saved && !Object.keys(p.text || {}).length && !Object.keys(p.shot || {}).length && !Object.keys(p.style || {}).length && !p.tl && !p.listing && !p.hol && p.name === (TPL(p.tpl) ? TPL(p.tpl).name + ' · ' + today() : '')) {
+    dirty = false; setSave('Not saved yet', false, 'Change any line, shot or style and the clip saves to Projects.', false); return;
+  }
   saving = true; dirty = false; setSave('Saving…');
-  const p = S.proj; p.updatedAt = new Date().toISOString();
+  p.updatedAt = new Date().toISOString();
   const body = { id: p.id, brand: p.brand || 'dpg', name: p.name, tpl: p.tpl, text: p.text, shot: p.shot, style: p.style || {}, createdAt: p.createdAt, updatedAt: p.updatedAt, by: CAP.uid || null };
   if (p.tl) body.tl = p.tl; if (p.hol) body.hol = p.hol; if (p.listing) body.listing = p.listing;
   try { await CAP.db.doc('projects/' + p.id).set(body); p.saved = true; if (S.proj === p) setSave('Saved', false, '', true); }
@@ -1110,7 +1119,7 @@ $('#pkDel').onclick = async () => {
     NX.dropClip(row.id); FB.forget(row.id);
     toast(force ? 'Removed “' + row.name + '”. Shots that used it go back to placeholders.' : 'Removed “' + row.name + '”.');
     if (PK.manage) closePicker(); else { const f = PK.f; selectClip(NX.isPh(f.def[0]) ? null : f.def[0], f.def[1]); buildPickerLib(); }
-    buildFootage(); refreshMeter(); edited(true); }
+    buildFootage(); refreshMeter(); refresh(true); } // library action, not a project edit: refresh the UI without marking the project dirty (see flush() guard)
   catch (e) { toast('Could not remove: ' + (e.code || e.message)); }
 };
 
