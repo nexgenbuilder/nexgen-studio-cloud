@@ -1,0 +1,1 @@
+{"$schema":"https://openapi.vercel.sh/vercel.json","rewrites":[{"destination":"/api/db","source":"/_db"},{"destination":"/api/up","source":"/_up"},{"destination":"/api/assets","source":"/_assets"},{"destination":"/api/blob?id=:id","source":"/_blob/:id"}]}
