@@ -1232,6 +1232,7 @@ async function encode(MB, hw, prog) {
     }
   }
   await output.start();
+  try { if (window.NX && NX.gif && S.proj) await NX.gif.warmProject(S.proj); } catch (e) { console.warn('gif warm', e); }   // chunk #4: decode GIF layers before the first export frame, so no frame is blank
   const N = Math.round(S.dur * 30), t0 = performance.now(); FB.setMode('play');
   try {
     for (let n = 0; n < N; n++) {

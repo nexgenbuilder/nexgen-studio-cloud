@@ -74,7 +74,7 @@ body.mode-edit #einsp { display: block; }
 .ti.m-tpl { background-color: #3a2f27; background-repeat: repeat-x; background-size: auto 100%; }
 .ti.m-tpl::before { content: "TEMPLATE"; position: absolute; right: 6px; bottom: 3px; font: 700 8.5px/1 var(--f-mono); letter-spacing: .1em; color: rgba(255,255,255,.75); }
 .ti.m-end { background: repeating-linear-gradient(135deg, var(--accent) 0 10px, color-mix(in srgb, var(--accent) 70%, #000) 10px 20px); }
-.ti.k-text { background: #6d58d6; } .ti.k-sticker { background: #b9852b; } .ti.k-pip { background: #2f8c86; } .ti.k-mg { background: #b8457e; } .ti.k-type { background: #5b4bd0; }
+.ti.k-text { background: #6d58d6; } .ti.k-sticker { background: #b9852b; } .ti.k-pip { background: #2f8c86; } .ti.k-mg { background: #b8457e; } .ti.k-type { background: #5b4bd0; } .ti.k-gif { background: #7d5ba6; }
 .ti.k-text .lab, .ti.k-sticker .lab, .ti.k-pip .lab, .ti.k-mg .lab, .ti.k-type .lab { top: 50%; transform: translateY(-50%); }
 .ti .kfd { position: absolute; bottom: 2px; width: 7px; height: 7px; margin-left: -3.5px; background: #fff; transform: rotate(45deg); box-shadow: 0 0 0 1px rgba(0,0,0,.5); pointer-events: none; }
 .ti.msel { box-shadow: 0 0 0 2px #fff, inset 0 0 0 1px rgba(0,0,0,.4); z-index: 3; }
@@ -143,6 +143,17 @@ const STICKERS = [
   { type: 'banner', name: 'Info bar', y: 1760, h: 300, color: 'ink', d: 4, note: 'Logo, phone and website' },
   { type: 'lowerthird', name: 'Lower third', y: 1560, d: 3.5, note: 'Name and detail slide in' },
   { type: 'logobug', name: 'Logo corner', x: 880, y: 140, w: 230, d: 0, note: 'Stays on the whole video' },
+  // chunk #4: vector stickers — canvas-drawn, no image assets (see engine/tpl_free.js drawSticker)
+  { type: 'starburst', name: 'Starburst', text: 'SALE', y: 640, size: 1, d: 3, note: 'Offer star' },
+  { type: 'heart', name: 'Heart', y: 640, size: 1, d: 3, note: 'Pops in' },
+  { type: 'check', name: 'Tick', y: 640, size: 1, d: 3, note: 'Done, approved' },
+  { type: 'flame', name: 'Flame', y: 640, size: 1, d: 3, note: 'Hot, new, trending' },
+  { type: 'sparkle', name: 'Sparkle', y: 640, size: 1, d: 3, note: 'Shine on a detail' },
+  { type: 'bolt', name: 'Lightning', y: 640, size: 1, d: 3, note: 'Fast, power' },
+  { type: 'pin', name: 'Map pin', text: 'HERE', y: 640, size: 1, d: 3, note: 'This spot' },
+  { type: 'star', name: 'Star', y: 640, size: 1, d: 3, note: 'Rated, featured' },
+  { type: 'tag', name: 'Price tag', text: '$19', y: 640, size: 1, d: 3, note: 'A price, on a tag' },
+  { type: 'gift', name: 'Gift', y: 640, size: 1, d: 3, note: 'Offer, giveaway' },
 ];
 const TRANS = [['cut', 'Cut'], ['dissolve', 'Dissolve'], ['fade', 'Dip to black'], ['flash', 'Flash'], ['whip', 'Whip'], ['swipe', 'Swipe'], ['slices', 'Slices'], ['blinds', 'Blinds'],
   ['iris', 'Iris'], ['brush', 'Brush'], ['liquid', 'Liquid'], ['leak', 'Light leak'], ['glitch', 'Glitch'], ['paver', 'Tile flip'], ['toss', 'Photo toss'], ['word', 'Through the name'], ['logo', 'Through the logo'],
@@ -289,6 +300,7 @@ function labelOf(it) {
   if (it.kind === 'mg') { const e = K9.EL[it.type]; return e ? e.name + (it.text && typeof it.text === 'string' ? ' · ' + it.text : '') : it.type; }
   if (it.kind === 'text') return (it.text || (TEXTS.find(x => x.style === it.style) || TEXTS[0]).name).replace(/\n/g, ' ');
   if (it.kind === 'sticker') return it.type === 'banner' ? (it.y > 960 ? 'Info bar' : 'Top banner · ' + (it.text || '')) : (STICKERS.find(x => x.type === it.type) || { name: it.type }).name;
+  if (it.kind === 'gif') return 'GIF · ' + (it.title || it.name || 'animated');
   if (it.kind === 'pip') { const r = NX.CLIPS.get(it.c); return 'PiP · ' + (r ? r.name : 'footage'); }
   if (it.kind === 'seg') { const r = it.c && NX.CLIPS.get(it.c), half = (TL().split || {}).main === 'top' ? 'Bottom' : 'Top'; return (r && r.audio && it.sound !== false ? '♪ ' : '') + half + ' half · ' + (it.c ? (r ? r.name : 'removed footage') : 'colour panel'); }
   return '';
@@ -472,7 +484,7 @@ function delEl(o, d) {   // delete a callout: an original is hidden (reset bring
     else { it.el.hide = it.el.hide || []; if (!it.el.hide.includes(d.id)) it.el.hide.push(d.id); } });
   ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); A.toast('Callout removed. “Reset all element positions” brings it back.');
 }
-const resizable = L => L.kind === 'text' || L.kind === 'pip' || (L.kind === 'mg' && !isFull(L)) || ['logo', 'badge', 'brackets', 'label', 'cta'].includes(L.type);
+const resizable = L => L.kind === 'text' || L.kind === 'pip' || L.kind === 'gif' || (L.kind === 'mg' && !isFull(L)) || ['logo', 'badge', 'brackets', 'label', 'cta'].includes(L.type);
 const rotatable = L => !isFull(L) && L.kind !== 'seg' && !['progress', 'scrim', 'banner', 'logobug'].includes(L.type);
 const rotHandle = b => [b[0] + b[2] / 2, b[1] - 70];
 // move every key of a property with its base value, so dragging a moving layer moves its whole path
@@ -542,6 +554,7 @@ scr.addEventListener('pointermove', e => {
   else { g.moved = true; const k = clamp(Math.hypot(x - g.c[0], y - g.c[1]) / Math.max(10, g.d0), 0.25, 4), o = g.orig;
     if (L.kind === 'mg') { const sx = clamp((o.sx || 1) * k, 0.15, 6), f = sx / (o.sx || 1); L.sx = Math.round(sx * 1000) / 1000; L.sy = Math.round(clamp((o.sy || 1) * f, 0.15, 6) * 1000) / 1000; shiftKeys(L, o, 'sx', v => v * f); shiftKeys(L, o, 'sy', v => v * f); }
     else if (L.kind === 'pip' || L.type === 'logo') L.w = Math.round(clamp((o.w || 600) * k, 160, 1080));
+    else if (L.kind === 'gif') L.w = Math.round(clamp((o.w || 480) * k, 120, 1080));
     else if (L.type === 'brackets') { L.w = Math.round(clamp((o.w || 700) * k, 120, 1080)); L.h = Math.round(clamp((o.h || 420) * k, 80, 1900)); }
     else L.size = Math.round(clamp((o.size || 80) * k, 12, L.style === 'type' ? 900 : 320)); }
   cancelAnimationFrame(cRaf); cRaf = requestAnimationFrame(() => { A.refresh(true); drawOv(); });
@@ -554,8 +567,7 @@ scr.addEventListener('dblclick', () => { if (!ED.on) return; const ta = einsp.qu
 function renderPanel() {
   if (!ED.on) return; ePanel.textContent = '';
   const tabs = el('div', 'ep-tabs'); tabs.setAttribute('role', 'tablist');
-  if (ED.panel === 'stickers') ED.panel = 'graphics';
-  const TABS = [['media', 'Media'], ['text', 'Text'], ['graphics', 'Graphics'], ['trans', 'Transitions'], ['audio', 'Audio'], ['blocks', 'Templates']];
+  const TABS = [['media', 'Media'], ['text', 'Text'], ['graphics', 'Graphics'], ['stickers', 'Stickers'], ['trans', 'Transitions'], ['audio', 'Audio'], ['blocks', 'Templates']];
   for (const [k, l, after] of XT.tabs) if (!TABS.some(x => x[0] === k)) { const i = TABS.findIndex(x => x[0] === after); TABS.splice(i < 0 ? TABS.length : i + 1, 0, [k, l]); }
   TABS.forEach(([k, l]) => {
     const b = el('button', '', l); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(ED.panel === k)); b.onclick = () => { ED.panel = k; renderPanel(); }; tabs.appendChild(b); });
@@ -590,7 +602,13 @@ function renderPanel() {
       if (p.pv[2] === 5) { pv.style.background = 'linear-gradient(120deg,#6aa0c8,#e0a050 55%,#3c7a4a)'; pv.style.webkitBackgroundClip = 'text'; pv.style.backgroundClip = 'text'; pv.style.color = 'transparent'; pv.style.letterSpacing = '1px'; }
       b.appendChild(pv); b.appendChild(el('small', '', p.name)); b.onclick = () => addText(p); g.appendChild(b); }
   } else if (ED.panel === 'graphics' || ED.panel === 'stickers') {
-    stickerGrid(box, note, btn);
+    if (ED.panel === 'stickers') {
+      note('Stickers sit on top of the video. Tap one to add it at the playhead, then drag it on the preview. The 61 animated overlays live in Graphics; animated GIFs live in the GIFs tab.');
+      stickerGrid(box, note, btn);
+      sec('More');
+      btn(box, 'Animated graphics', '61 overlays in Graphics', () => { ED.panel = 'graphics'; renderPanel(); });
+      btn(box, 'GIFs', 'Search, link or upload an animated GIF', () => { ED.panel = 'gifs'; renderPanel(); });
+    } else stickerGrid(box, note, btn);
   } else if (ED.panel === 'trans') {
     const o = findAny(ED.sel), k = o ? kindOf(o) : null, i = k === 'main' ? TL().main.indexOf(o) : -1;
     if (i > 0) { sec('Into “' + labelOf(o) + '”'); const g = el('div', 'ep-grid'); box.appendChild(g); const cur = o.tr && o.tr.type ? o.tr.type : 'cut';
@@ -788,7 +806,11 @@ function legacyLayerInsp(box, o, opts) {
       g.appendChild(segRow('Where', [['top', 'Top'], ['low', 'Bottom']], o.y > 960 ? 'low' : 'top', v => upd(o.id, x => { x.y = v === 'low' ? 1760 : 190; })));
       g.appendChild(rangeRow('Height', 160, 700, 10, o.h || (o.y < 960 ? 380 : 300), v => upd(o.id, x => { x.h = v; }, 'h'), v => v + ' px')); }
     if (o.type === 'logobug') { g.appendChild(segRow('Colour', [['white', 'Light'], ['ink', 'Dark']], o.color || 'white', v => upd(o.id, x => { x.color = v; }))); g.appendChild(rangeRow('Width', 100, 600, 5, o.w || 230, v => upd(o.id, x => { x.w = v; }, 'w'), v => v + ' px')); }
-    if (['label', 'callout', 'badge'].includes(o.type)) g.appendChild(textRow(o.type === 'badge' ? 'Ring text' : 'Text', o.text, v => upd(o.id, x => { x.text = v; }, 'tx'), { up: true, max: 32, lint: true, hint: o.type === 'badge' ? 'Only claims that are true for this business.' : '' }));
+    if (['label', 'callout', 'badge', 'starburst', 'tag', 'pin'].includes(o.type)) g.appendChild(textRow(o.type === 'badge' ? 'Ring text' : 'Text', o.text, v => upd(o.id, x => { x.text = v; }, 'tx'), { up: true, max: 32, lint: true, hint: o.type === 'badge' ? 'Only claims that are true for this business.' : '' }));
+    if (['starburst', 'heart', 'check', 'flame', 'sparkle', 'bolt', 'pin', 'star', 'tag', 'gift'].includes(o.type)) {
+      g.appendChild(segRow('Colour', [['accent', 'Accent', OR], ['white', 'White', '#fff'], ['ink', 'Ink', BLK]], o.color || 'accent', v => upd(o.id, x => { x.color = v; })));
+      g.appendChild(rangeRow('Size', 0.4, 2.5, 0.05, o.size || 1, v => upd(o.id, x => { x.size = v; }, 'sz'), v => Math.round(v * 100) + '%'));
+    }
     if (o.type === 'badge') g.appendChild(textRow('Centre', o.center || '', v => upd(o.id, x => { x.center = v; }, 'ce'), { up: true, max: 8, ph: (A.B().short || '').toUpperCase() }));
     if (o.type === 'chips' || o.type === 'steps') g.appendChild(textRow(o.type === 'steps' ? 'Steps (comma separated)' : 'Chips (comma separated, empty = brand services)', (o.items || []).join(', '), v => upd(o.id, x => { x.items = v.split(',').map(s => s.trim()).filter(Boolean).slice(0, o.type === 'steps' ? 5 : 4); }, 'it'), { up: true }));
     if (['cta', 'contact'].includes(o.type)) g.appendChild(el('p', 'note', 'Text comes from the brand kit: ' + (o.type === 'cta' ? A.B().contact.cta : A.B().contact.phone + ' · ' + A.B().contact.web) + '.'));
@@ -801,6 +823,17 @@ function legacyLayerInsp(box, o, opts) {
     if (o.type === 'banner') {} else if (o.type === 'scrim') g.appendChild(segRow('Where', [['top', 'Top'], ['low', 'Bottom']], o.y > 960 ? 'low' : 'top', v => upd(o.id, x => { x.y = v === 'low' ? 1500 : 400; })));
     else if (o.type !== 'progress' && o.type !== 'steps') posRow(g, o);
     const g3 = grp(box, 'Timing'); timing(g3, o); acts(box, [['Duplicate', duplicate], ['Delete', del, 'danger']]); return;
+  }
+  if (o.kind === 'gif') {
+    const G = window.NX && NX.gif, ref = G && G.refOf(o), st = ref && G.state(ref);
+    hd(box, 'GIF · ' + (o.title || o.name || 'animated'), 'Animated image · ' + fmtT(o.t0) + ' to ' + fmtT(o.t0 + o.d) + (st ? (st.animated ? ' · ' + st.frames.length + ' frames, loops' : ' · still image') : ' · loading…'));
+    const g = grp(box, 'GIF');
+    g.appendChild(el('p', 'note', 'From ' + (o.src === 'giphy' ? 'GIPHY' : o.src === 'tenor' ? 'Tenor' : o.src === 'upload' ? 'an uploaded file' : 'a link') + ' · stored in the studio, so it keeps working in the video. Credit the provider in the video caption when you publish.'));
+    g.appendChild(rangeRow('Width', 120, 1080, 10, o.w || 480, v => upd(o.id, x => { x.w = v; }, 'w'), v => v + ' px'));
+    g.appendChild(segRow('Play', [['loop', 'Loop'], ['once', 'Play once, hold last frame']], o.loop === false ? 'once' : 'loop', v => upd(o.id, x => { x.loop = v === 'loop'; })));
+    posRow(g, o);
+    const g3 = grp(box, 'Timing'); timing(g3, o);
+    acts(box, [['Duplicate', duplicate], ['Delete', del, 'danger']]); return;
   }
   if (o.kind === 'pip') {
     const r = NX.CLIPS.get(o.c), m = NX.META[o.c]; hd(box, 'Picture-in-picture', r ? r.name : 'Removed footage');

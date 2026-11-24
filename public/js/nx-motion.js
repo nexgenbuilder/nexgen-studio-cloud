@@ -117,7 +117,7 @@ const TABS = { type: [['edit', 'Edit'], ['style', 'Style'], ['anim', 'Animate'],
 XT.inspect.layer = (box, o, legacy) => {
   const kind = o.kind === 'text' && o.style === 'type' ? 'type' : o.kind === 'mg' ? 'mg' : 'legacy', tabs = TABS[kind];
   if (!tabs.some(t => t[0] === ED.itab)) ED.itab = 'edit';
-  const title = kind === 'type' ? 'Text' : kind === 'mg' ? (K9.EL[o.type] || { name: o.type }).name : o.kind === 'pip' ? 'Picture-in-picture' : o.kind === 'text' ? ((api.TEXTS.find(x => x.style === o.style) || {}).name || 'Text') : ((api.STICKERS.find(x => x.type === o.type) || {}).name || 'Sticker');
+  const title = kind === 'type' ? 'Text' : kind === 'mg' ? (K9.EL[o.type] || { name: o.type }).name : o.kind === 'gif' ? 'GIF' : o.kind === 'pip' ? 'Picture-in-picture' : o.kind === 'text' ? ((api.TEXTS.find(x => x.style === o.style) || {}).name || 'Text') : ((api.STICKERS.find(x => x.type === o.type) || {}).name || 'Sticker');
   head(box, title, fmtT(o.t0) + ' to ' + fmtT(o.t0 + o.d) + (K8.hasKf(o) ? ' · keyframed' : ''));
   const tb = el('div', 'itabs'); tb.setAttribute('role', 'tablist'); box.appendChild(tb);
   for (const [k, n] of tabs) { const b = el('button', '', n); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(ED.itab === k)); b.onclick = () => { ED.itab = k; renderInspector(); }; tb.appendChild(b); }

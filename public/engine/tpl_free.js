@@ -247,7 +247,10 @@ STUDIO_REG['free'] = (() => {
     }
   }
   function pipRect(L) { const m = VID.meta(L.c), ar = m ? m.w / m.h : 16 / 9, w = L.w || 480, h = L.frame === 'circle' && !(L.key && L.key.on) ? w : L.frame === 'arch' && !(L.key && L.key.on) ? w * 1.28 : L.frame === 'tall' ? w * 1.25 : w / ar; return [L.x - w / 2, L.y - h / 2, w, h]; }
+  function gifBox(L) {   // chunk #4: a GIF layer's box, from its display width and stored aspect ratio
+    const w = L.w || 480, ar = L.ar || 1, h = Math.max(40, Math.round(w / ar)); return [L.x - w / 2, L.y - h / 2, w, h]; }
   function rawBox(L) {
+    if (L.kind === 'gif') return gifBox(L);
     if (L.kind === 'text' && L.style === 'type') { const b = K8.box(L); return [L.x + b[0], L.y + b[1], b[2], b[3]]; }
     if (L.kind === 'mg') { const b = K9.box(L); return [L.x + b[0], L.y + b[1], b[2], b[3]]; }
     if (L.kind === 'seg') return splitRects(1).sec.slice();
@@ -340,8 +343,26 @@ STUDIO_REG['free'] = (() => {
     setF(f1, 0); g.fillStyle = WHT; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillText(txt, x0 + 40, y - bh + sz * 1.05);
     if (sub) { setF(f2, 4); g.fillStyle = OR; g.fillText(sub.toUpperCase(), x0 + 40, y - 26); } K3.D();
   }
+  // chunk #4: vector stickers — canvas-drawn shapes, no image assets. A star path centred on (cx, cy).
+  function starPath(cx, cy, rO, rI, n, rot) { ctx.beginPath(); for (let i = 0; i < n * 2; i++) { const r = i % 2 ? rI : rO, a = (rot || -Math.PI / 2) + i * Math.PI / n, px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); } ctx.closePath(); }
   function drawSticker(L, t, p, q) {
     const lt = t - L.t0, x = L.x, y = L.y;
+    // chunk #4 vector stickers: pop in, drawn at scale (L.size || 1), colour from L.color (accent by default)
+    if (['starburst', 'heart', 'check', 'flame', 'sparkle', 'bolt', 'pin', 'star', 'tag', 'gift'].includes(L.type)) {
+      const pop = E.outBack(clamp(p * 1.4)), s = pop * (L.size || 1), bg = col(L.color || 'accent'), tc = lum(bg) > 0.36 ? BLK : WHT;
+      ctx.save(); ctx.globalAlpha *= (1 - q);
+      if (L.type === 'starburst') { ctx.fillStyle = bg; starPath(x, y, 98 * s, 74 * s, 16, -Math.PI / 2); ctx.fill(); ctx.restore(); caps(String(L.text || 'SALE').toUpperCase(), x, y + 8, Math.min(52 * s, fitSize(String(L.text || 'SALE').toUpperCase(), 800, 150 * s, 60, 'Mont', 1)), p, q, { col: tc, w: 800, ls: 1 }); return; }
+      if (L.type === 'heart') { ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(x, y + 78 * s); ctx.bezierCurveTo(x - 95 * s, y + 5 * s, x - 72 * s, y - 72 * s, x, y - 28 * s); ctx.bezierCurveTo(x + 72 * s, y - 72 * s, x + 95 * s, y + 5 * s, x, y + 78 * s); ctx.fill(); ctx.restore(); return; }
+      if (L.type === 'check') { ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(x, y, 88 * s, 0, 7); ctx.fill(); ctx.strokeStyle = WHT; ctx.lineWidth = 18 * s; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - 38 * s, y + 2 * s); ctx.lineTo(x - 12 * s, y + 30 * s); ctx.lineTo(x + 42 * s, y - 32 * s); ctx.stroke(); ctx.restore(); return; }
+      if (L.type === 'flame') { ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(x, y + 95 * s); ctx.bezierCurveTo(x - 70 * s, y + 40 * s, x - 55 * s, y - 30 * s, x, y - 95 * s); ctx.bezierCurveTo(x + 18 * s, y - 55 * s, x + 30 * s, y - 30 * s, x + 22 * s, y + 5 * s); ctx.bezierCurveTo(x + 38 * s, y + 25 * s, x + 30 * s, y + 60 * s, x, y + 95 * s); ctx.fill(); ctx.restore(); return; }
+      if (L.type === 'sparkle') { ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(x, y - 95 * s); ctx.quadraticCurveTo(x + 10 * s, y - 10 * s, x + 95 * s, y); ctx.quadraticCurveTo(x + 10 * s, y + 10 * s, x, y + 95 * s); ctx.quadraticCurveTo(x - 10 * s, y + 10 * s, x - 95 * s, y); ctx.quadraticCurveTo(x - 10 * s, y - 10 * s, x, y - 95 * s); ctx.fill(); ctx.restore(); return; }
+      if (L.type === 'bolt') { ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(x + 24 * s, y - 95 * s); ctx.lineTo(x - 52 * s, y + 18 * s); ctx.lineTo(x - 8 * s, y + 18 * s); ctx.lineTo(x - 24 * s, y + 95 * s); ctx.lineTo(x + 56 * s, y - 22 * s); ctx.lineTo(x + 8 * s, y - 22 * s); ctx.closePath(); ctx.fill(); ctx.restore(); return; }
+      if (L.type === 'pin') { ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(x, y - 28 * s, 58 * s, 0, 7); ctx.moveTo(x - 48 * s, y + 8 * s); ctx.lineTo(x, y + 95 * s); ctx.lineTo(x + 48 * s, y + 8 * s); ctx.closePath(); ctx.fill(); ctx.fillStyle = WHT; ctx.beginPath(); ctx.arc(x, y - 28 * s, 24 * s, 0, 7); ctx.fill(); ctx.restore(); return; }
+      if (L.type === 'star') { ctx.fillStyle = bg; starPath(x, y, 95 * s, 42 * s, 5, -Math.PI / 2); ctx.fill(); ctx.restore(); return; }
+      if (L.type === 'tag') { ctx.save(); ctx.translate(x, y); ctx.rotate(-0.28); ctx.scale(s, s); ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(-95, -42, 190, 84, 12); ctx.fill(); ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(-68, 0, 11, 0, 7); ctx.fill(); ctx.restore(); ctx.restore(); caps(String(L.text || '$19').toUpperCase(), x + 12, y + 8, Math.min(40 * s, fitSize(String(L.text || '$19').toUpperCase(), 800, 130 * s, 60, 'Mont', 1)), p, q, { col: tc, w: 800, ls: 1 }); return; }
+      if (L.type === 'gift') { ctx.fillStyle = bg; ctx.fillRect(x - 70 * s, y - 10 * s, 140 * s, 100 * s); ctx.fillRect(x - 80 * s, y - 42 * s, 160 * s, 32 * s); ctx.fillStyle = WHT; ctx.fillRect(x - 12 * s, y - 42 * s, 24 * s, 132 * s); ctx.beginPath(); ctx.ellipse(x - 26 * s, y - 52 * s, 26 * s, 16 * s, -0.5, 0, 7); ctx.ellipse(x + 26 * s, y - 52 * s, 26 * s, 16 * s, 0.5, 0, 7); ctx.fill(); ctx.restore(); return; }
+      ctx.restore(); return;
+    }
     switch (L.type) {
       case 'cta': { const s = Math.min(L.size || 32, fitSize(CONTACT.cta, 800, 880, 40, 'Mont', 2.5)); pill(CONTACT.cta, x, y, { size: s, p, q, bg: OR, col: onAcc() }); K3.ripple(x + Math.min(300, textW(CONTACT.cta, F(800, s, 'Mont'), 2.5) / 2), y + 10, t, L.t0 + 0.9); break; }
       case 'contact': caps(CONTACT.phone, x, y, 72, p, q, { w: 800, ls: 1, col: L.color === 'ink' ? BLK : WHT, shadow: L.color === 'ink' ? null : 'rgba(0,0,0,0.5)' });
@@ -396,11 +417,23 @@ STUDIO_REG['free'] = (() => {
     if (VID.collecting || ((!own || q <= 0) && op >= 1)) { draw(); return; }
     const sc = K4.into('freeL', draw); ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha *= (own ? 1 - E.inC(q) : 1) * op; ctx.drawImage(sc, 0, 0); ctx.restore();
   }
+  // chunk #4: a GIF layer — the bitmap for the current local time, looping (NX.gif decodes via ImageDecoder; see js/nx-gif.js).
+  // During the collect pass nothing is drawn (touch() only starts the decode); the real pass draws the cached frame.
+  function drawGif(L, t) {
+    const G = window.NX && NX.gif; if (!G) return;
+    const ref = G.refOf(L); if (!ref) return;
+    const rec = G.state(ref); const bmp = rec && G.frameAt(rec, t - L.t0, L.loop !== false);
+    if (!bmp) { G.touch(L); return; }
+    const b = gifBox(L);
+    ctx.save(); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(bmp, b[0], b[1], b[2], b[3]); ctx.restore();
+  }
   // every layer moves the same way (V10): its state at this moment (K8.xf: position, scale, rotation, opacity, blur, mask and
   // keyframes) is applied around its anchor. New text ('type') and motion graphics ('mg') draw under that state directly;
   // older layers render as before and are placed under it, so an old project with no motion renders exactly as it did.
   function drawLayer(L, t) {
     const lt = t - L.t0; if (lt < 0 || lt >= L.d) return;
+    if (L.kind === 'gif') { if (VID.collecting) { if (window.NX && NX.gif) NX.gif.touch(L); return; }
+      const s = K8.xf(L, lt); if (K8.plain(L, s)) drawGif(L, t); else K8.legacy(L, s, () => drawGif(L, t), gifBox(L)); return; }
     const s = K8.xf(L, lt), o = { maskDir: L.maskDir };
     if (L.kind === 'text' && L.style === 'type') { K8.withLayer(s, K8.box(L), () => K8.type(L, t, s), o); return; }
     if (L.kind === 'mg') { const e = K9.EL[L.type]; if (!e) return;
