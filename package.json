@@ -1,0 +1,1 @@
+{"dependencies":{"@aws-sdk/client-s3":"^3.600.0","@aws-sdk/s3-request-presigner":"^3.600.0","@vercel/functions":"^1.4.0"},"description":"NexGen Studio (B28 / V23-V30) hosted on Vercel with Cloudflare R2 storage — shared workspace for Ricardo and Muse.","name":"nexgen-studio-cloud","private":true,"scripts":{"test":"node test/routes.test.mjs"},"type":"module","version":"1.0.0"}
