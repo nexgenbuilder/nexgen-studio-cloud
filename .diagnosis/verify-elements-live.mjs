@@ -242,7 +242,7 @@ async function testFormat(tplId) {
     const outside = target.t0 > 1 ? 0 : (target.t0 + target.d < dur - 0.2 ? dur - 0.1 : null);
     if (outside !== null) await page.evaluate((t) => NX.app.setT(t), outside);
     await page.waitForTimeout(400);
-    const selOk = await clickRowBtn(target.label, 'Select');
+    const selOk = await clickRowBtnExact(rowLabelOf(target), 'Select');
     await page.waitForTimeout(700);
     const tAfter = await page.evaluate(() => NX.app.S.t);
     out.selectClicked = selOk;
@@ -358,9 +358,42 @@ async function testFormat(tplId) {
   return out;
 }
 
-const FORMATS = ['fire', 'chef', 'rush', 'ticket', 'icons', 'afterhours', 'burger', 'sushi', 'cheese', 'pour', 'menuedit', 'street', 'latenight', 'fresh', 'catering', 'brunch',
-  'blueprint', 'salon', 'barber', 'vreveal', 'event', 'pdrop', 'expert',
-  'crew', 'timeline', 'glowup', 'swatch', 'shine', 'garage', 'party', 'venue', 'arrivals', 'flashsale', 'tips', 'clientstory'];
+// Extended 2026-11-25 for the 137 newly shipped formats (estate 16 + trade 19 + tail 102),
+// plus the 16 food formats and 15 sampled chunk-1/brand formats carried over from the previously
+// pushed script (168 registry ids total). The remaining chunk-1 factory formats were never
+// live-scripted by id; the static harness (.diagnosis/verify-elements.mjs) remains the 183/183 source of truth.
+// TPL ids (not harness 'v' values): estate sig/jlisted/openhouse/pricedrop/sold/hood/tour/agent,
+// aerial/residence/journal/development/comingsoon/lease/luxury/commercial; tail sig wall/pick/dayinlife/...,
+// site sitedrop/sitedroplap/sitedropfull/siteglow/siteoldnew/sitenone, v2 spot/thisor/upgrade,
+// x expand/stories, edit review, kin service/drive/team, n1 gallery/trailer, n2 signs/listed/chat/questions,
+// hol hgreet/hspecial/hhours/hcount. Batch via FORMATS env (comma list) + BATCH env (result suffix);
+// SKIP_REG=1 skips the regression/drag sections (cleanup still runs per batch).
+const ALL_FORMATS = [
+  'sig', 'jlisted', 'openhouse', 'pricedrop', 'sold', 'hood', 'tour', 'agent',
+  'aerial', 'residence', 'journal', 'development', 'comingsoon', 'lease', 'luxury', 'commercial',
+  'blueprint', 'salon', 'barber', 'vreveal', 'event', 'pdrop', 'expert', 'crew',
+  'timeline', 'glowup', 'swatch', 'shine', 'garage', 'party', 'venue', 'arrivals',
+  'flashsale', 'tips', 'clientstory', 'wall', 'pick', 'dayinlife', 'oneword', 'pov',
+  'notes', 'numbers', 'spotlight', 'rate', 'reply', 'episode', 'loop', 'banner',
+  'cinema', 'ticker', 'split', 'lower3', 'postcard', 'textfill', 'kinetic', 'shapes',
+  'wordswap', 'sting', 'ba', 'top3', 'myth', 'reveal', 'process', 'menu',
+  'dish', 'special', 'herox', 'specialx', 'combox', 'chalkx', 'bax', 'thermox',
+  'pizzax', 'heatx', 'papelx', 'recipex', 'stainx', 'nightx', 'checkx', 'plansx',
+  'vanx', 'relistx', 'resignx', 'blueprintx', 'redoorx', 'bbpolex', 'bbchairx', 'neonx',
+  'beadx', 'pressx', 'mockx', 'cardsx', 'flyerx', 'glossx', 'filterx', 'deliverx',
+  'pxstart', 'pxquest', 'pxover', 'pxboss', 'pxcoin', 'pxba', 'pxbf', 'pxthanks',
+  'pxloot', 'pxcab', 'pxhud', 'pxtype', 'pxscores', 'pxselect', 'pxvs', 'pxtokens',
+  'sitedrop', 'sitedroplap', 'sitedropfull', 'siteglow', 'siteoldnew', 'sitenone', 'spot', 'thisor',
+  'upgrade', 'expand', 'stories', 'review', 'service', 'drive', 'team', 'gallery',
+  'trailer', 'signs', 'listed', 'chat', 'questions', 'hgreet', 'hspecial', 'hhours',
+  'hcount',
+  // food formats (chunks 1-3) — carried over from the previously pushed script so they are not dropped:
+  'fire', 'chef', 'rush', 'ticket', 'icons', 'afterhours', 'burger', 'sushi',
+  'cheese', 'pour', 'menuedit', 'street', 'latenight', 'fresh', 'catering', 'brunch',
+  // sampled chunk-1/brand formats — live-verified in chunks 1-2 (walkx_h has extra dup/del/reset checks below):
+  'walkx_h', 'wipex_h', 'lensx', 'listx', 'ringx', 'showx', 'searchx', 'mapx',
+  'bo_frame', 'bo_headline', 'bo_contact', 'bo_message', 'bo_side', 'bo_special', 'bo_offer',];
+const FORMATS = process.env.FORMATS ? process.env.FORMATS.split(',').filter(Boolean) : ALL_FORMATS;
 // flashsale is K9-gated to non-DPG brands (discount): run it under Webflix, then switch back to DPG.
 const switchBrand = async (name) => {
   await boot();
@@ -382,6 +415,8 @@ for (const f of FORMATS) {
 }
 
 // ---- regression: 5 real projects, frames at 3 timestamps ----
+const reg = {}, dragRes = {};
+if (!process.env.SKIP_REG) {
 console.log('\n=== REGRESSION (5 real projects) ===');
 async function checkProject(id, slug) {
   const mark = errs.length;
@@ -413,7 +448,6 @@ async function checkProject(id, slug) {
   console.log((ok ? 'PASS ' : 'FAIL ') + slug + ' frames=' + JSON.stringify(frames) + ' newErrs=' + newErrs.length);
   return ok;
 }
-const reg = {};
 reg.poolside = await checkProject('p70be0jxy1lo', 'poolside_walkx');
 reg.recentRingx = await checkProject('ptv2z65o40bg', 'recent_ringx');
 reg.reveal = await checkProject('ps1udw60wd08', 'reveal_wipex');
@@ -430,7 +464,6 @@ reg.webflix = await checkProject('pmnqy2g5i0em', 'webflix_showcase');
 
 // ---- free-edit drag spot-check (snap guide + group drag + one undo) ----
 console.log('\n=== FREE-EDIT DRAG SPOT-CHECK ===');
-const dragRes = {};
 try {
   await boot();
   await page.evaluate(() => { document.getElementById('newEditBtn').click(); });
@@ -533,6 +566,7 @@ try {
     && postUndo.layerB.x === pre.layerB.x && postUndo.layerB.y === pre.layerB.y;
   console.log('DRAG: snapGuide=' + dragRes.snapGuide + ' dragAMoved=' + dragRes.dragAMoved + ' multiFormed=' + dragRes.multiFormed + ' multi=' + JSON.stringify(dragRes.multiAfterShift) + ' groupMovedBoth=' + dragRes.groupMovedBoth + ' oneUndoRestoredBoth=' + dragRes.oneUndoRestoredBoth);
 } catch (e) { dragRes.err = String(e).slice(0, 300); console.log('DRAG ERR: ' + dragRes.err); }
+} // end SKIP_REG gate (regression + free-edit drag)
 
 // ---- cleanup: delete every scratch project via the app's single-doc delete ----
 console.log('\n=== CLEANUP (' + scratchIds.length + ' scratch projects) ===');
@@ -555,6 +589,6 @@ console.log('\n=== FAILED REQUESTS (' + failedReqs.length + ') ===');
 for (const f of failedReqs.slice(0, 10)) console.log(' ', f);
 console.log('=== ALL console errors (' + errs.length + ') ===');
 for (const e of errs.slice(0, 10)) console.log(' ', e);
-fs.writeFileSync(OUT + '/verify-elements-live-result.json', JSON.stringify({ results, reg, dragRes, deleted, consoleErrors: errs.length, failedRequests: failedReqs.length, scratchIds }, null, 2));
+fs.writeFileSync(OUT + '/verify-elements-live-result-' + (process.env.BATCH || 'all') + '.json', JSON.stringify({ results, reg, dragRes, deleted, consoleErrors: errs.length, failedRequests: failedReqs.length, scratchIds }, null, 2));
 await browser.close();
 console.log('DONE');
