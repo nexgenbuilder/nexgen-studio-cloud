@@ -18,6 +18,17 @@ STUDIO_REG['brand'] = (() => {
   const V = QS.get('v') || 'frame';
   const G = K3.G, D = K3.D, up = K7.up, seg = K7.seg;
   const DPG = K5.isDPG();
+  // Per-element model (b): same contract as tpl_nx9.js — when this template
+  // runs as a nested block inside a free edit, tpl_free sets
+  // window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // function and clears it after. The template captures that (live) object
+  // at build time; render() reads positions from it. No `el` (standalone
+  // projects, old blocks) -> EL is null and every position below falls back
+  // to the original hardcoded value, so rendering is byte-for-byte the old path.
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const SECT = { restaurant: 'food', realestate: 'estate', hardscape: 'home', fencing: 'home', landscaping: 'home', roofing: 'home', cleaning: 'home', pressure: 'home', barbershop: 'beauty', salon: 'beauty', detailing: 'auto', events: 'hosp', retail: 'retail', pro: 'pro' };
   const SEC = SECT[BRAND.industry] || (BRAND.parts ? 'home' : 'general');
   const BARBER = /barber/i.test(BRAND.industry || '');
@@ -100,32 +111,37 @@ STUDIO_REG['brand'] = (() => {
   // ------------------------------------------------------------------ modules: top
   function logo(t, x, y, maxW, maxH, t0) { const p = seg(t, t0, 0.6); if (p <= 0 || VID.collecting) return; let [lw, lh] = logoBox(maxW); if (lh > maxH) { lw *= maxH / lh; lh = maxH; } const c = G(), s = lerp(1.08, 1, E.outC(p)); c.globalAlpha = E.outC(clamp(p * 1.6)); c.translate(x, y); c.scale(s, s); c.drawImage(LOGO(), -lw / 2, -lh / 2, lw, lh); D(); return [lw, lh]; }
   function topLogo(t, o) {
-    o = o || {}; logo(t, W / 2 + SIDE / 2, o.y || 350, o.lw || 560, o.lh || 160, 0.3);
+    o = o || {}; const lp = posOf(elP('logo'), [W / 2 + SIDE / 2, o.y || 350]);
+    logo(t, lp[0], lp[1], o.lw || 560, o.lh || 160, 0.3);
     if (o.tag !== false && TAGLINE) { const st = { bold: { fam: 'Mont', w: 800, col: ACC }, warm: { fam: 'Hand', w: 700, col: ACC, ls: 0 }, luxe: { fam: 'Mont', w: 500, col: SUBC, ls: 7 }, sharp: { fam: 'Bebas', w: 400, col: ACC, ls: 4 }, sleek: { fam: 'Mono', w: 700, col: ACC, ls: 3 }, clean: { fam: 'Mont', w: 600, col: SUBC } }[LOOK];
-      const tg = LOOK === 'warm' ? TAGLINE.charAt(0) + TAGLINE.slice(1).toLowerCase() : TAGLINE; txt(tg, W / 2 + SIDE / 2, o.ty || 488, LOOK === 'warm' ? 48 : LOOK === 'sharp' ? 46 : 30, Object.assign({ a: fa(t, 0.6), maxW: 900 - SIDE }, st)); }
+      const tg = LOOK === 'warm' ? TAGLINE.charAt(0) + TAGLINE.slice(1).toLowerCase() : TAGLINE, tp = posOf(elP('tagline'), [W / 2 + SIDE / 2, o.ty || 488]);
+      txt(tg, tp[0], tp[1], LOOK === 'warm' ? 48 : LOOK === 'sharp' ? 46 : 30, Object.assign({ a: fa(t, 0.6), maxW: 900 - SIDE }, st)); }
   }
   function topHeadline(t, text, kick) {
     const st = { bold: { slot: 'Mont', wt: 900, size: 96, track: -10 }, warm: { slot: 'Corm', wt: 600, ital: true, size: 100 }, luxe: { slot: 'Corm', wt: 500, size: 88, track: 60 }, sharp: { slot: 'Bebas', size: 130, track: 20 }, sleek: { slot: 'Mont', wt: 800, ital: true, size: 90 }, clean: { slot: 'Mont', wt: 800, size: 92, track: -10 } }[LOOK];
-    if (kick) txt(kick, W / 2, 300, 26, { fam: 'Mono', w: 700, col: ACC, ls: 6, a: fa(t, 0.45) });
-    type(L8(Object.assign({ text, y: 432, w: 940, lead: 0.98, color: INK, anim: { in: LOOK === 'luxe' ? 'blur' : LOOK === 'sharp' ? 'stagger' : 'wordup', out: 'none' }, t0: 0.5 }, st)), t);
+    const kp = posOf(elP('kick'), [W / 2, 300]);
+    if (kick) txt(kick, kp[0], kp[1], 26, { fam: 'Mono', w: 700, col: ACC, ls: 6, a: fa(t, 0.45) });
+    const hp = posOf(elP('headline'), [W / 2, 432]);
+    type(L8(Object.assign({ text, x: hp[0], y: hp[1], w: 940, lead: 0.98, color: INK, anim: { in: LOOK === 'luxe' ? 'blur' : LOOK === 'sharp' ? 'stagger' : 'wordup', out: 'none' }, t0: 0.5 }, st)), t);
   }
   // ------------------------------------------------------------------ modules: bottom
   function contactBlock(t, y, o) {
-    o = o || {}; const ph = CONTACT.phone, web = CONTACT.web ? up(CONTACT.web) : '', a1 = fa(t, 0.7), a2 = fa(t, 0.9);
+    o = o || {}; const cp = posOf(elP('contact'), [W / 2, y]), dx = cp[0] - W / 2; y = cp[1];   // the whole block moves as one; dx shifts every centred line
+    const ph = CONTACT.phone, web = CONTACT.web ? up(CONTACT.web) : '', a1 = fa(t, 0.7), a2 = fa(t, 0.9);
     if (LOOK === 'bold' && ph && !VID.collecting) {   // the phone in an angled accent slab, area and website beside
-      const X0 = SIDE, c = G(), w0 = Math.min(560 - X0 / 2, textW(ph, F(800, 50, 'Mont'), 1) + 140), k = E.outC(seg(t, 0.6, 0.5)); c.fillStyle = OR; c.beginPath(); c.moveTo(X0, y - 52); c.lineTo(X0 + w0 * k, y - 52); c.lineTo(X0 + w0 * k - 46, y + 52); c.lineTo(X0, y + 52); c.closePath(); c.fill(); D();
+      const X0 = SIDE + dx, c = G(), w0 = Math.min(560 - X0 / 2, textW(ph, F(800, 50, 'Mont'), 1) + 140), k = E.outC(seg(t, 0.6, 0.5)); c.fillStyle = OR; c.beginPath(); c.moveTo(X0, y - 52); c.lineTo(X0 + w0 * k, y - 52); c.lineTo(X0 + w0 * k - 46, y + 52); c.lineTo(X0, y + 52); c.closePath(); c.fill(); D();
       ico(PH, X0 + 70, y, 40, K8.onCol(OR), a1, true); txt(ph, X0 + 108, y + 17, 50, { fam: 'Mont', w: 800, col: K8.onCol(OR), align: 'left', ls: 1, a: a1, maxW: w0 - 160 });
       const rx = X0 + w0 + 26, rw = 965 - rx; let yy = AREA && web ? y - 14 : y + 9; if (AREA) { ico(PIN, rx + 14, yy - 10, 28, ACC, a2); txt(AREA, rx + 42, yy, 27, { align: 'left', maxW: rw - 42, a: a2, ls: 2 }); yy += 48; } if (web) { ico(GLOBE, rx + 14, yy - 10, 28, ACC, a2); txt(web, rx + 42, yy, 27, { align: 'left', maxW: rw - 42, a: a2, ls: 2 }); }
       y += 98;
     } else {
-      if (ph) { const big = o.big || 56, tw = textW(ph, F(TY.sw, big, TY.s), 1); ico(PH, W / 2 - tw / 2 - 34, y - big * 0.32, big * 0.7, ACC, a1, true); txt(ph, W / 2 + 18, y, big, { a: a1, ls: 1 }); y += 66; } else y += 10;
-      const row = [AREA, web].filter(Boolean); if (row.length) { txt(row.join('   ·   '), W / 2, y, 26, { col: SUBC, a: a2, ls: 3 }); y += 46; }
+      if (ph) { const big = o.big || 56, tw = textW(ph, F(TY.sw, big, TY.s), 1); ico(PH, W / 2 + dx - tw / 2 - 34, y - big * 0.32, big * 0.7, ACC, a1, true); txt(ph, W / 2 + dx + 18, y, big, { a: a1, ls: 1 }); y += 66; } else y += 10;
+      const row = [AREA, web].filter(Boolean); if (row.length) { txt(row.join('   ·   '), W / 2 + dx, y, 26, { col: SUBC, a: a2, ls: 3 }); y += 46; }
     }
-    if (HOURS) { ico(CLOCK, W / 2 - textW(HOURS, F(TY.sw, 24, TY.s), 3) / 2 - 22, y - 8, 24, ACC, a2); txt(HOURS, W / 2 + 14, y, 24, { col: SUBC, a: a2, ls: 3 }); y += 44; }
+    if (HOURS) { ico(CLOCK, W / 2 + dx - textW(HOURS, F(TY.sw, 24, TY.s), 3) / 2 - 22, y - 8, 24, ACC, a2); txt(HOURS, W / 2 + dx + 14, y, 24, { col: SUBC, a: a2, ls: 3 }); y += 44; }
     return y;   // the next free line
   }
-  function licTop(t) { if (CONTACT.lic) txt(CONTACT.lic, W / 2 + SIDE / 2, BAND[1] - 18, 19, { fam: 'Mont', w: 600, col: rgbaOf(INK, 0.55), a: fa(t, 1.0), ls: 3 }); }
-  function ctaBtn(t, y, t0) { gfx({ kind: 'mg', type: 'cta', text: CONTACT.cta || 'BOOK NOW', color: tone === 'brand' ? (K8.lum(OR) > 0.36 ? 'ink' : 'white') : 'accent', x: 540, y, t0, d: 60 }, t); }
+  function licTop(t) { if (CONTACT.lic) { const lp = posOf(elP('lic'), [W / 2 + SIDE / 2, BAND[1] - 18]); txt(CONTACT.lic, lp[0], lp[1], 19, { fam: 'Mont', w: 600, col: rgbaOf(INK, 0.55), a: fa(t, 1.0), ls: 3 }); } }
+  function ctaBtn(t, y, t0) { const cp = posOf(elP('cta'), [540, y]); gfx({ kind: 'mg', type: 'cta', text: CONTACT.cta || 'BOOK NOW', color: tone === 'brand' ? (K8.lum(OR) > 0.36 ? 'ink' : 'white') : 'accent', x: cp[0], y: cp[1], t0, d: 60 }, t); }
   // ------------------------------------------------------------------ the layouts
   const okOffer = K9.allowed('discount'), okPrice = K9.allowed('pricetag');
   let HEAD, KICK, MSG, DISH, PRICE, OFFER, OFFSUB, LABEL;
@@ -142,26 +158,32 @@ STUDIO_REG['brand'] = (() => {
   const SIDE_T = V === 'side' ? TX('side', up(BRAND.name && BRAND.name.length <= 22 ? BRAND.name : (BRAND.short || BRAND.name)), { label: 'Side ribbon text', group: 'Side banner', upper: true, max: 22 }) : '';
   function sideRibbon(t) {
     if (VID.collecting) return; const p = E.outC(seg(t, 0.15, 0.6)), c = G(); c.fillStyle = OR; c.fillRect(-20, 0, (SIDE + 20) * p, H); D();
-    if (p > 0.6) { const c2 = G(), s = SIDE_T + (CONTACT.phone ? '   ·   ' + CONTACT.phone : ''), f = F(800, Math.min(32, fitLs(s, 800, 1300, 32, 'Mont', 6)), 'Mont'); c2.globalAlpha = fa(t, 0.6); c2.translate(SIDE / 2 + 16, BAND[1] + BAND[3] / 2); c2.rotate(-Math.PI / 2); c2.font = f; c2.letterSpacing = '6px'; c2.fillStyle = K8.onCol(OR); c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(s, 0, 0); D(); }
+    if (p > 0.6) { const c2 = G(), s = SIDE_T + (CONTACT.phone ? '   ·   ' + CONTACT.phone : ''), f = F(800, Math.min(32, fitLs(s, 800, 1300, 32, 'Mont', 6)), 'Mont'), rp = posOf(elP('ribbon'), [SIDE / 2 + 16, BAND[1] + BAND[3] / 2]); c2.globalAlpha = fa(t, 0.6); c2.translate(rp[0], rp[1]); c2.rotate(-Math.PI / 2); c2.font = f; c2.letterSpacing = '6px'; c2.fillStyle = K8.onCol(OR); c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(s, 0, 0); D(); }
+  }
+  function msgGeom(b) {   // the message panel's box, honouring a dragged anchor (centre x, top y); also used by elements()
+    const lsS = MSUB && fitLs(MSUB, 600, 820, 26, 'Mont', 4) < 20 ? 1 : 4, f = F(900, Math.min(66, fitLs(MSG, 900, 820, 66, 'Mont', 2)), 'Mont'), f2 = F(600, Math.min(26, fitLs(MSUB || ' ', 600, 820, 26, 'Mont', lsS)), 'Mont'), w0 = Math.min(930, Math.max(textW(MSG, f, 2), MSUB ? textW(MSUB, f2, lsS) : 0) + 100), h0 = MSUB ? 170 : 120;
+    const mp = posOf(elP('msg'), [540, b[1] + b[3] - h0 - 40]);
+    const x0 = Math.max(40, Math.min(970 - w0, mp[0] - w0 / 2));
+    return { x0, y0: mp[1], w0, h0, f, f2, lsS, ax: mp[0], ay: mp[1] };
   }
   function msgPanel(t, b) {   // the centre overlay: a translucent panel over the footage's lower edge, an accent rule, the message and services
-    const p = E.outC(seg(t, 0.9, 0.5)); if (p <= 0 || VID.collecting) return; const lsS = MSUB && fitLs(MSUB, 600, 820, 26, 'Mont', 4) < 20 ? 1 : 4, f = F(900, Math.min(66, fitLs(MSG, 900, 820, 66, 'Mont', 2)), 'Mont'), f2 = F(600, Math.min(26, fitLs(MSUB || ' ', 600, 820, 26, 'Mont', lsS)), 'Mont'), w0 = Math.min(930, Math.max(textW(MSG, f, 2), MSUB ? textW(MSUB, f2, lsS) : 0) + 100), h0 = MSUB ? 170 : 120;
-    const x0 = Math.max(40, Math.min(970 - w0, W / 2 - w0 / 2)), y0 = b[1] + b[3] - h0 - 40, c = G(); c.globalAlpha = p; c.fillStyle = 'rgba(8,8,12,0.72)'; c.fillRect(x0, y0 + (1 - p) * 30, w0, h0); c.fillStyle = OR; c.fillRect(x0 + 30, y0 + 28 + (1 - p) * 30, 6, h0 - 56); D();
+    const p = E.outC(seg(t, 0.9, 0.5)); if (p <= 0 || VID.collecting) return; const { x0, y0, w0, h0, f, f2, lsS } = msgGeom(b), c = G(); c.globalAlpha = p; c.fillStyle = 'rgba(8,8,12,0.72)'; c.fillRect(x0, y0 + (1 - p) * 30, w0, h0); c.fillStyle = OR; c.fillRect(x0 + 30, y0 + 28 + (1 - p) * 30, 6, h0 - 56); D();
     K7.txt(MSG, x0 + 62, y0 + (MSUB ? 82 : 82) + (1 - p) * 30, f, WHT, { a: p, ls: 2 }); if (MSUB) K7.txt(MSUB, x0 + 62, y0 + 132 + (1 - p) * 30, f2, WA(0.85), { a: p * fa(t, 1.2), ls: lsS });
   }
   function specialBlock(t) {
-    const y = BY1 + 60; txt(LABEL, W / 2, y, 26, { fam: 'Mono', w: 700, col: ACC, ls: 6, a: fa(t, 0.6) });
-    if (DISH) type(L8({ text: DISH, slot: LOOK === 'warm' || LOOK === 'luxe' ? 'Corm' : TY.d, wt: LOOK === 'warm' ? 600 : TY.w, ital: LOOK === 'warm', size: 76, w: PRICE ? 640 : 940, x: PRICE ? 430 : 540, y: y + 80, anim: { in: 'blur', out: 'none' }, t0: 0.7 }), t);
+    const y = BY1 + 60;
+    const lb = posOf(elP('label'), [W / 2, y]); txt(LABEL, lb[0], lb[1], 26, { fam: 'Mono', w: 700, col: ACC, ls: 6, a: fa(t, 0.6) });
+    if (DISH) { const dp = posOf(elP('dish'), [PRICE ? 430 : 540, y + 80]); type(L8({ text: DISH, slot: LOOK === 'warm' || LOOK === 'luxe' ? 'Corm' : TY.d, wt: LOOK === 'warm' ? 600 : TY.w, ital: LOOK === 'warm', size: 76, w: PRICE ? 640 : 940, x: dp[0], y: dp[1], anim: { in: 'blur', out: 'none' }, t0: 0.7 }), t); }
     else K7.need('your special', W / 2, y + 84, 26, { align: 'center', col: INK });
-    if (PRICE) { const p = E.outBack(seg(t, 1.1, 0.4)); if (p > 0 && !VID.collecting) { const c = G(), f = F(900, 56, 'Mont'), w0 = textW(PRICE, f, 1) + 60; c.globalAlpha = clamp(p); c.translate(860, y + 72); c.scale(p, p); c.rotate(-0.05); c.fillStyle = OR; c.beginPath(); c.roundRect(-w0 / 2, -46, w0, 92, 14); c.fill(); D(); K7.txt(PRICE, 860, y + 92, f, K8.onCol(OR), { align: 'center', a: clamp(p), ls: 1 }); } }
-    const row = [CONTACT.phone, CONTACT.web ? up(CONTACT.web) : ''].filter(Boolean); if (row.length) txt(row.join('   ·   '), W / 2, y + 172, 30, { col: SUBC, a: fa(t, 1.2), ls: 2 });
+    if (PRICE) { const pp = posOf(elP('price'), [860, y + 72]), p = E.outBack(seg(t, 1.1, 0.4)); if (p > 0 && !VID.collecting) { const c = G(), f = F(900, 56, 'Mont'), w0 = textW(PRICE, f, 1) + 60; c.globalAlpha = clamp(p); c.translate(pp[0], pp[1]); c.scale(p, p); c.rotate(-0.05); c.fillStyle = OR; c.beginPath(); c.roundRect(-w0 / 2, -46, w0, 92, 14); c.fill(); D(); K7.txt(PRICE, pp[0], pp[1] + 20, f, K8.onCol(OR), { align: 'center', a: clamp(p), ls: 1 }); } }
+    const row = [CONTACT.phone, CONTACT.web ? up(CONTACT.web) : ''].filter(Boolean); if (row.length) { const op = posOf(elP('order'), [W / 2, y + 172]); txt(row.join('   ·   '), op[0], op[1], 30, { col: SUBC, a: fa(t, 1.2), ls: 2 }); }
   }
   function offerBlock(t) {
     const y = BY1 + 72;
-    if (!okOffer) { txt('OFFERS ARE OFF FOR THIS BRAND KIT', W / 2, y, 24, { fam: 'Mono', w: 700, col: SUBC, ls: 4 }); contactBlock(t, y + 90, { big: 40 }); return; }
-    if (OFFER) type(L8({ text: OFFER, slot: TY.d, wt: TY.w, size: LOOK === 'sharp' ? 110 : 80, w: 940, y, color: tone === 'light' ? OR : INK, anim: { in: 'punch', out: 'none', loop: 'pulse', loopAmt: 0.25 }, t0: 0.7 }), t);
+    if (!okOffer) { const np = posOf(elP('offnote'), [W / 2, y]); txt('OFFERS ARE OFF FOR THIS BRAND KIT', np[0], np[1], 24, { fam: 'Mono', w: 700, col: SUBC, ls: 4 }); contactBlock(t, y + 90, { big: 40 }); return; }
+    if (OFFER) { const op = posOf(elP('offer'), [W / 2, y]); type(L8({ text: OFFER, slot: TY.d, wt: TY.w, size: LOOK === 'sharp' ? 110 : 80, w: 940, x: op[0], y: op[1], color: tone === 'light' ? OR : INK, anim: { in: 'punch', out: 'none', loop: 'pulse', loopAmt: 0.25 }, t0: 0.7 }), t); }
     else K7.need('your offer', W / 2, y, 30, { align: 'center', col: INK });
-    if (OFFSUB) txt(OFFSUB, W / 2, y + 70, 26, { col: SUBC, a: fa(t, 1.0), ls: 4 });
+    if (OFFSUB) { const sp = posOf(elP('offsub'), [W / 2, y + 70]); txt(OFFSUB, sp[0], sp[1], 26, { col: SUBC, a: fa(t, 1.0), ls: 4 }); }
     ctaBtn(t, y + 148, 1.1);
   }
   // ------------------------------------------------------------------ render
@@ -173,17 +195,73 @@ STUDIO_REG['brand'] = (() => {
     bars(t, full);
     if (V === 'side') sideRibbon(t);
     if (V === 'frame') { topLogo(t); contactBlock(t, BY1 + 76); }
-    else if (V === 'headline') { topHeadline(t, HEAD, KICK); ctaBtn(t, BY1 + 82, 0.8); const row = [CONTACT.phone, CONTACT.web ? up(CONTACT.web) : ''].filter(Boolean); if (row.length) txt(row.join('   ·   '), W / 2, BY1 + 214, 30, { col: SUBC, a: fa(t, 1.1), ls: 2 }); }
-    else if (V === 'contact') { topLogo(t, { y: 390, lw: 460, lh: 140, tag: false }); txt(TAGLINE, W / 2, 506, 24, { col: SUBC, ls: 5, a: fa(t, 0.6) }); ctaBtn(t, BY1 + 72, 0.8); contactBlock(t, BY1 + 180, { big: 50 }); }
+    else if (V === 'headline') { topHeadline(t, HEAD, KICK); ctaBtn(t, BY1 + 82, 0.8); const row = [CONTACT.phone, CONTACT.web ? up(CONTACT.web) : ''].filter(Boolean); if (row.length) { const rp = posOf(elP('contactrow'), [W / 2, BY1 + 214]); txt(row.join('   ·   '), rp[0], rp[1], 30, { col: SUBC, a: fa(t, 1.1), ls: 2 }); } }
+    else if (V === 'contact') { topLogo(t, { y: 390, lw: 460, lh: 140, tag: false }); const tp = posOf(elP('tagline'), [W / 2, 506]); txt(TAGLINE, tp[0], tp[1], 24, { col: SUBC, ls: 5, a: fa(t, 0.6) }); ctaBtn(t, BY1 + 72, 0.8); contactBlock(t, BY1 + 180, { big: 50 }); }
     else if (V === 'message') { topLogo(t); msgPanel(t, full ? [0, BAND[1], W, BAND[3]] : BAND); contactBlock(t, BY1 + 76); }
     else if (V === 'side') { topLogo(t, { y: 360 }); contactBlock(t, BY1 + 86); }
     else if (V === 'special') { topLogo(t, { tag: true }); specialBlock(t); }
     else if (V === 'offer') { topHeadline(t, HEAD, up(BRAND.short || BRAND.name)); offerBlock(t); }
     licTop(t);
   }
+  // ------------------------------------------------------------------ elements: every visual element, selectable + draggable in the editor
+  // Same descriptor contract as tpl_nx9.js: {id, kind:'pos', label, x, y, t0, d, box, dup:false, del:false}.
+  // The x/y reported here are the same anchors render() reads through elP(), so the list cannot drift from the picture.
+  // Brand templates have no callouts, so nothing here is duplicable or deletable (the editor only offers those on callouts).
+  function elements() {
+    const cx = W / 2 + SIDE / 2;   // centre of the top area (the side ribbon shifts it right)
+    const ctaW = t => Math.min(900, String(t || 'BOOK NOW').length * 30 + 190);   // rough K9 cta width, for the hit box only
+    const mk = (id, label, dx, dy, t0, boxFn) => { const p = posOf(elP(id), [dx, dy]); return { id, kind: 'pos', label, x: p[0], y: p[1], t0, d: DUR - t0, box: boxFn(p), dup: false, del: false }; };
+    const lic = CONTACT.lic ? [mk('lic', CONTACT.lic, cx, BAND[1] - 18, 1.0, p => [p[0] - 450, p[1] - 19, 900, 38])] : [];
+    const logoEl = (y, lw, lh) => mk('logo', 'Logo', cx, y, 0.3, p => [p[0] - lw / 2, p[1] - lh / 2, lw, lh]);
+    const tagEl = (x, y) => mk('tagline', TAGLINE || 'Tagline', x, y, 0.6, p => [p[0] - 450, p[1] - 30, 900, 60]);
+    const contactEl = y => mk('contact', 'Contact block', W / 2, y, 0.7, p => [p[0] - 500, p[1] - 52, 1000, 240]);
+    const ctaEl = (y, t0) => mk('cta', CONTACT.cta || 'BOOK NOW', W / 2, y, t0, p => { const w = ctaW(CONTACT.cta); return [p[0] - w / 2, p[1] - 70, w, 200]; });
+    const hasRow = !!(CONTACT.phone || CONTACT.web);
+    if (V === 'frame') return [logoEl(350, 560, 160)].concat(TAGLINE ? [tagEl(cx, 488)] : []).concat([contactEl(BY1 + 76)]).concat(lic);
+    if (V === 'headline') { const els = [];
+      if (KICK) els.push(mk('kick', KICK, W / 2, 300, 0.45, p => [p[0] - 450, p[1] - 26, 900, 52]));
+      els.push(mk('headline', HEAD || 'Headline', W / 2, 432, 0.5, p => [p[0] - 470, p[1] - 110, 940, 220]), ctaEl(BY1 + 82, 0.8));
+      if (hasRow) els.push(mk('contactrow', 'Phone · website', W / 2, BY1 + 214, 1.1, p => [p[0] - 450, p[1] - 30, 900, 60]));
+      return els.concat(lic); }
+    if (V === 'contact') { const els = [logoEl(390, 460, 140)];
+      if (TAGLINE) els.push(tagEl(W / 2, 506));
+      els.push(ctaEl(BY1 + 72, 0.8), contactEl(BY1 + 180));
+      return els.concat(lic); }
+    if (V === 'message') { const els = [logoEl(350, 560, 160)];
+      if (TAGLINE) els.push(tagEl(cx, 488));
+      const mg = msgGeom(BAND);
+      els.push({ id: 'msg', kind: 'pos', label: MSG || 'Main message', x: mg.ax, y: mg.ay, t0: 0.9, d: DUR - 0.9, box: [mg.x0, mg.y0, mg.w0, mg.h0], dup: false, del: false });
+      els.push(contactEl(BY1 + 76));
+      return els.concat(lic); }
+    if (V === 'side') { const els = [mk('ribbon', SIDE_T || 'Side ribbon', SIDE / 2 + 16, BAND[1] + BAND[3] / 2, 0.15, () => [0, BAND[1], SIDE, BAND[3]]), logoEl(360, 560, 160)];
+      if (TAGLINE) els.push(tagEl(cx, 488));
+      els.push(contactEl(BY1 + 86));
+      return els.concat(lic); }
+    if (V === 'special') { const els = [logoEl(350, 560, 160)];
+      if (TAGLINE) els.push(tagEl(cx, 488));
+      els.push(mk('label', LABEL || 'Label', W / 2, BY1 + 60, 0.6, p => [p[0] - 450, p[1] - 26, 900, 52]));
+      els.push(mk('dish', DISH || 'The special', PRICE ? 430 : 540, BY1 + 140, 0.7, p => [p[0] - (PRICE ? 320 : 470), p[1] - 76, PRICE ? 640 : 940, 152]));
+      if (okPrice && PRICE) els.push(mk('price', PRICE, 860, BY1 + 132, 1.1, p => { const w0 = textW(PRICE, F(900, 56, 'Mont'), 1) + 60; return [p[0] - w0 / 2, p[1] - 46, w0, 92]; }));
+      if (hasRow) els.push(mk('order', 'Phone · website', W / 2, BY1 + 232, 1.2, p => [p[0] - 450, p[1] - 30, 900, 60]));
+      return els.concat(lic); }
+    if (V === 'offer') { const els = [];
+      const kickT = up(BRAND.short || BRAND.name);
+      els.push(mk('kick', kickT || 'Kicker', W / 2, 300, 0.45, p => [p[0] - 450, p[1] - 26, 900, 52]));
+      els.push(mk('headline', HEAD || 'Headline', W / 2, 432, 0.5, p => [p[0] - 470, p[1] - 110, 940, 220]));
+      if (okOffer) {
+        els.push(mk('offer', OFFER || 'Your offer', W / 2, BY1 + 72, 0.7, p => [p[0] - 470, p[1] - 110, 940, 220]));
+        if (OFFSUB) els.push(mk('offsub', OFFSUB, W / 2, BY1 + 142, 1.0, p => [p[0] - 450, p[1] - 26, 900, 52]));
+        els.push(ctaEl(BY1 + 220, 1.1));
+      } else {
+        els.push(mk('offnote', 'Offers off for this brand', W / 2, BY1 + 72, 0, p => [p[0] - 450, p[1] - 24, 900, 48]));
+        els.push(contactEl(BY1 + 162));
+      }
+      return els.concat(lic); }
+    return [];
+  }
   const MUS = { frame: ['pulse', 112], headline: ['drive', 104], contact: ['minimal', 100], message: ['build', 108], side: ['indie', 100], special: ['lofi', 90], offer: ['bounce', 120] }[V] || ['pulse', 112];
   DIR = {
-    dur: DUR, bg: BARC, bgSwap: true, finish: { vig: 0, grain: 0.05 }, edl: [], shakes: [], preload: () => K3.init(), render,
+    dur: DUR, bg: BARC, bgSwap: true, finish: { vig: 0, grain: 0.05 }, edl: [], shakes: [], preload: () => K3.init(), render, elements,
     cues() { const ev = [['whoosh', 0.02, 0.32, -0.2], ['whoosh', 0.12, 0.3, 0.2], ['pop', 0.35, 0.28, 0], ['tick', 0.7, 0.22, -0.3], ['tick', 0.9, 0.22, 0.3]];
       for (let k = 1; k < N; k++) ev.push(['swish', k * SD - 0.12, 0.22, k % 2 ? 0.3 : -0.3]); if (V === 'offer' || V === 'headline' || V === 'contact') ev.push(['pop', 1.2, 0.25, 0]);
       return { dur: DUR, beds: [['music', 0, DUR, 0.95, { style: MUS[0], bpm: MUS[1], key: 0, end: DUR - 0.6 }]], events: ev }; },

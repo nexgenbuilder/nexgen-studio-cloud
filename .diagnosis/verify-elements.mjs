@@ -17,6 +17,7 @@ const PLAN = {
   'tpl_nx10.js': ['ringx', 'showx', 'flyx', 'cubex', 'logorev', 'headx'],
   'tpl_nx7.js': ['searchx', 'phonex', 'stackx', 'typex'],
   'tpl_nx8.js': ['mapx', 'feedx', 'calx', 'gridx', 'stingx', 'browserx'],
+  'tpl_brand.js': ['frame', 'headline', 'contact', 'message', 'side', 'special', 'offer'],
 };
 
 function makeSandbox(v) {
@@ -47,12 +48,18 @@ function makeSandbox(v) {
     F: () => '16px Mont',
     fitSize: (s, wt, maxW, maxS) => Math.min(maxS, 50),
     fit: (s, wt, fam, maxW, maxS, ls) => Math.min(maxS, 50),
+    fitLs: (s, wt, maxW, maxS) => Math.min(maxS, 50),
+    logoBox: w => [w, w * 0.4],
+    BACKDROP: fn => fn(),
     // --- engine kits (stubs; render() is never called) ---
-    K3: { init: () => {} },
+    K3: { init: () => {}, G: () => ctxProxy, D: () => {}, wholeIn: () => [0, 0, 1080, 608], clip: () => {},
+      shots: arr => { let t = 0; return arr.map(a => { const o = { c: a[0], in: a[1], start: t }; t += a[2]; return o; }); } },
     K4: { into: (k, fn) => fn() },
-    K7: { FAM: {} },
-    K8: { onCol: () => '#FFFFFF', IN: {} },
-    K9: { tx: () => {}, onCol: () => '#FFFFFF' },
+    K5: { isDPG: () => false },
+    K7: { FAM: {}, up: s => String(s == null ? '' : s).toUpperCase(), seg: (t, a, d) => Math.min(1, Math.max(0, (t - a) / d)), isVert: () => false, txt: () => {}, need: () => {} },
+    K8: { onCol: () => '#FFFFFF', lum: () => 0.5, xf: () => ({}), withLayer: (s, box, fn) => { if (fn) fn(); }, box: () => [0, 0, 100, 100], IN: {} },
+    K9: { tx: () => {}, onCol: () => '#FFFFFF', allowed: () => true, EL: {}, box: () => [0, 0, 100, 100], draw: () => {} },
+    KT: { run: () => {} },
     K13: { SPRING: x => x, SOFT: x => x, BOUNCY: x => x },
     K15: { draw: () => true },
     K16: { ok: false },
