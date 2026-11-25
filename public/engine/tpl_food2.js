@@ -18,6 +18,21 @@ STUDIO_REG['food2'] = (() => {
   const FM = K7.FAM[V] || K7.FAM.burger;
   if (!window.STUDIO) setBrandColors(FM.pal);
   const G = K3.G, D = K3.D, seg = K7.seg, mix = K7.mix, TAU = Math.PI * 2;
+  // Per-element model (b): same contract as tpl_nx9.js / tpl_brand.js — when
+  // this template runs as a nested block inside a free edit, tpl_free sets
+  // window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // function and clears it after. The template captures that (live) object
+  // at build time; render() reads positions from it. No `el` (standalone
+  // projects, old blocks) -> EL is null and every position below falls back
+  // to the original hardcoded value, so rendering is byte-for-byte the old path.
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
+  const mkEl = (id, label, dx, dy, t0, d, boxFn) => { const p = posOf(elP(id), [dx, dy]); return { id, kind: 'pos', label, x: p[0], y: p[1], t0, d, box: boxFn(p), dup: false, del: false }; };
+  // closing geometry (shared by close()): the ending line and CTA anchors, so
+  // elements() and close() can never drift from each other.
+  function closeGeom(o) { const y = o.y || 640, lh = logoBox(o.lw || 680)[1]; return { lineY: y + lh / 2 + 150, ctaY: y + lh / 2 + (o.ctaGap || 330) }; }
   const NONE = k => ['nofoot.' + k, 0];
   function shots(list, t0, group) {
     const S = K3.shots(list.map(([k, label, d, kind, ph]) => { const s = SHOT(k, NONE(k), { label, group: group || 'Footage', kind: kind || 'any', ph, d: d + 0.3 }); return [s[0], s[1], d]; }));
@@ -40,17 +55,18 @@ STUDIO_REG['food2'] = (() => {
     const ot = t - OUT, y = o.y || 640, [lw, lh] = logoBox(o.lw || 680), lp = seg(ot, o.logoAt || 0.2, 0.5);
     if (lp > 0 && !VID.collecting) { const c = G(), s = lerp(o.pop || 1.15, 1, E.outBack(clamp(lp))); c.globalAlpha = clamp(lp * 2.5); c.translate(W / 2, y); c.scale(s, s);
       if (o.glow) { c.shadowColor = o.glow; c.shadowBlur = 40; } c.drawImage(o.dark ? LOGO_LIGHT() : IMG.logoW, -lw / 2, -lh / 2, lw, lh); D(); }
-    if (o.line) type(L8(Object.assign({ text: o.line, x: 540, y: y + lh / 2 + 150, w: 980, t0: OUT + 0.75, d: 30, color: o.dark ? 'ink' : 'white' }, o.lineL || {})), t);
-    const cy = y + lh / 2 + (o.ctaGap || 330), cp = seg(ot, 1.5, 0.4);
-    if (o.cta === 'pill') gfx({ kind: 'mg', type: 'cta', text: CONTACT.cta, color: o.ctaCol || 'accent', x: 540, y: cy, t0: OUT + 1.4, d: 30 }, t);
+    if (o.line) { const cg = closeGeom(o), lp2 = o.lineEl ? posOf(elP(o.lineEl), [540, cg.lineY]) : [540, cg.lineY]; type(L8(Object.assign({ text: o.line, x: lp2[0], y: lp2[1], w: 980, t0: OUT + 0.75, d: 30, color: o.dark ? 'ink' : 'white' }, o.lineL || {})), t); }
+    const cy0 = y + lh / 2 + (o.ctaGap || 330), cp = seg(ot, 1.5, 0.4);
+    const cgp = o.ctaEl ? posOf(elP(o.ctaEl), [540, cy0]) : [540, cy0], cy = cgp[1], cdx = cgp[0] - 540;
+    if (o.cta === 'pill') gfx({ kind: 'mg', type: 'cta', text: CONTACT.cta, color: o.ctaCol || 'accent', x: cgp[0], y: cy, t0: OUT + 1.4, d: 30 }, t);
     else if (cp > 0 && !VID.collecting) { const f = F(o.ctaW || 800, Math.min(36, fitSize(CONTACT.cta, o.ctaW || 800, 820, 36, o.ctaFam || 'Mont', 5)), o.ctaFam || 'Mont'), tw = textW(CONTACT.cta, f, 5), bw = Math.min(960, tw + 100), c = G(); c.globalAlpha = E.outC(cp);
       const col = o.ctaCol ? K8.col(o.ctaCol) : OR;
-      if (o.cta === 'neon') { c.shadowColor = col; c.shadowBlur = 30; c.strokeStyle = col; c.lineWidth = 4; c.beginPath(); c.roundRect(W / 2 - bw / 2, cy - 46, bw, 92, 46); c.stroke(); c.shadowBlur = 12; }
-      else if (o.cta === 'underline') { c.fillStyle = col; c.fillRect(W / 2 - tw / 2, cy + 22, tw * E.inOutC(cp), 3); }
-      else { c.strokeStyle = col; c.lineWidth = 3; c.strokeRect(W / 2 - bw / 2, cy - 46, bw, 92); }
-      setF(f, 5); c.fillStyle = o.dark ? INKA(1) : WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2, cy + 2); D(); }
-    const ip = seg(ot, 2.0, 0.4); if (ip > 0) K7.txt(contactLine(), W / 2, cy + 125, F(700, 28, 'Mont'), o.dark ? INKA(0.75) : WA(0.8), { align: 'center', a: E.outC(ip), ls: 3 });
-    if (ip > 0 && CONTACT.lic) K7.txt(CONTACT.lic, W / 2, cy + 180, F(600, 22, 'Mont'), WA(0.6), { align: 'center', a: E.outC(ip), ls: 3 });
+      if (o.cta === 'neon') { c.shadowColor = col; c.shadowBlur = 30; c.strokeStyle = col; c.lineWidth = 4; c.beginPath(); c.roundRect(cgp[0] - bw / 2, cy - 46, bw, 92, 46); c.stroke(); c.shadowBlur = 12; }
+      else if (o.cta === 'underline') { c.fillStyle = col; c.fillRect(cgp[0] - tw / 2, cy + 22, tw * E.inOutC(cp), 3); }
+      else { c.strokeStyle = col; c.lineWidth = 3; c.strokeRect(cgp[0] - bw / 2, cy - 46, bw, 92); }
+      setF(f, 5); c.fillStyle = o.dark ? INKA(1) : WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, cgp[0], cy + 2); D(); }
+    const ip = seg(ot, 2.0, 0.4); if (ip > 0) K7.txt(contactLine(), W / 2 + cdx, cy + 125, F(700, 28, 'Mont'), o.dark ? INKA(0.75) : WA(0.8), { align: 'center', a: E.outC(ip), ls: 3 });
+    if (ip > 0 && CONTACT.lic) K7.txt(CONTACT.lic, W / 2 + cdx, cy + 180, F(600, 22, 'Mont'), WA(0.6), { align: 'center', a: E.outC(ip), ls: 3 });
   }
   const shaky = (S, t, cy, o) => { const { sh } = cur(S, t); return K7.photo(sh, t, stageRect(sh, cy, o && o.w), o); };
   function stageRect(s, cy, w) { w = w || W; if (vert(s)) return K3.wholeIn(s.c, [0, 0, W, H]); const h = w / K3.ar(s.c); return [(W - w) / 2, cy - h / 2, w, h]; }
@@ -79,27 +95,43 @@ STUDIO_REG['food2'] = (() => {
     const kick = L8({ text: KICK, slot: 'Mono', wt: 800, size: 34, track: 300, color: 'accent', anim: { in: 'tracking', inD: 0.7, out: 'fade' }, y: 820, t0: DROP + 0.35, d: T2 - DROP - 0.4 });
     const counts = ['3', '2', '1'].map((n, k) => L8({ text: n, slot: 'Bebas', size: 600, color: k === 2 ? 'accent' : 'white', fx: { shadow: 'soft' }, anim: { in: 'punch', inD: 0.32, out: 'grow', outD: 0.14 }, t0: 0.15 + k * 0.5, d: 0.5 }));
     const endL = { text: END, slot: 'Bebas', size: 170, color: 'accent', fx: { shadow: 'hard', shcol: 'ink' }, anim: { in: 'punch', out: 'none' } };
+    function elements() {
+      const n = LS.length, bh = 88, gap = 10, cg = closeGeom({ y: 640, lw: 680 });
+      return [
+        mkEl('count', 'Countdown', 540, 960, 0.15, 1.5, p => [p[0] - 300, p[1] - 300, 600, 600]),
+        mkEl('kick', KICK, 540, 820, DROP + 0.35, T2 - DROP - 0.4, p => [p[0] - 460, p[1] - 34, 920, 68]),
+        mkEl('name', DISH, 540, 1080, DROP + 0.2, T2 - DROP - 0.1, p => [p[0] - 460, p[1] - 190, 920, 220]),
+        mkEl('stack', 'Ingredient stack', 540, 1410 - n * (bh + gap), T2 + 0.25, T3 - T2 - 0.25, p => [p[0] - 380, p[1], 760, n * (bh + gap)]),
+        mkEl('dish', DISH, 540, 430, T2 + 0.1, T3 - T2, p => [p[0] - 460, p[1] - 110, 920, 130]),
+        mkEl('strip', WHEN ? 'DROPS ' + WHEN : DISH, 540, 1165, T3 + 0.15, OUT - T3 + 0.2, p => [p[0] - 470, p[1] - 110, 940, 130]),
+        ...(PRICE ? [mkEl('price', PRICE, 790, 560, T3 + 0.6, OUT - T3, p => [p[0] - 170, p[1] - 170, 340, 340])] : []),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 170, 980, 200]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.4, DUR - OUT - 1.4, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      ];
+    }
     return {
-      dur: DUR, shakes: [[DROP, 16], [T2, 7], [T3, 6], [OUT + 0.2, 9]],
+      dur: DUR, shakes: [[DROP, 16], [T2, 7], [T3, 6], [OUT + 0.2, 9]], elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(), g = c.createRadialGradient(W / 2, H * 1.1, 40, W / 2, H, H); g.addColorStop(0, DEEP1); g.addColorStop(0.6, BLK); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); } });
-        if (t < DROP) { counts.forEach(L => type(L, t)); if (!VID.collecting) { const k = seg(t, 0.15, DROP - 0.15), c = G(); c.strokeStyle = OR; c.lineWidth = 8; c.beginPath(); c.arc(W / 2, H / 2, 470, -Math.PI / 2, -Math.PI / 2 + TAU * k); c.stroke(); D(); } }
+        if (t < DROP) { const [cox, coy] = posOf(elP('count'), [540, 960]); counts.forEach(L => type(Object.assign({}, L, { x: cox, y: coy }), t)); if (!VID.collecting) { const k = seg(t, 0.15, DROP - 0.15), c = G(); c.strokeStyle = OR; c.lineWidth = 8; c.beginPath(); c.arc(cox, coy, 470, -Math.PI / 2, -Math.PI / 2 + TAU * k); c.stroke(); D(); } }
         if (t >= DROP && t < OUT) {
           const A = () => shaky(S, Math.min(t, T2 - 0.01), 760), B = () => { const sh = S[1]; K7.photo(sh, t, stageRect(sh, 620)); }, Cc = () => { const sh = S[2]; K7.photo(sh, t, stageRect(sh, 760)); };
           if (t < T2 + 0.3) cut('stripes', t, T2, 0.5, A, B, { col: 'accent' }); else if (t < T3 + 0.3) cut('snapcut', t, T3, 0.3, B, Cc); else Cc();
-          if (t < T2) { shade(H * 0.5, H, 0, 0.9); gfx({ kind: 'mg', type: 'rays', x: 540, y: 1080, size: 640, count: 20, color: 'accent', t0: DROP + 0.15, d: T2 - DROP }, t); type(kick, t); type(name, t); }
+          if (t < T2) { shade(H * 0.5, H, 0, 0.9); const [nmx, nmy] = posOf(elP('name'), [540, 1080]); gfx({ kind: 'mg', type: 'rays', x: nmx, y: nmy, size: 640, count: 20, color: 'accent', t0: DROP + 0.15, d: T2 - DROP }, t); const [kix, kiy] = posOf(elP('kick'), [540, 820]); type(Object.assign({}, kick, { x: kix, y: kiy }), t); type(Object.assign({}, name, { x: nmx, y: nmy }), t); }
           else if (t < T3) {   // the stack builds from the top bun down, each layer dropping onto the pile
-            shade(H * 0.42, H, 0, 0.92); const n = LS.length, bh = 88, gap = 10, x0 = 160, w = 760, yb = 1410;
-            LS.forEach((ln, k) => { const ti = T2 + 0.25 + k * BT * 1.5, p = seg(t, ti, 0.45); if (p <= 0 || VID.collecting) return; const e = K8.ease('bounce')(p), y = yb - (n - k) * (bh + gap) - (1 - e) * 900, c = G();
+            shade(H * 0.42, H, 0, 0.92); const n = LS.length, bh = 88, gap = 10, w = 760, yb = 1410;
+            const [stx, sty] = posOf(elP('stack'), [540, yb - n * (bh + gap)]), x0 = stx - w / 2;
+            LS.forEach((ln, k) => { const ti = T2 + 0.25 + k * BT * 1.5, p = seg(t, ti, 0.45); if (p <= 0 || VID.collecting) return; const e = K8.ease('bounce')(p), y = sty + k * (bh + gap) - (1 - e) * 900, c = G();
               c.globalAlpha = clamp(p * 4); c.fillStyle = CL[k % CL.length]; c.beginPath(); c.roundRect(x0, y, w, bh, k === 0 ? [46, 46, 14, 14] : k === n - 1 && /BUN/.test(ln) ? [14, 14, 46, 46] : 14); c.fill();
               c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(x0 + 10, y + bh - 10, w - 20, 6); const col = K8.onCol(CL[k % CL.length]), fs = Math.min(48, fitSize(ln, 400, w - 80, 48, 'Bebas', 3)); setF(F(400, fs, 'Bebas'), 3); c.fillStyle = col; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(ln, x0 + w / 2, y + bh / 2 + 3); D(); });
-            type(L8({ text: DISH, slot: 'Bebas', size: 110, w: 920, color: 'white', fx: { shadow: 'hard', shcol: 'accent' }, anim: { in: 'cascade', out: 'fade' }, y: 430, t0: T2 + 0.1, d: T3 - T2 }), t);
+            const [dix, diy] = posOf(elP('dish'), [540, 430]);
+            type(L8({ text: DISH, slot: 'Bebas', size: 110, w: 920, color: 'white', fx: { shadow: 'hard', shcol: 'accent' }, anim: { in: 'cascade', out: 'fade' }, x: dix, y: diy, t0: T2 + 0.1, d: T3 - T2 }), t);
           } else {
-            const strip = WHEN ? 'DROPS ' + WHEN : DISH; if (!K9.allowed('limited')) type(L8({ text: strip, slot: 'Bebas', size: 110, color: 'ink', fx: { deco: 'box', dcol: 'accent' }, rot: -7, anim: { in: 'wipe', out: 'fade' }, y: 1165, t0: T3 + 0.15, d: OUT - T3 + 0.2 }), t); else gfx({ kind: 'mg', type: 'limited', text: strip, tilt: -7, color: 'accent', x: 540, y: 1165, t0: T3 + 0.15, d: OUT - T3 + 0.2 }, t);
-            if (PRICE && K9.allowed('burst')) gfx({ kind: 'mg', type: 'burst', text: PRICE, size: 170, color: 'accent2', x: 790, y: 560, t0: T3 + 0.6, d: OUT - T3 }, t);
+            const strip = WHEN ? 'DROPS ' + WHEN : DISH; const [srx, sry] = posOf(elP('strip'), [540, 1165]); if (!K9.allowed('limited')) type(L8({ text: strip, slot: 'Bebas', size: 110, color: 'ink', fx: { deco: 'box', dcol: 'accent' }, rot: -7, anim: { in: 'wipe', out: 'fade' }, x: srx, y: sry, t0: T3 + 0.15, d: OUT - T3 + 0.2 }), t); else gfx({ kind: 'mg', type: 'limited', text: strip, tilt: -7, color: 'accent', x: srx, y: sry, t0: T3 + 0.15, d: OUT - T3 + 0.2 }, t);
+            if (PRICE && K9.allowed('burst')) { const [prx, pry] = posOf(elP('price'), [790, 560]); gfx({ kind: 'mg', type: 'burst', text: PRICE, size: 170, color: 'accent2', x: prx, y: pry, t0: T3 + 0.6, d: OUT - T3 }, t); }
           }
         }
-        if (t >= OUT) { gfx({ kind: 'mg', type: 'rays', x: 540, y: 640, size: 760, count: 22, color: 'accent', t0: OUT, d: 30 }, t); close(t, OUT, { y: 640, line: END, lineL: endL, cta: 'pill' }); }
+        if (t >= OUT) { gfx({ kind: 'mg', type: 'rays', x: 540, y: 640, size: 760, count: 22, color: 'accent', t0: OUT, d: 30 }, t); close(t, OUT, { y: 640, line: END, lineL: endL, cta: 'pill', lineEl: 'end', ctaEl: 'cta' }); }
       },
       cues() {
         const ev = [['riser', 0.1, 0.3, 0], ['impact', 0.15, 0.45, 0], ['impact', 0.65, 0.5, 0], ['impact', 1.15, 0.55, 0], ['boom', DROP, 0.6, 0], ['impact', DROP, 0.7, 0], ['flash', DROP, 0.3, 0]];
@@ -124,9 +156,24 @@ STUDIO_REG['food2'] = (() => {
     const T0 = 3.2, PD = 3.4, OUT = T0 + 3 * PD, DUR = OUT + 4.2;
     const S = shots(P3.map((p, k) => ['s' + (k + 1), 'Piece ' + (k + 1), PD + 0.3, 'any', 'v']), T0);
     S.forEach((s, k) => (s.start = T0 + k * PD));
-    const FR = [190, 300, 700, 920];
+    const FR0 = [190, 300, 700, 920];
+    function frameBox() { return EL && EL.box ? [num(EL.box.x, FR0[0]), num(EL.box.y, FR0[1]), num(EL.box.w, FR0[2]), num(EL.box.h, FR0[3])] : FR0; }   // piece frame, shared by render() and elements()
     const seal = (x, y, s, p, ch) => { if (VID.collecting || p <= 0) return; const c = G(), e = p < 1 ? lerp(1.6, 1, E.inC(p)) : 1; c.translate(x, y); c.rotate(-0.08); c.scale(e * s, e * s); c.globalAlpha = clamp(p * 3) * 0.92; c.fillStyle = OR; c.beginPath(); c.roundRect(-46, -46, 92, 92, 10); c.fill();
       const on = K8.onCol(OR); c.strokeStyle = on; c.lineWidth = 3; c.strokeRect(-36, -36, 72, 72); setF(F(700, 50, 'Corm'), 0); c.fillStyle = on; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(ch, 0, 4); D(); };
+    function elements() {
+      const FB = frameBox(), cg = closeGeom({ y: 640, lw: 520, ctaGap: 360 });
+      return [
+        mkEl('enso', 'Ensō', 540, 900, 0.2, T0 - 0.2, p => [p[0] - 300, p[1] - 300, 600, 600]),
+        mkEl('kick', KICK, 540, 790, 0.6, T0 - 0.4, p => [p[0] - 460, p[1] - 30, 920, 60]),
+        mkEl('title', TITLE, 540, 940, 0.9, T0 - 0.7, p => [p[0] - 260, p[1] - 104, 520, 130]),
+        mkEl('seal', 'Seal', 760, 1150, 1.9, T0 + 0.6 - 1.9, p => [p[0] - 46, p[1] - 46, 92, 92]),
+        { id: 'frame', kind: 'box', label: 'Piece frame', x: FB[0], y: FB[1], w: FB[2], h: FB[3], t0: T0, d: OUT - T0, box: [FB[0], FB[1], FB[2], FB[3]], dup: false, del: false },
+        mkEl('piece', 'Piece name', 540, 1320, T0 + 0.55, OUT - T0 - 0.55, p => [p[0] - 460, p[1] - 108, 920, 130]),
+        mkEl('piecenotes', 'Piece notes', 540, 1405, T0 + 1.0, OUT - T0 - 1.0, p => [p[0] - 460, p[1] - 26, 920, 52]),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 84, 980, 110]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      ];
+    }
     function enso(cx, cy, r, p, a) {   // one brush stroke: width swells and tapers, with a dry-brush gap at the end
       if (VID.collecting || p <= 0) return; const c = G(), n = 520, a0 = -2.2, sweep = TAU * 0.92 * E.inOutS(clamp(p)); c.globalAlpha = a === undefined ? 1 : a; c.fillStyle = WA(0.92);
       for (let i = 0; i < n; i++) { const u = i / n, an = a0 + sweep * u; if (u * TAU * 0.92 > sweep + 1e-6) break; const w = (6 + 22 * Math.sin(Math.PI * Math.min(1, u * 1.15))) * (0.85 + 0.15 * Math.sin(u * 40)) * (u > 0.8 && Math.sin(u * 260) > 0.6 ? 0.55 : 1), rr = r + Math.sin(u * 7) * 6;
@@ -135,22 +182,24 @@ STUDIO_REG['food2'] = (() => {
     const titleL = L8({ text: TITLE, slot: 'Corm', wt: 600, ital: true, size: 104, color: 'white', w: 520, anim: { in: 'blur', inD: 1.2, out: 'fade' }, y: 940, t0: 0.9, d: T0 - 0.7 });
     const kickL = L8({ text: KICK, slot: 'Mont', wt: 500, size: 30, track: 520, color: 'accent', anim: { in: 'tracking', inD: 1.4, out: 'fade' }, y: 790, t0: 0.6, d: T0 - 0.4 });
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, DEEP2); g.addColorStop(1, DEEP1); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); } });
         if (!VID.collecting) { const c = G(); c.strokeStyle = rgbaOf(ACC2, 0.55); c.lineWidth = 1.5; const k = E.inOutS(seg(t, 0.2, 1.6)); c.beginPath(); c.moveTo(110, 120); c.lineTo(110, 120 + (H - 240) * k); c.moveTo(W - 110, H - 120); c.lineTo(W - 110, H - 120 - (H - 240) * k); c.stroke(); D(); }
-        if (t < T0 + 0.6) { const q = seg(t, T0 - 0.3, 0.8); enso(540, 900, 300, seg(t, 0.2, 1.5), 1 - q); type(kickL, t); type(titleL, t); seal(760, 1150, 1, seg(t, 1.9, 0.3) * (1 - q), (BRAND.short || BRAND.name || 'A').charAt(0)); }
+        if (t < T0 + 0.6) { const q = seg(t, T0 - 0.3, 0.8); const [ecx, ecy] = posOf(elP('enso'), [540, 900]); enso(ecx, ecy, 300, seg(t, 0.2, 1.5), 1 - q); const [kix, kiy] = posOf(elP('kick'), [540, 790]); type(Object.assign({}, kickL, { x: kix, y: kiy }), t); const [tix, tiy] = posOf(elP('title'), [540, 940]); type(Object.assign({}, titleL, { x: tix, y: tiy }), t); const [sex, sey] = posOf(elP('seal'), [760, 1150]); seal(sex, sey, 1, seg(t, 1.9, 0.3) * (1 - q), (BRAND.short || BRAND.name || 'A').charAt(0)); }
         if (t >= T0 && t < OUT + 0.6) {
-          const i = Math.min(2, Math.floor((t - T0) / PD)), lt = t - (T0 + i * PD), sh = S[i], r = inBox(sh, FR), q = t >= OUT ? seg(t, OUT, 0.6) : 0;
-          if (i > 0 && lt < 0.8) { const prev = S[i - 1], pr = inBox(prev, FR); K7.photo(prev, t, pr, { alpha: 1 - seg(lt, 0.2, 0.6) }); }
+          const i = Math.min(2, Math.floor((t - T0) / PD)), lt = t - (T0 + i * PD), sh = S[i], r = inBox(sh, frameBox()), q = t >= OUT ? seg(t, OUT, 0.6) : 0;
+          if (i > 0 && lt < 0.8) { const prev = S[i - 1], pr = inBox(prev, frameBox()); K7.photo(prev, t, pr, { alpha: 1 - seg(lt, 0.2, 0.6) }); }
           const up = E.inOutS(seg(lt, 0.05, 0.9)); ctx.save(); if (!VID.collecting) { ctx.beginPath(); ctx.rect(r[0], r[1] + r[3] * (1 - up), r[2], r[3] * up); ctx.clip(); } K7.photo(sh, t, r, { alpha: 1 - q }); ctx.restore();
           if (!VID.collecting) { const c = G(); c.globalAlpha = (1 - q) * up; c.strokeStyle = rgbaOf(ACC2, 0.8); c.lineWidth = 1.5; c.strokeRect(r[0] - 14, r[1] - 14, r[2] + 28, r[3] + 28); D(); }
           const np = seg(lt, 0.5, 0.6), num = 'N° ' + (i + 1); K7.txt(num, 70, 640, F(500, 26, 'Mont'), OR, { a: E.outC(np) * (1 - q), ls: 6 });
-          type(L8({ text: P3[i].n, slot: 'Corm', wt: 600, ital: true, size: 108, color: 'white', anim: { in: 'charup', inD: 0.6, stagger: 0.05, out: 'fade', outD: 0.3 }, y: 1320, t0: T0 + i * PD + 0.55, d: PD - 0.2 }), t);
-          type(L8({ text: P3[i].d.toUpperCase(), slot: 'Mont', wt: 500, size: 26, track: 260, color: 'white', anim: { in: 'fade', inD: 0.6, out: 'fade', outD: 0.3 }, y: 1405, t0: T0 + i * PD + 1.0, d: PD - 0.65 }), t);
+          const [pnx, pny] = posOf(elP('piece'), [540, 1320]);
+          type(L8({ text: P3[i].n, slot: 'Corm', wt: 600, ital: true, size: 108, color: 'white', anim: { in: 'charup', inD: 0.6, stagger: 0.05, out: 'fade', outD: 0.3 }, x: pnx, y: pny, t0: T0 + i * PD + 0.55, d: PD - 0.2 }), t);
+          const [ntx, nty] = posOf(elP('piecenotes'), [540, 1405]);
+          type(L8({ text: P3[i].d.toUpperCase(), slot: 'Mont', wt: 500, size: 26, track: 260, color: 'white', anim: { in: 'fade', inD: 0.6, out: 'fade', outD: 0.3 }, x: ntx, y: nty, t0: T0 + i * PD + 1.0, d: PD - 0.65 }), t);
           seal(r[0] + r[2] + 4, r[1] + r[3] - 10, 0.8, seg(lt, 1.35, 0.25) * (1 - q), String(i + 1));
         }
-        if (t >= OUT) { enso(540, 660, 390, seg(t, OUT + 0.1, 1.2)); close(t, OUT, { y: 640, lw: 520, line: END, lineL: { slot: 'Corm', wt: 600, ital: true, size: 84, color: 'white', anim: { in: 'blur', inD: 1.0 } }, cta: 'underline', ctaCol: 'accent', ctaGap: 360 }); }
+        if (t >= OUT) { enso(540, 660, 390, seg(t, OUT + 0.1, 1.2)); close(t, OUT, { y: 640, lw: 520, line: END, lineL: { slot: 'Corm', wt: 600, ital: true, size: 84, color: 'white', anim: { in: 'blur', inD: 1.0 } }, cta: 'underline', ctaCol: 'accent', ctaGap: 360, lineEl: 'end', ctaEl: 'cta' }); }
       },
       cues() {
         const ev = [['paper', 0.3, 0.25, 0], ['air', 0.4, 0.2, -0.3], ['tink', 2.0, 0.22, 0.3]];
@@ -178,29 +227,45 @@ STUDIO_REG['food2'] = (() => {
       for (let i = 0; i < n; i++) { const x = 140 + (i + 0.5) / n * 800 + (hash(i) - 0.5) * 60, lt = t - t0 - hash(i * 3.1) * 0.6; if (lt <= 0) continue; const len = Math.min(240, lt * 260) * (0.5 + hash(i * 7)), r = 12 + hash(i * 2) * 12;
         c.beginPath(); c.moveTo(x - r, y0); c.lineTo(x - r * 0.7, y0 + len); c.arc(x, y0 + len, r * 0.75, Math.PI, 0, true); c.lineTo(x + r, y0); c.fill(); const fy = y0 + len + lt * lt * 600; if (lt > 0.4) { c.beginPath(); c.arc(x, fy, r * 0.55, 0, TAU); c.fill(); } } D(); };
     function meter(t) {   // a gooey vertical gauge on the right that fills to the peak
-      if (VID.collecting) return; const k = E.inOutS(seg(t, 0.8, PEAK - 0.8)), a = 1 - seg(t, PEAK + 0.3, 0.4); if (a <= 0) return; const x = 940, y0 = 420, h = 1000, w = 70, c = G(); c.globalAlpha = a;
+      if (VID.collecting) return; const k = E.inOutS(seg(t, 0.8, PEAK - 0.8)), a = 1 - seg(t, PEAK + 0.3, 0.4); if (a <= 0) return; const [mex, mey] = posOf(elP('meter'), [940, 420]), x = mex, y0 = mey, h = 1000, w = 70, c = G(); c.globalAlpha = a;
       c.fillStyle = 'rgba(0,0,0,0.45)'; c.beginPath(); c.roundRect(x - w / 2 - 8, y0 - 8, w + 16, h + 16, 44); c.fill(); c.save(); c.beginPath(); c.roundRect(x - w / 2, y0, w, h, 36); c.clip();
       const top = y0 + h * (1 - k); c.fillStyle = OR; c.beginPath(); c.moveTo(x - w, y0 + h + 10); for (let xx = x - w; xx <= x + w; xx += 6) c.lineTo(xx, top + Math.sin(xx * 0.2 + t * 6) * 6); c.lineTo(x + w, y0 + h + 10); c.fill(); c.restore();
       c.strokeStyle = WHT; c.lineWidth = 4; c.beginPath(); c.roundRect(x - w / 2, y0, w, h, 36); c.stroke(); for (let i = 1; i < 10; i++) { c.fillStyle = WA(0.6); c.fillRect(x - w / 2 - 22, y0 + i * h / 10, 16, 3); }
       c.translate(x - 76, y0 + h / 2); c.rotate(-Math.PI / 2); setF(F(700, 24, 'Mont'), 6); c.fillStyle = WA(0.85); c.textAlign = 'center'; c.fillText('STRETCH-O-METER', 0, 0); D(); }
     const hookL = L8({ text: HOOK, slot: 'Hand', wt: 700, size: 110, color: 'white', fx: { shadow: 'soft' }, anim: { in: 'typewriter', stagger: 0.09, out: 'fade' }, y: 420, t0: 0.4, d: PEAK - 0.2 });
     const bigL = L8({ text: BIG, slot: 'Bebas', size: 260, color: 'accent', layout: 'stack', w: 900, fx: { shadow: 'hard', shcol: 'ink', stroke: 6, scol: 'ink' }, anim: { in: 'elastic', inD: 1.1, out: 'sink', loop: 'wave', loopAmt: 0.6 }, y: 820, t0: PEAK, d: T2 - PEAK + 0.1 });
+    function elements() {
+      const cg = closeGeom({ y: 620, lw: 680 });
+      return [
+        mkEl('meter', 'Stretch-o-meter', 940, 420, 0.8, PEAK + 0.3 - 0.8, p => [p[0] - 120, p[1] - 8, 200, 1016]),
+        mkEl('hook', HOOK, 540, 420, 0.4, PEAK - 0.2, p => [p[0] - 460, p[1] - 110, 920, 130]),
+        mkEl('big', BIG, 540, 820, PEAK, T2 - PEAK + 0.1, p => [p[0] - 450, p[1] - 260, 900, 300]),
+        mkEl('dish', DISH, 540, 1110, T2 + 0.5, T3 - T2 + 0.2, p => [p[0] - 450, p[1] - 140, 900, 170]),
+        mkEl('desc', DESC, 540, 1310, T2 + 1.0, T3 - T2 - 0.6, p => [p[0] - 430, p[1] - 44, 860, 60]),
+        mkEl('dishhead', DISH, 540, 380, T3 + 0.3, OUT - T3, p => [p[0] - 450, p[1] - 96, 900, 120]),
+        ...(PRICE ? [mkEl('price', PRICE, 780, 1240, T3 + 0.8, OUT - T3 - 0.6, p => [p[0] - 150, p[1] - 150, 300, 300])] : []),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 150, 980, 180]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.4, DUR - OUT - 1.4, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      ];
+    }
     return {
-      dur: DUR, shakes: [[PEAK, 10], [OUT + 0.3, 6]],
+      dur: DUR, shakes: [[PEAK, 10], [OUT + 0.3, 6]], elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, DEEP1); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); } });
         if (t < OUT) {
           const A = () => K7.photo(S[0], t, stageRect(S[0], 900)), B = () => K7.photo(S[1], t, stageRect(S[1], 800)), Cc = () => K7.photo(S[2], t, stageRect(S[2], 800));
           if (t < T2 + 0.6) cut('paint', t, T2, 0.9, A, B, { col: 'accent' }); else if (t < T3 + 0.4) cut('bounce', t, T3, 0.6, B, Cc); else Cc();
-          if (t < T2) { shade(0, 640, 0.65, 0); meter(t); type(hookL, t); if (t >= PEAK) { fillScreen(BLK, 0.35 * (1 - seg(t, PEAK, 0.6))); type(bigL, t); drips(1080, t, PEAK + 0.5, 9, 1 - seg(t, T2 - 0.3, 0.3)); } }
+          if (t < T2) { shade(0, 640, 0.65, 0); meter(t); const [hox, hoy] = posOf(elP('hook'), [540, 420]); type(Object.assign({}, hookL, { x: hox, y: hoy }), t); if (t >= PEAK) { fillScreen(BLK, 0.35 * (1 - seg(t, PEAK, 0.6))); const [bgx, bgy] = posOf(elP('big'), [540, 820]); type(Object.assign({}, bigL, { x: bgx, y: bgy }), t); drips(bgy + 260, t, PEAK + 0.5, 9, 1 - seg(t, T2 - 0.3, 0.3)); } }
           else { shade(H * 0.4, H, 0, 0.9);
-            type(L8({ text: DISH, slot: 'Bebas', size: 140, color: 'white', w: 900, fx: { shadow: 'soft', extrude: 12, ecol: 'accent' }, anim: { in: 'bounce', out: 'drop' }, y: 1110, t0: T2 + 0.5, d: T3 - T2 + 0.2 }), t);
-            type(L8({ text: DESC, slot: 'Mont', wt: 700, size: 44, w: 860, color: 'white', fx: { shadow: 'soft' }, anim: { in: 'words', out: 'fade' }, y: 1310, t0: T2 + 1.0, d: T3 - T2 - 0.6 }), t);
-            if (t >= T3) { type(L8({ text: DISH, slot: 'Bebas', size: 96, color: 'accent', w: 900, fx: { shadow: 'soft' }, anim: { in: 'stagger', out: 'fade' }, y: 380, t0: T3 + 0.3, d: OUT - T3 }), t);
-              if (PRICE && K9.allowed('sticker')) gfx({ kind: 'mg', type: 'sticker', text: PRICE, size: 150, color: 'accent', x: 780, y: 1240, t0: T3 + 0.8, d: OUT - T3 - 0.6 }, t); }
+            const [dix, diy] = posOf(elP('dish'), [540, 1110]);
+            type(L8({ text: DISH, slot: 'Bebas', size: 140, color: 'white', w: 900, fx: { shadow: 'soft', extrude: 12, ecol: 'accent' }, anim: { in: 'bounce', out: 'drop' }, x: dix, y: diy, t0: T2 + 0.5, d: T3 - T2 + 0.2 }), t);
+            const [dex, dey] = posOf(elP('desc'), [540, 1310]);
+            type(L8({ text: DESC, slot: 'Mont', wt: 700, size: 44, w: 860, color: 'white', fx: { shadow: 'soft' }, anim: { in: 'words', out: 'fade' }, x: dex, y: dey, t0: T2 + 1.0, d: T3 - T2 - 0.6 }), t);
+            if (t >= T3) { const [dhx, dhy] = posOf(elP('dishhead'), [540, 380]); type(L8({ text: DISH, slot: 'Bebas', size: 96, color: 'accent', w: 900, fx: { shadow: 'soft' }, anim: { in: 'stagger', out: 'fade' }, x: dhx, y: dhy, t0: T3 + 0.3, d: OUT - T3 }), t);
+              if (PRICE && K9.allowed('sticker')) { const [prx, pry] = posOf(elP('price'), [780, 1240]); gfx({ kind: 'mg', type: 'sticker', text: PRICE, size: 150, color: 'accent', x: prx, y: pry, t0: T3 + 0.8, d: OUT - T3 - 0.6 }, t); } }
           }
         }
-        if (t >= OUT) { close(t, OUT, { y: 620, line: END, lineL: { slot: 'Bebas', size: 150, color: 'accent', fx: { shadow: 'hard', shcol: 'ink' }, anim: { in: 'elastic', inD: 1.0 } }, cta: 'pill' }); drips(-10, t, OUT, 11, 0.95); }
+        if (t >= OUT) { close(t, OUT, { y: 620, line: END, lineL: { slot: 'Bebas', size: 150, color: 'accent', fx: { shadow: 'hard', shcol: 'ink' }, anim: { in: 'elastic', inD: 1.0 } }, cta: 'pill', lineEl: 'end', ctaEl: 'cta' }); drips(-10, t, OUT, 11, 0.95); }
       },
       cues() {
         const ev = [['typing', 0.4, 0.35, 0], ['swell', 1.2, 0.18, 0], ['riser', PEAK - 1.5, 0.3, 0], ['impact', PEAK, 0.6, 0], ['pop', PEAK + 0.05, 0.5, 0], ['ink', T2, 0.45, 0], ['thud', T3 + 0.25, 0.55, 0], ['pop', OUT + 0.2, 0.4, 0], ['ink', OUT + 0.1, 0.3, 0]];
@@ -221,32 +286,50 @@ STUDIO_REG['food2'] = (() => {
     const END = TX('end', 'Pull up a seat', { label: 'Closing line', group: 'Ending', max: 26 });
     const T1 = 3.4, T2 = 9.2, OUT = 13.4, DUR = OUT + 4.3;
     const S = shots([['s1', 'The pour', T2 + 0.3, 'any', 'v'], ['s2', 'The finished glass', OUT - T2 + 0.3, 'any', 'v']], 0); S[1].start = T2;
-    const IN = lines(ING).slice(0, 5), AR = [170, 560, 740, 860];
+    const IN = lines(ING).slice(0, 5), AR0 = [170, 560, 740, 860];
+    function archBox() { return EL && EL.box ? [num(EL.box.x, AR0[0]), num(EL.box.y, AR0[1]), num(EL.box.w, AR0[2]), num(EL.box.h, AR0[3])] : AR0; }   // arch glass, shared by render() and elements()
     function arch(r, path) { const [x, y, w, h] = r, rad = w / 2; path.moveTo(x, y + h); path.lineTo(x, y + rad); path.arc(x + rad, y + rad, rad, Math.PI, 0); path.lineTo(x + w, y + h); path.closePath(); }
     function caustics(t) { if (VID.collecting) return; const c = G(); c.globalCompositeOperation = 'lighter'; for (let i = 0; i < 6; i++) { const x = W * (0.2 + 0.6 * hash(i)) + Math.sin(t * 0.5 + i) * 120, y = H * (0.15 + 0.7 * hash(i * 3)) + Math.cos(t * 0.4 + i) * 90, r = 260 + 140 * hash(i * 5); const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, rgbaOf(ACC2, 0.08)); g.addColorStop(1, rgbaOf(ACC2, 0)); c.fillStyle = g; c.fillRect(x - r, y - r, 2 * r, 2 * r); } D(); }
+    function elements() {
+      const AB = archBox(), cg = closeGeom({ y: 640, lw: 420, ctaGap: 470 });
+      return [
+        { id: 'arch', kind: 'box', label: 'Arch glass', x: AB[0], y: AB[1], w: AB[2], h: AB[3], t0: 0, d: OUT, box: [AB[0], AB[1], AB[2], AB[3]], dup: false, del: false },
+        mkEl('level', 'Pour level', 975, 600, 0.6, T2, p => [p[0] - 34, p[1], 68, 780]),
+        mkEl('kick', KICK, 540, 330, 0.3, T2 - 0.1, p => [p[0] - 460, p[1] - 28, 920, 56]),
+        mkEl('drink', DRINK, 540, 440, 0.6, T2 - 0.4, p => [p[0] - 470, p[1] - 112, 940, 140]),
+        mkEl('ing', 'Ingredients', 110, 1090, T1 + 0.3, T2 + 0.4 - (T1 + 0.3), p => [p[0], p[1] - 46, 800, 56 + 70 * (IN.length - 1)]),
+        mkEl('toast', TOAST, 540, 1290, T2 + 0.8, OUT - T2 - 0.4, p => [p[0] - 470, p[1] - 190, 940, 220]),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 96, 980, 120]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      ];
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, DEEP1); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); } });
         caustics(t);
         if (t < OUT) {
+          const AR = archBox();
           const q = 0, sh = t < T2 ? S[0] : S[1]; const draw = s => () => { ctx.save(); if (!VID.collecting) { ctx.beginPath(); arch(AR, ctx); ctx.clip(); } K7.photo(s, t, AR); if (!VID.collecting) { const c = K3.G(); c.fillStyle = BLK; c.globalAlpha = 0.0; K3.D(); } ctx.restore(); };
           if (!VID.collecting) { const c = G(); c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); arch(AR, c); c.fill(); D(); }
           cut('ripple', t, T2, 0.9, draw(S[0]), draw(S[1])); void q; void sh;
           if (!VID.collecting) { const c = G(), k = E.inOutS(seg(t, 0.1, 1.2)); c.strokeStyle = OR; c.lineWidth = 3; c.setLineDash([4000 * k, 4000]); c.beginPath(); arch([AR[0] - 16, AR[1] - 16, AR[2] + 32, AR[3] + 32], c); c.stroke(); D(); }
           // the pour level: a slim tube on the right fills while the pour runs
-          if (!VID.collecting && t < T2 + 0.6) { const k = E.inOutS(seg(t, 0.6, T2 - 1.4)), a = 1 - seg(t, T2, 0.5), x = 975, y0 = 600, h = 780, c = G(); c.globalAlpha = a; c.strokeStyle = WA(0.7); c.lineWidth = 3; c.beginPath(); c.roundRect(x - 16, y0, 32, h, 16); c.stroke();
+          if (!VID.collecting && t < T2 + 0.6) { const [lvx, lvy] = posOf(elP('level'), [975, 600]), k = E.inOutS(seg(t, 0.6, T2 - 1.4)), a = 1 - seg(t, T2, 0.5), x = lvx, y0 = lvy, h = 780, c = G(); c.globalAlpha = a; c.strokeStyle = WA(0.7); c.lineWidth = 3; c.beginPath(); c.roundRect(x - 16, y0, 32, h, 16); c.stroke();
             c.fillStyle = OR; c.beginPath(); c.roundRect(x - 10, y0 + h - (h - 12) * k - 6, 20, (h - 12) * k, 10); c.fill(); for (let i = 1; i < 8; i++) c.fillRect(x - 34, y0 + i * h / 8, 12, 2); D(); }
-          type(L8({ text: KICK, slot: 'Mont', wt: 500, size: 28, track: 480, color: 'accent', anim: { in: 'tracking', out: 'fade' }, y: 330, t0: 0.3, d: T2 - 0.1 }), t);
-          type(L8({ text: DRINK, slot: 'Corm', wt: 700, ital: true, size: 112, w: 940, color: 'white', fx: { shadow: 'soft' }, anim: { in: 'liquid', inD: 1.1, out: 'sink' }, y: 440, t0: 0.6, d: T2 - 0.4 }), t);
-          if (t >= T1 && t < T2 + 0.4) { const q2 = seg(t, T2 - 0.2, 0.4); shade(1020, 1420, 0, 0.7 * (1 - q2)); IN.forEach((ln, k) => { const ti = T1 + 0.3 + k * 0.9, p = seg(t, ti, 0.5); if (p <= 0 || VID.collecting) return; const y = 1090 + k * 70, dy = -(1 - E.outBack(clamp(p))) * 200, c = G();
-              c.globalAlpha = clamp(p * 3) * (1 - q2); c.fillStyle = ACC2; c.beginPath(); c.moveTo(110, y - 40 + dy); c.bezierCurveTo(90, y - 16 + dy, 96, y + dy, 110, y + dy); c.bezierCurveTo(124, y + dy, 130, y - 16 + dy, 110, y - 40 + dy); c.fill();
-              setF(F(600, 46, 'Corm'), 0); c.fillStyle = WHT; c.textAlign = 'left'; c.fillText(ln, 152, y - 6); D(); }); }
+          const [kix, kiy] = posOf(elP('kick'), [540, 330]);
+          type(L8({ text: KICK, slot: 'Mont', wt: 500, size: 28, track: 480, color: 'accent', anim: { in: 'tracking', out: 'fade' }, x: kix, y: kiy, t0: 0.3, d: T2 - 0.1 }), t);
+          const [drx, dry] = posOf(elP('drink'), [540, 440]);
+          type(L8({ text: DRINK, slot: 'Corm', wt: 700, ital: true, size: 112, w: 940, color: 'white', fx: { shadow: 'soft' }, anim: { in: 'liquid', inD: 1.1, out: 'sink' }, x: drx, y: dry, t0: 0.6, d: T2 - 0.4 }), t);
+          if (t >= T1 && t < T2 + 0.4) { const q2 = seg(t, T2 - 0.2, 0.4); shade(1020, 1420, 0, 0.7 * (1 - q2)); const [igx, igy] = posOf(elP('ing'), [110, 1090]); IN.forEach((ln, k) => { const ti = T1 + 0.3 + k * 0.9, p = seg(t, ti, 0.5); if (p <= 0 || VID.collecting) return; const y = igy + k * 70, dy = -(1 - E.outBack(clamp(p))) * 200, c = G();
+              c.globalAlpha = clamp(p * 3) * (1 - q2); c.fillStyle = ACC2; c.beginPath(); c.moveTo(igx, y - 40 + dy); c.bezierCurveTo(igx - 20, y - 16 + dy, igx - 14, y + dy, igx, y + dy); c.bezierCurveTo(igx + 14, y + dy, igx + 20, y - 16 + dy, igx, y - 40 + dy); c.fill();
+              setF(F(600, 46, 'Corm'), 0); c.fillStyle = WHT; c.textAlign = 'left'; c.fillText(ln, igx + 42, y - 6); D(); }); }
           if (t >= T2) { if (!VID.collecting) { const c = G(); c.globalCompositeOperation = 'lighter'; for (let i = 0; i < 26; i++) { const lt = (t - T2 + hash(i) * 3) % 3, x = AR[0] + AR[2] * (0.2 + 0.6 * hash(i * 7)) + Math.sin(lt * 3 + i) * 10, y = AR[1] + AR[3] - lt / 3 * AR[3] * 0.9, r = 3 + hash(i * 3) * 6; c.strokeStyle = WA(0.45 * Math.sin(Math.PI * lt / 3)); c.lineWidth = 2; c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); } D(); }
-            type(L8({ text: TOAST, slot: 'Hand', wt: 400, size: 190, color: 'accent', fx: { glow: 0.6, gcol: 'accent' }, anim: { in: 'outline', inD: 1.4, out: 'fade' }, y: 1290, t0: T2 + 0.8, d: OUT - T2 - 0.4 }), t); }
+            const [tox, toy] = posOf(elP('toast'), [540, 1290]);
+            type(L8({ text: TOAST, slot: 'Hand', wt: 400, size: 190, color: 'accent', fx: { glow: 0.6, gcol: 'accent' }, anim: { in: 'outline', inD: 1.4, out: 'fade' }, x: tox, y: toy, t0: T2 + 0.8, d: OUT - T2 - 0.4 }), t); }
         }
         if (t >= OUT) { if (!VID.collecting) { const k = E.inOutC(seg(t, OUT, 0.9)), r = [540 - 250, 640 - 330, 500, 640], c = G(); c.strokeStyle = OR; c.lineWidth = 3; c.globalAlpha = k; c.beginPath(); arch([r[0] - 18, r[1] - 18, r[2] + 36, r[3] + 36], c); c.stroke(); D(); }
-          close(t, OUT, { y: 640, lw: 420, line: END, lineL: { slot: 'Corm', wt: 700, ital: true, size: 96, anim: { in: 'liquid' } }, cta: 'outline', ctaGap: 470 }); }
+          close(t, OUT, { y: 640, lw: 420, line: END, lineL: { slot: 'Corm', wt: 700, ital: true, size: 96, anim: { in: 'liquid' } }, cta: 'outline', ctaGap: 470, lineEl: 'end', ctaEl: 'cta' }); }
       },
       cues() {
         const ev = [['pour', 0.6, 0.45, 0], ['air', 0.6, 0.2, 0], ['ink', T2, 0.4, 0], ['pour', T2 + 0.1, 0.3, 0.2], ['chime', T2 + 0.9, 0.2, 0], ['shimmer', OUT + 0.4, 0.2, 0]];
@@ -268,32 +351,50 @@ STUDIO_REG['food2'] = (() => {
     const END = TX('end', 'Book your table', { label: 'Back page line', group: 'Ending', max: 26 });
     const T0 = 2.6, ID = 3.1, TURN = T0 + 3 * ID, OUT = TURN + 0.9, DUR = OUT + 4.0;
     const S = shots(IT.map((x, k) => ['s' + (k + 1), 'Item ' + (k + 1), ID + 0.4, 'any', 'v']), T0); S.forEach((s, k) => (s.start = T0 + k * ID));
-    const CARD = [70, 210, 940, 1420], ROWS = [730, 930, 1130];
+    const CY0 = num(EL && EL.card && EL.card.y, 210), CH0 = num(EL && EL.card && EL.card.h, 1420), CARD = [70, CY0, 940, CH0], ROWS = [CY0 + 520, CY0 + 720, CY0 + 920];
+    function rowP(k) { return posOf(elP('item' + (k + 1)), [150, ROWS[k]]); }   // a row's anchor, shared by row(), the marker and elements()
     function card(t, a) {   // the printed card with deckled edges and a double rule
       if (VID.collecting) return; const up = E.outQ(seg(t, 0.05, 0.9)), y = CARD[1] + (1 - up) * 1500, c = G(); c.globalAlpha = a === undefined ? 1 : a;
       c.shadowColor = 'rgba(0,0,0,0.25)'; c.shadowBlur = 40; c.shadowOffsetY = 18; c.fillStyle = DEEP2; c.beginPath(); for (let i = 0; i <= 60; i++) c.lineTo(CARD[0] + (i / 60) * CARD[2], y + (hash(i) - 0.5) * 6); for (let i = 0; i <= 60; i++) c.lineTo(CARD[0] + CARD[2] + (hash(i + 70) - 0.5) * 6, y + (i / 60) * CARD[3]);
       for (let i = 60; i >= 0; i--) c.lineTo(CARD[0] + (i / 60) * CARD[2], y + CARD[3] + (hash(i + 140) - 0.5) * 6); for (let i = 60; i >= 0; i--) c.lineTo(CARD[0] + (hash(i + 210) - 0.5) * 6, y + (i / 60) * CARD[3]); c.fill(); c.shadowColor = 'transparent';
       c.strokeStyle = OR; c.lineWidth = 2; c.strokeRect(CARD[0] + 30, y + 30, CARD[2] - 60, CARD[3] - 60); c.lineWidth = 1; c.strokeRect(CARD[0] + 40, y + 40, CARD[2] - 80, CARD[3] - 80); D(); return y; }
     function row(it, k, t, on) {
-      if (VID.collecting) return; const y = ROWS[k], p = seg(t, 0.9 + k * 0.25, 0.5), a = E.outC(p) * (on ? 1 : 0.55), c = G(); if (p <= 0) { D(); return; } c.globalAlpha = a;
-      const fs = Math.min(64, fitSize(it.n, 700, it.p ? 560 : 700, 64, 'Corm', 0)), f = F(700, fs, 'Corm'); setF(f, 0); c.fillStyle = WHT; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(it.n, 150, y); const nw = textW(it.n, f, 0);
-      if (it.p) { const pf = F(700, 50, 'Corm'), pw = textW(it.p, pf, 0); setF(pf, 0); c.textAlign = 'right'; c.fillText(it.p, 930, y); c.fillStyle = WA(0.5); for (let x = 150 + nw + 20; x < 930 - pw - 20; x += 16) c.fillRect(x, y - 8, 4, 4); }
-      setF(F(500, 34, 'Corm', 'italic'), 0); c.textAlign = 'left'; c.fillStyle = WA(0.7); c.fillText(it.d, 150, y + 58); D(); }
+      if (VID.collecting) return; const [rx, y] = rowP(k), rdx = rx - 150, p = seg(t, 0.9 + k * 0.25, 0.5), a = E.outC(p) * (on ? 1 : 0.55), c = G(); if (p <= 0) { D(); return; } c.globalAlpha = a;
+      const fs = Math.min(64, fitSize(it.n, 700, it.p ? 560 : 700, 64, 'Corm', 0)), f = F(700, fs, 'Corm'); setF(f, 0); c.fillStyle = WHT; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(it.n, rx, y); const nw = textW(it.n, f, 0);
+      if (it.p) { const pf = F(700, 50, 'Corm'), pw = textW(it.p, pf, 0); setF(pf, 0); c.textAlign = 'right'; c.fillText(it.p, 930 + rdx, y); c.fillStyle = WA(0.5); for (let x = rx + nw + 20; x < 930 + rdx - pw - 20; x += 16) c.fillRect(x, y - 8, 4, 4); }
+      setF(F(500, 34, 'Corm', 'italic'), 0); c.textAlign = 'left'; c.fillStyle = WA(0.7); c.fillText(it.d, rx, y + 58); D(); }
+    function elements() {
+      const cg = closeGeom({ y: 700, lw: 560 });
+      const els = [
+        { id: 'card', kind: 'card', label: 'Menu card', x: 70, y: CY0, w: 940, h: CH0, t0: 0.05, d: TURN - 0.05, box: [70, CY0, 940, CH0], dup: false, del: false },
+        mkEl('title', TITLE, 540, CY0 + 210, 0.6, TURN - 0.6, p => [p[0] - 470, p[1] - 150, 940, 180]),
+        mkEl('sub', SUB, 540, CY0 + 330, 1.1, TURN - 1.1, p => [p[0] - 400, p[1] - 80, 800, 100]),
+      ];
+      IT.forEach((it, j) => els.push(mkEl('item' + (j + 1), it.n, 150, ROWS[j], T0 + j * ID, ID, p => [p[0], p[1] - 64, 780, 122])));
+      els.push(
+        mkEl('inset', 'Dish photo', 540, CY0 + 1205, T0, TURN - T0, p => [p[0] - 185, p[1] - 185, 370, 370]),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 90, 980, 120]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      );
+      return els;
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(); c.fillStyle = DEEP1; c.fillRect(-20, -20, W + 40, H + 40); D(); } });
         const front = () => {
           card(t);
-          type(L8({ text: TITLE, slot: 'Bebas', size: 150, color: 'white', anim: { in: 'wipe', inD: 0.8, out: 'none' }, y: 420, t0: 0.6, d: 30 }), t);
-          type(L8({ text: SUB, slot: 'Hand', wt: 700, size: 80, color: 'accent', anim: { in: 'letters', stagger: 0.05, out: 'none' }, y: 540, t0: 1.1, d: 30 }), t);
+          const [tix, tiy] = posOf(elP('title'), [540, CY0 + 210]);
+          type(L8({ text: TITLE, slot: 'Bebas', size: 150, color: 'white', anim: { in: 'wipe', inD: 0.8, out: 'none' }, x: tix, y: tiy, t0: 0.6, d: 30 }), t);
+          const [sux, suy] = posOf(elP('sub'), [540, CY0 + 330]);
+          type(L8({ text: SUB, slot: 'Hand', wt: 700, size: 80, color: 'accent', anim: { in: 'letters', stagger: 0.05, out: 'none' }, x: sux, y: suy, t0: 1.1, d: 30 }), t);
           const k = t < T0 ? -1 : Math.min(2, Math.floor((t - T0) / ID));
-          IT.forEach((it, j) => { if (k === j && !VID.collecting) { const lt = t - (T0 + j * ID), w = E.inOutC(seg(lt, 0.15, 0.5)) * 560, c = G(); c.fillStyle = rgbaOf(ACC2, 0.45); c.beginPath(); c.moveTo(140, ROWS[j] + 12); c.lineTo(140 + w, ROWS[j] + 6); c.lineTo(140 + w, ROWS[j] + 22); c.lineTo(140, ROWS[j] + 26); c.fill(); D(); } row(it, j, t, k < 0 || k === j); });
-          if (k >= 0) { const lt = t - (T0 + k * ID), sh = S[k], p = E.outBack(seg(lt, 0.25, 0.5)) * (1 - E.inC(seg(lt, ID - 0.3, 0.3))), R0 = 175, cx = 540, cy = 1415;
+          IT.forEach((it, j) => { if (k === j && !VID.collecting) { const lt = t - (T0 + j * ID), w = E.inOutC(seg(lt, 0.15, 0.5)) * 560, c = G(), ry = rowP(j)[1]; c.fillStyle = rgbaOf(ACC2, 0.45); c.beginPath(); c.moveTo(140, ry + 12); c.lineTo(140 + w, ry + 6); c.lineTo(140 + w, ry + 22); c.lineTo(140, ry + 26); c.fill(); D(); } row(it, j, t, k < 0 || k === j); });
+          if (k >= 0) { const lt = t - (T0 + k * ID), sh = S[k], p = E.outBack(seg(lt, 0.25, 0.5)) * (1 - E.inC(seg(lt, ID - 0.3, 0.3))), R0 = 175, [cx, cy] = posOf(elP('inset'), [540, CY0 + 1205]);
             if (p > 0) { if (!VID.collecting) { const c = G(); c.fillStyle = '#FFFFFF'; c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 30; c.beginPath(); c.arc(cx, cy, (R0 + 10) * p, 0, TAU); c.fill(); D(); }
               const r = [cx - R0 * p, cy - R0 * p, 2 * R0 * p, 2 * R0 * p]; footage(sh.c, sh.in + Math.max(0, t - sh.start), { rect: r, fit: 'cover', q: 'h', clip: () => ctx.arc(cx, cy, R0 * p, 0, TAU) }); } }
         };
-        const back = () => { if (!VID.collecting) { const c = G(); c.fillStyle = DEEP1; c.fillRect(0, 0, W, H); D(); } card(t); close(t, OUT, { y: 700, lw: 560, line: END, lineL: { slot: 'Corm', wt: 700, ital: true, size: 90, color: 'white', anim: { in: 'wipe' } }, cta: 'outline', ctaCol: 'accent' }); };
+        const back = () => { if (!VID.collecting) { const c = G(); c.fillStyle = DEEP1; c.fillRect(0, 0, W, H); D(); } card(t); close(t, OUT, { y: 700, lw: 560, line: END, lineL: { slot: 'Corm', wt: 700, ital: true, size: 90, color: 'white', anim: { in: 'wipe' } }, cta: 'outline', ctaCol: 'accent', lineEl: 'end', ctaEl: 'cta' }); };
         if (t < TURN - 0.45) front(); else if (t < TURN + 0.45) cut('page', t, TURN, 0.9, front, back); else back();
       },
       cues() {
@@ -320,7 +421,7 @@ STUDIO_REG['food2'] = (() => {
     function wall(t) { if (VID.collecting) return; const c = G(); c.fillStyle = BLK; c.fillRect(-20, -20, W + 40, H + 40); const r = rng(5); for (let i = 0; i < 26; i++) { c.fillStyle = `rgba(255,255,255,${0.02 + r() * 0.04})`; c.save(); c.translate(r() * W, r() * H); c.rotate((r() - 0.5) * 0.3); c.fillRect(-150, -100, 300 + r() * 200, 200 + r() * 160); c.restore(); }
       if (NOISE.length) { c.globalAlpha = 0.5; c.fillStyle = NOISE[1]; c.fillRect(0, 0, W, H); } D(); }
     function poster(s, k, t) {
-      const lt = t - s.start; if (lt < 0) return; const [rot, dx, dy] = POS[k], p = seg(lt, 0, 0.35), sc = p < 1 ? lerp(1.25, 1, E.inC(p)) : 1, box = [150 + dx, 500 + dy, 780, 800], r = inBox(s, box), cx = r[0] + r[2] / 2, cy = r[1] + r[3] / 2, b = 26;
+      const lt = t - s.start; if (lt < 0) return; const [rot, dx, dy] = POS[k], p = seg(lt, 0, 0.35), sc = p < 1 ? lerp(1.25, 1, E.inC(p)) : 1, [pbx, pby] = posOf(elP('poster' + (k + 1)), [150 + dx, 500 + dy]), box = [pbx, pby, 780, 800], r = inBox(s, box), cx = r[0] + r[2] / 2, cy = r[1] + r[3] / 2, b = 26;
       if (!VID.collecting) { const c = G(); c.translate(cx, cy); c.rotate(rot * Math.PI / 180); c.scale(sc, sc); c.translate(-cx, -cy); c.globalAlpha = clamp(p * 4); c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = 30; c.fillStyle = '#F1ECE2'; c.beginPath();
         const n = 40; for (let i = 0; i <= n; i++) c.lineTo(r[0] - b + (r[2] + 2 * b) * i / n, r[1] - b + (hash(i + k * 50) - 0.5) * 14); for (let i = 0; i <= n; i++) c.lineTo(r[0] + r[2] + b + (hash(i + 99 + k) - 0.5) * 14, r[1] - b + (r[3] + 2 * b) * i / n);
         for (let i = n; i >= 0; i--) c.lineTo(r[0] - b + (r[2] + 2 * b) * i / n, r[1] + r[3] + b + (hash(i + 7 + k) - 0.5) * 14); for (let i = n; i >= 0; i--) c.lineTo(r[0] - b + (hash(i + 33 + k) - 0.5) * 14, r[1] - b + (r[3] + 2 * b) * i / n); c.fill(); D(); }
@@ -333,15 +434,32 @@ STUDIO_REG['food2'] = (() => {
       type(L8({ text: str, slot: 'Hand', wt: 400, size, w: 1000, color: 'accent2', rot, fx: { shadow: 'soft', glow: 0.25, gcol: 'accent2' }, anim: { in: 'letters', stagger: 0.07, inD: 0.2, out: 'none' }, x, y, t0, d: 30 }), t);
       if (VID.collecting) return; const lt = t - t0 - 0.5; if (lt <= 0) return; const c = G(), w = textW(str, F(400, size, 'Hand'), 0); c.translate(x, y); c.rotate((rot || 0) * Math.PI / 180); c.fillStyle = ACC2;
       for (let i = 0; i < 7; i++) { const dx = -w / 2 + (i + 0.5) / 7 * w + (hash(i * 3) - 0.5) * 30, len = Math.min(140, lt * 90 * (0.4 + hash(i))), wd = 5 + hash(i * 5) * 5; c.fillRect(dx - wd / 2, size * 0.1, wd, len); c.beginPath(); c.arc(dx, size * 0.1 + len, wd * 0.8, 0, TAU); c.fill(); } D(); }
+    function elements() {
+      const cg = closeGeom({ y: 600, lw: 640, ctaGap: 560 });
+      const els = [
+        mkEl('kick', KICK, 540, 320, 0.2, OUT - 0.1, p => [p[0] - 500, p[1] - 66, 1000, 90]),
+        mkEl('tag', TAG, 540, 1325, 1.1, OUT - 1.1, p => [p[0] - 500, p[1] - 120, 1000, 280]),
+        mkEl('ticker', WHERE || BRAND.name || 'Ticker', 540, 420, 0.6, OUT, p => [p[0] - 500, p[1] - 30, 1000, 60]),
+      ];
+      POS.forEach(([rot, dx, dy], k) => els.push(mkEl('poster' + (k + 1), CAP[k] || 'Poster ' + (k + 1), 150 + dx, 500 + dy, 0.3 + k * PD, OUT - (0.3 + k * PD), p => [p[0] - 26, p[1] - 26, 832, 852])));
+      els.push(
+        mkEl('end', END, 540, 600 + logoBox(640)[1] / 2 + 230, OUT + 0.8, DUR - OUT - 0.8, p => [p[0] - 500, p[1] - 190, 1000, 360]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      );
+      return els;
+    }
     return {
-      dur: DUR, shakes: S.map(s => [s.start + 0.33, 5]),
+      dur: DUR, shakes: S.map(s => [s.start + 0.33, 5]), elements,
       render(t) {
         BACKDROP(() => { wall(t); });
         if (t < OUT) { S.forEach((s, k) => { if (t >= s.start && t < OUT + 0.1) poster(s, k, t); });
-          type(L8({ text: KICK, slot: 'Bebas', size: 66, track: 120, w: 1000, color: 'white', fx: { shadow: 'hard', shcol: 'accent' }, anim: { in: 'stagger', out: 'fade' }, y: 320, t0: 0.2, d: OUT - 0.1 }), t);
-          spray(TAG, 540, 1325, t, 1.1, 120, -5);
-          gfx({ kind: 'mg', type: 'ticker', text: (WHERE || BRAND.name) + '  •  ' + TAG.toUpperCase(), color: 'accent', speed: 1.2, x: 540, y: 420, t0: 0.6, d: OUT }, t); }
-        if (t >= OUT) { const lh = logoBox(640)[1]; spray(END, 540, 600 + lh / 2 + 230, t, OUT + 0.8, 190, -6); close(t, OUT, { y: 600, lw: 640, cta: 'pill', ctaGap: 560, ctaCol: 'accent' }); }
+          const [kix, kiy] = posOf(elP('kick'), [540, 320]);
+          type(L8({ text: KICK, slot: 'Bebas', size: 66, track: 120, w: 1000, color: 'white', fx: { shadow: 'hard', shcol: 'accent' }, anim: { in: 'stagger', out: 'fade' }, x: kix, y: kiy, t0: 0.2, d: OUT - 0.1 }), t);
+          const [tgx, tgy] = posOf(elP('tag'), [540, 1325]);
+          spray(TAG, tgx, tgy, t, 1.1, 120, -5);
+          const [tkx, tky] = posOf(elP('ticker'), [540, 420]);
+          gfx({ kind: 'mg', type: 'ticker', text: (WHERE || BRAND.name) + '  •  ' + TAG.toUpperCase(), color: 'accent', speed: 1.2, x: tkx, y: tky, t0: 0.6, d: OUT }, t); }
+        if (t >= OUT) { const lh = logoBox(640)[1]; const [enx, eny] = posOf(elP('end'), [540, 600 + lh / 2 + 230]); spray(END, enx, eny, t, OUT + 0.8, 190, -6); close(t, OUT, { y: 600, lw: 640, cta: 'pill', ctaGap: 560, ctaCol: 'accent', ctaEl: 'cta' }); }
       },
       cues() {
         const ev = []; S.forEach((s, k) => { ev.push(['paper', s.start, 0.45, (k - 1) * 0.3]); ev.push(['stamp', s.start + 0.33, 0.45, 0]); ev.push(['clack', s.start + 0.5, 0.2, 0.3]); });
@@ -361,7 +479,7 @@ STUDIO_REG['food2'] = (() => {
     const END = TX('end', 'COME THROUGH', { label: 'Ending line', group: 'Ending', upper: true, max: 18 });
     const BT = 60 / FM.bpm, T0 = 3.0, ID = 8 * BT, OUT = T0 + 3 * ID, DUR = OUT + 4.2;
     const S = shots(D3.map((d, k) => ['s' + (k + 1), 'Item ' + (k + 1), ID + 0.4, 'any', 'v']), T0); S.forEach((s, k) => (s.start = T0 + k * ID));
-    const TV = [170, 330, 740, 740];
+    const TV0 = [170, 330, 740, 740], TV = EL && EL.box ? [num(EL.box.x, TV0[0]), num(EL.box.y, TV0[1]), num(EL.box.w, TV0[2]), num(EL.box.h, TV0[3])] : TV0;   // CRT screen (build-time: a drag rebuilds the block)
     function scene(t, dim) { if (VID.collecting) return; const c = G(), g = c.createLinearGradient(0, 0, 0, 1180); g.addColorStop(0, DEEP2); g.addColorStop(1, DEEP1); c.fillStyle = g; c.fillRect(-20, -20, W + 40, 1200);
       const sy = 1180, sr = 300, sg = c.createLinearGradient(0, sy - sr, 0, sy); sg.addColorStop(0, ACC2); sg.addColorStop(1, OR); c.save(); c.globalAlpha = 1 - (dim || 0); c.beginPath(); c.rect(0, sy - sr, W, sr); c.clip(); c.fillStyle = sg; c.beginPath(); c.arc(W / 2, sy, sr, Math.PI, 0); c.fill();
       c.fillStyle = DEEP1; for (let i = 0; i < 7; i++) { const y = sy - 30 - i * 38, h = 4 + i * 2.2; c.fillRect(0, y, W, h); } c.restore();
@@ -371,8 +489,19 @@ STUDIO_REG['food2'] = (() => {
       ctx.save(); if (!VID.collecting) { ctx.beginPath(); ctx.roundRect(TV[0] + SH.x, TV[1] + SH.y, TV[2], TV[3], 54); ctx.clip(); } draw(); ctx.restore();
       if (VID.collecting) return; const c = G(); c.beginPath(); c.roundRect(TV[0], TV[1], TV[2], TV[3], 54); c.clip(); c.fillStyle = 'rgba(0,0,0,0.22)'; for (let y = TV[1]; y < TV[1] + TV[3]; y += 5) c.fillRect(TV[0], y, TV[2], 2);
       const by = TV[1] + ((t * 220) % (TV[3] + 200)) - 100; c.fillStyle = 'rgba(255,255,255,0.06)'; c.fillRect(TV[0], by, TV[2], 60); const v = c.createRadialGradient(W / 2, TV[1] + TV[3] / 2, TV[3] * 0.3, W / 2, TV[1] + TV[3] / 2, TV[3] * 0.75); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)'); c.fillStyle = v; c.fillRect(TV[0], TV[1], TV[2], TV[3]); D(); }
+    function elements() {
+      const cg = closeGeom({ y: 520, lw: 600, ctaGap: 430 });
+      return [
+        { id: 'tv', kind: 'box', label: 'CRT screen', x: TV[0], y: TV[1], w: TV[2], h: TV[3], t0: 0, d: OUT, box: [TV[0] - 26, TV[1] - 26, TV[2] + 52, TV[3] + 52], dup: false, del: false },
+        mkEl('title', TITLE, 540, 1250, 0.4, OUT - 0.4, p => [p[0] - 450, p[1] - 122, 900, 150]),
+        ...(HOURS ? [mkEl('hours', HOURS, 540, 445, 1.4, OUT - 1.4, p => [p[0] - 400, p[1] - 40, 800, 80])] : []),
+        mkEl('item', 'Item name', 540, 985, T0 + 0.15, OUT - T0 - 0.15, p => [p[0] - 460, p[1] - 92, 920, 120]),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 130, 980, 160]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      ];
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { scene(t, 0.8 * seg(t, OUT, 0.6)); });
         if (t < OUT) {
@@ -380,11 +509,12 @@ STUDIO_REG['food2'] = (() => {
           const k = t < T0 ? 0 : Math.min(2, Math.floor((t - T0) / ID));
           crt(t, () => { if (t < T0 + 0.25) { if (!VID.collecting) fillScreen('#000'); if (t >= T0 - 0.25) cut('signal', t, T0, 0.5, () => {}, draw(0)); } else if (k < 2 && t > S[k + 1].start - 0.25) cut('rgb', t, S[k + 1].start, 0.5, draw(k), draw(k + 1)); else if (k > 0 && t < S[k].start + 0.25) cut('rgb', t, S[k].start, 0.5, draw(k - 1), draw(k)); else draw(k)(); });
           if (!VID.collecting) { const c = G(), on = Math.floor(t * 2) % 2 === 0; if (on) { c.fillStyle = '#FF2B2B'; c.beginPath(); c.arc(TV[0] + 50, TV[1] + 56, 13, 0, TAU); c.fill(); } setF(F(700, 30, 'Mono'), 3); c.fillStyle = WHT; c.fillText('REC', TV[0] + 74, TV[1] + 67); c.textAlign = 'right'; c.fillText('PLAY ▶', TV[0] + TV[2] - 40, TV[1] + 67); D(); }
-          type(L8({ text: TITLE, slot: 'Bebas', size: 122, color: 'accent', w: 900, lead: 0.92, fx: { fill: 'neon', glow: 1 }, anim: { in: 'glitch', out: 'none', loop: 'flicker', loopAmt: 1.2 }, y: 1250, t0: 0.4, d: 30 }), t);
-          if (HOURS) type(L8({ text: HOURS, slot: 'Mono', wt: 800, size: 40, track: 200, color: 'accent2', fx: { glow: 0.6, gcol: 'accent2' }, anim: { in: 'typewriter', out: 'none' }, y: 445, t0: 1.4, d: 30 }), t);
-          if (t >= T0) { const kk = Math.min(2, Math.floor((t - T0) / ID)); if (D3[kk]) type(L8({ text: D3[kk], slot: 'Mont', wt: 900, size: 92, color: 'white', fx: { glow: 0.5, gcol: 'accent2', shadow: 'layered', shcol: 'accent' }, anim: { in: 'glitch', out: 'glitch', outD: 0.25 }, y: 985, t0: T0 + kk * ID + 0.15, d: ID - 0.2 }), t); }
+          const [tix, tiy] = posOf(elP('title'), [540, 1250]);
+          type(L8({ text: TITLE, slot: 'Bebas', size: 122, color: 'accent', w: 900, lead: 0.92, fx: { fill: 'neon', glow: 1 }, anim: { in: 'glitch', out: 'none', loop: 'flicker', loopAmt: 1.2 }, x: tix, y: tiy, t0: 0.4, d: 30 }), t);
+          if (HOURS) { const [hox, hoy] = posOf(elP('hours'), [540, 445]); type(L8({ text: HOURS, slot: 'Mono', wt: 800, size: 40, track: 200, color: 'accent2', fx: { glow: 0.6, gcol: 'accent2' }, anim: { in: 'typewriter', out: 'none' }, x: hox, y: hoy, t0: 1.4, d: 30 }), t); }
+          if (t >= T0) { const kk = Math.min(2, Math.floor((t - T0) / ID)); if (D3[kk]) { const [itx, ity] = posOf(elP('item'), [540, 985]); type(L8({ text: D3[kk], slot: 'Mont', wt: 900, size: 92, color: 'white', fx: { glow: 0.5, gcol: 'accent2', shadow: 'layered', shcol: 'accent' }, anim: { in: 'glitch', out: 'glitch', outD: 0.25 }, x: itx, y: ity, t0: T0 + kk * ID + 0.15, d: ID - 0.2 }), t); } }
         }
-        if (t >= OUT) { close(t, OUT, { y: 520, lw: 600, glow: OR, line: END, lineL: { slot: 'Bebas', size: 130, color: 'accent', fx: { fill: 'neon', glow: 1 }, anim: { in: 'glitch', loop: 'flicker' } }, cta: 'neon', ctaCol: 'accent2', ctaGap: 430 }); }
+        if (t >= OUT) { close(t, OUT, { y: 520, lw: 600, glow: OR, line: END, lineL: { slot: 'Bebas', size: 130, color: 'accent', fx: { fill: 'neon', glow: 1 }, anim: { in: 'glitch', loop: 'flicker' } }, cta: 'neon', ctaCol: 'accent2', ctaGap: 430, lineEl: 'end', ctaEl: 'cta' }); }
       },
       cues() {
         const ev = [['switch', 0.35, 0.4, 0], ['glitch', 0.4, 0.35, 0], ['switch', 0.55, 0.3, 0.2], ['glitch', T0, 0.4, 0]];
@@ -405,7 +535,7 @@ STUDIO_REG['food2'] = (() => {
     const END = TX('end', 'See you at the table', { label: 'Closing line', group: 'Ending', max: 28 });
     const T0 = 3.0, PD = 3.3, OUT = T0 + 3 * PD, DUR = OUT + 4.2;
     const S = shots(N3.map((n, k) => ['s' + (k + 1), 'Shot ' + (k + 1), PD + 0.4, 'any', 'v']), T0); S.forEach((s, k) => (s.start = T0 + k * PD));
-    const FR = [130, 300, 820, 900];
+    const FR0 = [130, 300, 820, 900], FR = EL && EL.box ? [num(EL.box.x, FR0[0]), num(EL.box.y, FR0[1]), num(EL.box.w, FR0[2]), num(EL.box.h, FR0[3])] : FR0;   // seed-packet frame (build-time: a drag rebuilds the block)
     function sprig(x, y, sc, rot, p, col) {   // a stem with paired leaves, drawn on as p goes 0 -> 1
       if (VID.collecting || p <= 0) return; const c = G(); c.translate(x, y); c.rotate(rot); c.scale(sc, sc); c.strokeStyle = col; c.lineWidth = 3; c.lineCap = 'round'; const L = 300, k = E.inOutS(clamp(p));
       c.beginPath(); c.moveTo(0, 0); for (let i = 0; i <= 30 * k; i++) { const u = i / 30; c.lineTo(Math.sin(u * 3) * 20, -u * L); } c.stroke();
@@ -413,24 +543,39 @@ STUDIO_REG['food2'] = (() => {
         c.save(); c.translate(px, py); c.rotate(side * 0.9); c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(len * 0.5, -len * 0.35, len, 0); c.quadraticCurveTo(len * 0.5, len * 0.35, 0, 0); c.stroke(); c.globalAlpha = 0.25; c.fillStyle = col; c.fill(); c.restore(); } D(); }
     function stamp(cx, cy, r, p, t, txt) { if (VID.collecting || p <= 0) return; const c = G(), s = lerp(1.6, 1, E.inC(clamp(p))); c.translate(cx, cy); c.rotate(-0.2 + t * 0.15); c.scale(s, s); c.globalAlpha = clamp(p * 3) * 0.85; c.strokeStyle = OR; c.lineWidth = 4; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.stroke(); c.beginPath(); c.arc(0, 0, r - 46, 0, TAU); c.stroke();
       setF(F(700, 28, 'Mont'), 4); c.fillStyle = OR; c.textAlign = 'center'; c.textBaseline = 'middle'; const ch = (txt + '  •  ').toUpperCase(), n = ch.length; for (let i = 0; i < n; i++) { c.save(); c.rotate(i / n * TAU); c.fillText(ch[i], 0, -r + 23); c.restore(); } D(); }
+    function elements() {
+      const cg = closeGeom({ y: 600, lw: 600, ctaGap: 420 });
+      return [
+        mkEl('title', TITLE, 540, 860, 0.4, T0, p => [p[0] - 500, p[1] - 140, 1000, 170]),
+        mkEl('sub', SUB, 540, 1010, 1.0, T0 - 0.6, p => [p[0] - 500, p[1] - 70, 1000, 90]),
+        { id: 'frame', kind: 'box', label: 'Seed-packet frame', x: FR[0], y: FR[1], w: FR[2], h: FR[3], t0: T0, d: OUT - T0, box: [FR[0], FR[1], FR[2], FR[3]], dup: false, del: false },
+        mkEl('note', N3[0], 520, FR[1] + FR[3] + 70, T0 + 0.6, OUT - T0 - 0.6, p => [p[0] - 460, p[1] - 92, 920, 120]),
+        mkEl('stamp', CONTACT.area ? 'FROM ' + CONTACT.area : BRAND.name, 540, 1500, OUT + 1.0, DUR - OUT - 1.0, p => [p[0] - 140, p[1] - 140, 280, 280]),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 100, 980, 130]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      ];
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(); c.fillStyle = DEEP2; c.fillRect(-20, -20, W + 40, H + 40); if (NOISE.length) { c.globalAlpha = 0.6; c.fillStyle = NOISE[2]; c.fillRect(0, 0, W, H); } D(); } });
         sprig(90, 1860, 1.3, 0.2, seg(t, 0.2, 1.6), ACC2); sprig(1000, 300, 1.0, Math.PI + 0.3, seg(t, 0.6, 1.6), ACC2); sprig(980, 1880, 0.9, -0.35, seg(t, 1.0, 1.4), OR);
         if (t < T0 + 0.3) { const q = seg(t, T0 - 0.2, 0.5);
-          type(L8({ text: TITLE, slot: 'Corm', wt: 700, size: 140, color: 'white', w: 1000, anim: { in: 'wordup', out: 'fade', outD: 0.4 }, y: 860, t0: 0.4, d: T0 }), t);
-          type(L8({ text: SUB, slot: 'Hand', wt: 700, size: 70, color: 'accent', w: 1000, anim: { in: 'letters', stagger: 0.04, out: 'fade', outD: 0.4 }, y: 1010, t0: 1.0, d: T0 - 0.6 }), t); void q; }
+          const [tix, tiy] = posOf(elP('title'), [540, 860]);
+          type(L8({ text: TITLE, slot: 'Corm', wt: 700, size: 140, color: 'white', w: 1000, anim: { in: 'wordup', out: 'fade', outD: 0.4 }, x: tix, y: tiy, t0: 0.4, d: T0 }), t);
+          const [sux, suy] = posOf(elP('sub'), [540, 1010]);
+          type(L8({ text: SUB, slot: 'Hand', wt: 700, size: 70, color: 'accent', w: 1000, anim: { in: 'letters', stagger: 0.04, out: 'fade', outD: 0.4 }, x: sux, y: suy, t0: 1.0, d: T0 - 0.6 }), t); void q; }
         if (t >= T0 && t < OUT + 0.5) {
           const k = Math.min(2, Math.floor((t - T0) / PD)), lt = t - (T0 + k * PD), sh = S[k], r = inBox(sh, FR), q = t >= OUT ? seg(t, OUT, 0.5) : 0, p = E.outBack(seg(lt, 0, 0.55)), rot = [-1.5, 1.8, -1][k] * Math.PI / 180;
           if (!VID.collecting) { const c = G(), cx = r[0] + r[2] / 2, cy = r[1] + r[3] / 2; c.translate(cx, cy + (1 - p) * 300); c.rotate(rot); c.translate(-cx, -cy); c.globalAlpha = clamp(p * 3) * (1 - q); c.fillStyle = '#FFFDF7'; c.shadowColor = 'rgba(60,40,20,0.25)'; c.shadowBlur = 30; c.beginPath(); c.roundRect(r[0] - 30, r[1] - 30, r[2] + 60, r[3] + 120, 28); c.fill(); c.shadowColor = 'transparent';
             c.setLineDash([14, 10]); c.strokeStyle = rgbaOf(ACC2, 0.9); c.lineWidth = 3; c.beginPath(); c.roundRect(r[0] - 16, r[1] - 16, r[2] + 32, r[3] + 92, 20); c.stroke(); D(); }
           photoT(sh, t, r, { rot, oy: (1 - p) * 300, alpha: clamp(p * 3) * (1 - q) });
-          type(L8({ text: N3[k], slot: 'Hand', wt: 700, size: 92, color: 'white', anim: { in: 'letters', stagger: 0.05, out: 'fade', outD: 0.3 }, x: 520, y: r[1] + r[3] + 70, rot: -3, t0: T0 + k * PD + 0.6, d: PD - 0.4 }), t);
+          const [ntx, nty] = posOf(elP('note'), [520, r[1] + r[3] + 70]);
+          type(L8({ text: N3[k], slot: 'Hand', wt: 700, size: 92, color: 'white', anim: { in: 'letters', stagger: 0.05, out: 'fade', outD: 0.3 }, x: ntx, y: nty, rot: -3, t0: T0 + k * PD + 0.6, d: PD - 0.4 }), t);
           if (!VID.collecting) { const ap = seg(lt, 1.2, 0.5), c = G(); c.globalAlpha = 1 - q; c.strokeStyle = OR; c.lineWidth = 6; c.lineCap = 'round'; const x0 = 860, y0 = r[1] + r[3] + 40; c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(x0 + 60 * ap, y0 - 120 * ap, x0 + 20 * ap, y0 - 200 * ap); c.stroke(); if (ap > 0.9) { c.beginPath(); c.moveTo(x0 + 20, y0 - 200); c.lineTo(x0 - 6, y0 - 168); c.moveTo(x0 + 20, y0 - 200); c.lineTo(x0 + 46, y0 - 176); c.stroke(); } D(); }
         }
-        if (t >= OUT) { stamp(540, 1500, 140, seg(t, OUT + 1.0, 0.35), t, CONTACT.area ? 'FROM ' + CONTACT.area : BRAND.name);
-          close(t, OUT, { y: 600, lw: 600, line: END, lineL: { slot: 'Hand', wt: 700, size: 100, color: 'white', anim: { in: 'letters', stagger: 0.04 } }, cta: 'outline', ctaCol: 'accent', ctaGap: 420 }); }
+        if (t >= OUT) { const [stx, sty] = posOf(elP('stamp'), [540, 1500]); stamp(stx, sty, 140, seg(t, OUT + 1.0, 0.35), t, CONTACT.area ? 'FROM ' + CONTACT.area : BRAND.name);
+          close(t, OUT, { y: 600, lw: 600, line: END, lineL: { slot: 'Hand', wt: 700, size: 100, color: 'white', anim: { in: 'letters', stagger: 0.04 } }, cta: 'outline', ctaCol: 'accent', ctaGap: 420, lineEl: 'end', ctaEl: 'cta' }); }
       },
       cues() {
         const ev = [['paper', 0.2, 0.25, 0], ['pencil', 0.3, 0.25, -0.3], ['pencil', 1.0, 0.3, 0.2]];
@@ -455,26 +600,47 @@ STUDIO_REG['food2'] = (() => {
     function deco(p, a) { if (VID.collecting || p <= 0) return; const c = G(), k = E.inOutS(clamp(p)), m = 60, L = 2 * (W - 2 * m) + 2 * (H - 2 * m); c.globalAlpha = a === undefined ? 1 : a; c.strokeStyle = OR; c.lineWidth = 2;
       c.setLineDash([L * k, L]); c.strokeRect(m, m, W - 2 * m, H - 2 * m); c.setLineDash([(L - 160) * k, L]); c.strokeRect(m + 16, m + 16, W - 2 * m - 32, H - 2 * m - 32); c.setLineDash([]);
       for (const [x, y, sx, sy] of [[m, m, 1, 1], [W - m, m, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]]) { c.save(); c.translate(x, y); c.scale(sx, sy); c.globalAlpha *= clamp(k * 2 - 0.6); for (let i = 1; i <= 4; i++) { c.beginPath(); c.arc(0, 0, 30 + i * 18, 0, Math.PI / 2); c.stroke(); } c.restore(); } D(); }
+    function elements() {
+      const cg = closeGeom({ y: 700, lw: 600, ctaGap: 380 });
+      const els = [
+        mkEl('title', TITLE, 540, 880, 0.7, T1 - 0.4, p => [p[0] - 430, p[1] - 130, 860, 160]),
+        mkEl('events', EVTS, 540, 1130, 1.6, T1 - 1.3, p => [p[0] - 500, p[1] - 26, 1000, 52]),
+        mkEl('panel1', 'Panel left', 90, 470, T1, T2 + 0.5 - T1, p => [p[0], p[1], 430, 820]),
+        mkEl('panel2', 'Panel right', 560, 470, T1 + 0.25, T2 + 0.5 - (T1 + 0.25), p => [p[0], p[1], 430, 820]),
+        mkEl('pkghead', 'Our packages', 540, 620, T2 + 0.2, T3 - T2, p => [p[0] - 430, p[1] - 110, 860, 140]),
+      ];
+      TIERS.forEach((n, k) => els.push(mkEl('tier' + (k + 1), n, 540, 860 + k * 190, T2 + 0.6 + k * 0.45, T3 - T2 - (0.6 + k * 0.45), p => [p[0] - 400, p[1] - 70, 800, 110])));
+      els.push(
+        mkEl('hero', HERO, 540, 1300, T3 + 0.5, OUT - T3, p => [p[0] - 500, p[1] - 130, 1000, 160]),
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 120, 980, 150]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.5, DUR - OUT - 1.5, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      );
+      return els;
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const c = G(), g = c.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, H * 0.7); g.addColorStop(0, DEEP1); g.addColorStop(1, BLK); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); } });
         deco(seg(t, 0.1, 1.8), t >= T3 && t < OUT ? 0.4 : 1);
         if (t < T1 + 0.3) {
-          type(L8({ text: TITLE, slot: 'Hand', wt: 400, size: 130, w: 860, color: 'accent', fx: { fill: 'gold', shadow: 'soft' }, anim: { in: 'blur', inD: 1.2, out: 'fade', outD: 0.4 }, y: 880, t0: 0.7, d: T1 - 0.4 }), t);
-          type(L8({ text: EVTS, slot: 'Mont', wt: 500, size: 26, track: 260, w: 1000, color: 'white', anim: { in: 'tracking', out: 'fade', outD: 0.4 }, y: 1130, t0: 1.6, d: T1 - 1.3 }), t); }
+          const [tix, tiy] = posOf(elP('title'), [540, 880]);
+          type(L8({ text: TITLE, slot: 'Hand', wt: 400, size: 130, w: 860, color: 'accent', fx: { fill: 'gold', shadow: 'soft' }, anim: { in: 'blur', inD: 1.2, out: 'fade', outD: 0.4 }, x: tix, y: tiy, t0: 0.7, d: T1 - 0.4 }), t);
+          const [evx, evy] = posOf(elP('events'), [540, 1130]);
+          type(L8({ text: EVTS, slot: 'Mont', wt: 500, size: 26, track: 260, w: 1000, color: 'white', anim: { in: 'tracking', out: 'fade', outD: 0.4 }, x: evx, y: evy, t0: 1.6, d: T1 - 1.3 }), t); }
         if (t >= T1 && t < T2 + 0.5) {
           const q = seg(t, T2, 0.5);
-          [[S[0], [90, 470, 430, 820], 0], [S[1], [560, 470, 430, 820], 0.25]].forEach(([s, box, dl]) => { const p = E.inOutS(seg(t, T1 + dl, 0.9)), r = inBox(s, box); ctx.save(); if (!VID.collecting) { ctx.beginPath(); ctx.rect(r[0], r[1], r[2], r[3] * p); ctx.clip(); } K7.photo(s, t, r, { alpha: 1 - q }); ctx.restore();
+          [[S[0], 'panel1', [90, 470, 430, 820], 0], [S[1], 'panel2', [560, 470, 430, 820], 0.25]].forEach(([s, pid, box0, dl]) => { const [pbx, pby] = posOf(elP(pid), [box0[0], box0[1]]), box = [pbx, pby, box0[2], box0[3]], p = E.inOutS(seg(t, T1 + dl, 0.9)), r = inBox(s, box); ctx.save(); if (!VID.collecting) { ctx.beginPath(); ctx.rect(r[0], r[1], r[2], r[3] * p); ctx.clip(); } K7.photo(s, t, r, { alpha: 1 - q }); ctx.restore();
             if (!VID.collecting) { const c = G(); c.globalAlpha = (1 - q) * clamp(p * 2); c.strokeStyle = OR; c.lineWidth = 1.5; c.strokeRect(r[0] - 12, r[1] - 12, r[2] + 24, r[3] + 24); D(); } });
           type(L8({ text: EVTS, slot: 'Mont', wt: 500, size: 26, track: 260, w: 900, color: 'accent', anim: { in: 'fade', out: 'fade' }, y: 1400, t0: T1 + 0.6, d: T2 - T1 }), t); }
         if (t >= T2 && t < T3 + 0.4) { const q = seg(t, T3 - 0.1, 0.4);
-          type(L8({ text: 'Our packages', slot: 'Hand', wt: 400, size: 110, color: 'accent', fx: { fill: 'gold' }, anim: { in: 'blur', out: 'fade' }, y: 620, t0: T2 + 0.2, d: T3 - T2 }), t);
-          TIERS.forEach((n, k) => { const p = seg(t, T2 + 0.6 + k * 0.45, 0.6); if (p <= 0 || VID.collecting) return; const y = 860 + k * 190, c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.save(); c.translate(540, y - 70); c.rotate(Math.PI / 4); c.fillRect(-8, -8, 16, 16); c.restore();
-            setF(F(600, 64, 'Corm'), 0); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(n, 540, y + 10); c.fillStyle = rgbaOf(OR, 0.6); c.fillRect(540 - 140 * E.outC(p), y + 40, 280 * E.outC(p), 1.5); D(); }); }
+          const [phx, phy] = posOf(elP('pkghead'), [540, 620]);
+          type(L8({ text: 'Our packages', slot: 'Hand', wt: 400, size: 110, color: 'accent', fx: { fill: 'gold' }, anim: { in: 'blur', out: 'fade' }, x: phx, y: phy, t0: T2 + 0.2, d: T3 - T2 }), t);
+          TIERS.forEach((n, k) => { const p = seg(t, T2 + 0.6 + k * 0.45, 0.6); if (p <= 0 || VID.collecting) return; const [tix, tiy] = posOf(elP('tier' + (k + 1)), [540, 860 + k * 190]), y = tiy, c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.save(); c.translate(tix, y - 70); c.rotate(Math.PI / 4); c.fillRect(-8, -8, 16, 16); c.restore();
+            setF(F(600, 64, 'Corm'), 0); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(n, tix, y + 10); c.fillStyle = rgbaOf(OR, 0.6); c.fillRect(tix - 140 * E.outC(p), y + 40, 280 * E.outC(p), 1.5); D(); }); }
         if (t >= T3 && t < OUT) { K7.photo(S[2], t, stageRect(S[2], 900), { alpha: E.outC(seg(t, T3, 0.5)) }); shade(H * 0.55, H, 0, 0.92);
-          type(L8({ text: HERO, slot: 'Hand', wt: 400, size: 130, w: 1000, color: 'accent', fx: { fill: 'gold', shadow: 'soft' }, anim: { in: 'blur', out: 'fade' }, y: 1300, t0: T3 + 0.5, d: OUT - T3 }), t); }
-        if (t >= OUT) close(t, OUT, { y: 700, lw: 600, line: END, lineL: { slot: 'Hand', wt: 400, size: 120, color: 'accent', fx: { fill: 'gold' }, anim: { in: 'blur' } }, cta: 'outline', ctaGap: 380 });
+          const [hex, hey] = posOf(elP('hero'), [540, 1300]);
+          type(L8({ text: HERO, slot: 'Hand', wt: 400, size: 130, w: 1000, color: 'accent', fx: { fill: 'gold', shadow: 'soft' }, anim: { in: 'blur', out: 'fade' }, x: hex, y: hey, t0: T3 + 0.5, d: OUT - T3 }), t); }
+        if (t >= OUT) close(t, OUT, { y: 700, lw: 600, line: END, lineL: { slot: 'Hand', wt: 400, size: 120, color: 'accent', fx: { fill: 'gold' }, anim: { in: 'blur' } }, cta: 'outline', ctaGap: 380, lineEl: 'end', ctaEl: 'cta' });
       },
       cues() { const ev = [['shimmer', 0.3, 0.2, 0], ['air', 0.8, 0.2, 0], ['air', T1, 0.25, -0.3], ['air', T1 + 0.25, 0.2, 0.3], ['chime', T2 + 0.3, 0.18, 0]];
         TIERS.forEach((n, k) => ev.push(['tink', T2 + 0.7 + k * 0.45, 0.2, (k - 1) * 0.3])); ev.push(['swell', T3 - 0.6, 0.2, 0], ['shimmer', OUT + 0.4, 0.2, 0]);
@@ -493,29 +659,46 @@ STUDIO_REG['food2'] = (() => {
     const END = TX('end', 'Start your day with us', { label: 'Closing line', group: 'Ending', max: 28 });
     const T0 = 3.2, T1 = 7.6, T2 = 11.6, OUT = 14.6, DUR = OUT + 4.2;
     const S = shots([['s1', 'Coffee or the counter', T1 - T0 + 0.3, 'any', 'v'], ['s2', 'A plate', T2 - T1 + 0.3, 'any', 'v'], ['s3', 'The room', OUT - T2 + 0.3, 'any', 'v']], T0); S[1].start = T1; S[2].start = T2;
-    const IT = lines(ITEMS).slice(0, 4), FR = [150, 330, 780, 800];
+    const IT = lines(ITEMS).slice(0, 4), FR0 = [150, 330, 780, 800], FR = EL && EL.box ? [num(EL.box.x, FR0[0]), num(EL.box.y, FR0[1]), num(EL.box.w, FR0[2]), num(EL.box.h, FR0[3])] : FR0;   // rounded frame (build-time: a drag rebuilds the block)
     function steam(x, y, t, a) { if (VID.collecting || a <= 0) return; const c = G(); c.strokeStyle = WA(0.55 * a); c.lineCap = 'round'; c.lineWidth = 10; for (let i = 0; i < 3; i++) { const ph = (t * 0.6 + i / 3) % 1; c.globalAlpha = Math.sin(Math.PI * ph); c.beginPath(); for (let k = 0; k <= 20; k++) { const u = k / 20; c.lineTo(x + (i - 1) * 60 + Math.sin(u * 6 + t * 2 + i) * 22, y - ph * 120 - u * 160); } c.stroke(); } D(); }
     function rings() { if (VID.collecting) return; const c = G(); c.strokeStyle = WA(0.1); for (const [x, y, r] of [[900, 260, 90], [140, 1700, 110]]) { for (let i = 0; i < 40; i++) { c.lineWidth = 3 + hash(i + x) * 6; c.globalAlpha = 0.25 + hash(i * 3 + y) * 0.5; c.beginPath(); c.arc(x, y, r, i / 40 * TAU, (i + 1) / 40 * TAU); c.stroke(); } } D(); }
+    function elements() {
+      const cg = closeGeom({ y: 620, lw: 600, ctaGap: 400 });
+      const els = [
+        mkEl('title', TITLE, 540, 820, 0.6, T0, p => [p[0] - 500, p[1] - 170, 1000, 200]),
+        mkEl('sub', SUB, 540, 990, 1.4, T0 - 0.8, p => [p[0] - 460, p[1] - 34, 920, 60]),
+        ...(HOURS ? [mkEl('hours', HOURS, 540, 1120, 1.9, T0 - 1.3, p => [p[0] - 300, p[1] - 40, 600, 80])] : []),
+        { id: 'frame', kind: 'box', label: 'Rounded frame', x: FR[0], y: FR[1], w: FR[2], h: FR[3], t0: T0, d: OUT - T0, box: [FR[0], FR[1], FR[2], FR[3]], dup: false, del: false },
+      ];
+      IT.forEach((it, j) => els.push(mkEl('tag' + (j + 1), it, 540 + [-80, 90, -50, 70][j], 1190 + j * 72, T0 + 0.6 + j * 0.35, OUT - (T0 + 0.6 + j * 0.35), p => [p[0] - 300, p[1] - 46, 600, 80])));
+      els.push(
+        mkEl('end', END, 540, cg.lineY, OUT + 0.75, DUR - OUT - 0.75, p => [p[0] - 490, p[1] - 92, 980, 120]),
+        mkEl('cta', CONTACT.cta, 540, cg.ctaY, OUT + 1.4, DUR - OUT - 1.4, p => [p[0] - 480, p[1] - 46, 960, 92]),
+      );
+      return els;
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         BACKDROP(() => { if (!VID.collecting) { const k = E.inOutS(seg(t, 0, 3.0)), c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, mix(DEEP1, ACC2, 0.35 * k)); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40);
           const sy = lerp(H + 260, 1320, E.outC(seg(t, 0.1, 2.8))); const sg = c.createRadialGradient(W / 2, sy, 20, W / 2, sy, 520); sg.addColorStop(0, rgbaOf(ACC2, 0.95)); sg.addColorStop(0.5, rgbaOf(ACC2, 0.35)); sg.addColorStop(1, rgbaOf(ACC2, 0)); c.fillStyle = sg; c.fillRect(0, sy - 520, W, 1040); D(); } });
         rings();
-        if (t < T0 + 0.3) { type(L8({ text: TITLE, slot: 'Hand', wt: 400, size: 170, w: 1000, color: 'accent', fx: { shadow: 'soft' }, anim: { in: 'letters', stagger: 0.06, out: 'fade', outD: 0.4 }, y: 820, t0: 0.6, d: T0 }), t);
-          type(L8({ text: SUB, slot: 'Mont', wt: 700, size: 34, track: 300, color: 'white', anim: { in: 'tracking', out: 'fade', outD: 0.4 }, y: 990, t0: 1.4, d: T0 - 0.8 }), t);
-          if (HOURS) type(L8({ text: HOURS, slot: 'Mont', wt: 800, size: 40, color: 'accent', fx: { deco: 'pill', dcol: 'white' }, anim: { in: 'pop', out: 'fade', outD: 0.4 }, y: 1120, t0: 1.9, d: T0 - 1.3 }), t); }
+        if (t < T0 + 0.3) { const [tix, tiy] = posOf(elP('title'), [540, 820]);
+          type(L8({ text: TITLE, slot: 'Hand', wt: 400, size: 170, w: 1000, color: 'accent', fx: { shadow: 'soft' }, anim: { in: 'letters', stagger: 0.06, out: 'fade', outD: 0.4 }, x: tix, y: tiy, t0: 0.6, d: T0 }), t);
+          const [sux, suy] = posOf(elP('sub'), [540, 990]);
+          type(L8({ text: SUB, slot: 'Mont', wt: 700, size: 34, track: 300, color: 'white', anim: { in: 'tracking', out: 'fade', outD: 0.4 }, x: sux, y: suy, t0: 1.4, d: T0 - 0.8 }), t);
+          if (HOURS) { const [hox, hoy] = posOf(elP('hours'), [540, 1120]); type(L8({ text: HOURS, slot: 'Mont', wt: 800, size: 40, color: 'accent', fx: { deco: 'pill', dcol: 'white' }, anim: { in: 'pop', out: 'fade', outD: 0.4 }, x: hox, y: hoy, t0: 1.9, d: T0 - 1.3 }), t); } }
         if (t >= T0 && t < OUT) {
           const k = t < T1 ? 0 : t < T2 ? 1 : 2, s = S[k], lt = t - s.start, r = inBox(s, FR), p = E.outBack(seg(lt, 0, 0.6));
           const draw = j => () => { const sj = S[j], rj = inBox(sj, FR); if (!VID.collecting) { const c = G(); c.fillStyle = '#FFFFFF'; c.shadowColor = 'rgba(80,40,20,0.22)'; c.shadowBlur = 40; c.shadowOffsetY = 16; c.beginPath(); c.roundRect(rj[0] - 16, rj[1] - 16, rj[2] + 32, rj[3] + 32, 70); c.fill(); D(); }
             ctx.save(); if (!VID.collecting) { ctx.beginPath(); ctx.roundRect(rj[0] + SH.x, rj[1] + SH.y, rj[2], rj[3], 58); ctx.clip(); } K7.photo(sj, t, rj); ctx.restore(); };
           if (k > 0 && lt < 0.4) cut('softwipe', t, s.start, 0.8, draw(k - 1), draw(k), { dir: 'up' }); else { ctx.save(); if (k === 0) ctx.globalAlpha = clamp(p * 3); draw(k)(); ctx.restore(); }
           if (k === 0) steam(540, r[1] - 10, t, clamp((t - T0) * 2));
-          IT.forEach((it, j) => { const ti = T0 + 0.6 + j * 0.35; if (t < ti) return; const dc = j % 2 ? 'accent2' : 'white'; type(L8({ text: it, slot: 'Mont', wt: 800, size: 46, color: K8.onCol(K8.col(dc)), fx: { deco: 'pill', dcol: dc }, anim: { in: 'pop', out: 'fade' }, x: 540 + [-80, 90, -50, 70][j], y: 1190 + j * 72, rot: [-3, 2, -2, 3][j], t0: ti, d: OUT - ti }), t); });
+          IT.forEach((it, j) => { const ti = T0 + 0.6 + j * 0.35; if (t < ti) return; const dc = j % 2 ? 'accent2' : 'white', [tgx, tgy] = posOf(elP('tag' + (j + 1)), [540 + [-80, 90, -50, 70][j], 1190 + j * 72]); type(L8({ text: it, slot: 'Mont', wt: 800, size: 46, color: K8.onCol(K8.col(dc)), fx: { deco: 'pill', dcol: dc }, anim: { in: 'pop', out: 'fade' }, x: tgx, y: tgy, rot: [-3, 2, -2, 3][j], t0: ti, d: OUT - ti }), t); });
           if (!VID.collecting) { const c = G(), cx = 930, cy = 1070, a = clamp((t - T0) * 2); c.globalAlpha = a; c.fillStyle = '#FFFFFF'; c.beginPath(); c.arc(cx, cy, 58, 0, TAU); c.fill(); c.strokeStyle = '#2A2420'; c.lineWidth = 4; c.stroke(); c.lineCap = 'round';
             c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(t * 0.6 - 1.5) * 28, cy + Math.sin(t * 0.6 - 1.5) * 28); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(t * 6 - 1.5) * 42, cy + Math.sin(t * 6 - 1.5) * 42); c.stroke(); D(); }
         }
-        if (t >= OUT) close(t, OUT, { y: 620, lw: 600, line: END, lineL: { slot: 'Hand', wt: 400, size: 92, color: 'accent', anim: { in: 'letters', stagger: 0.04 } }, cta: 'pill', ctaGap: 400 });
+        if (t >= OUT) close(t, OUT, { y: 620, lw: 600, line: END, lineL: { slot: 'Hand', wt: 400, size: 92, color: 'accent', anim: { in: 'letters', stagger: 0.04 } }, cta: 'pill', ctaGap: 400, lineEl: 'end', ctaEl: 'cta' });
       },
       cues() { const ev = [['air', 0.2, 0.2, 0], ['tink', 0.7, 0.2, 0.3], ['pour', T0 + 0.1, 0.25, 0]];
         IT.forEach((it, j) => ev.push(['pop', T0 + 0.6 + j * 0.35, 0.35, (j % 2 ? 0.3 : -0.3)])); ev.push(['air', T1, 0.25, 0], ['air', T2, 0.25, 0], ['bell', OUT + 1.4, 0.2, 0]);
@@ -526,6 +709,6 @@ STUDIO_REG['food2'] = (() => {
   const MAKE = { burger, sushi, cheese, pour, menuedit, street, late, fresh, cater, brunch };
   const P = (MAKE[V] || burger)();
   const light = ['sushi', 'menuedit', 'fresh', 'brunch'].includes(V);
-  DIR = { dur: P.dur, bg: BLK, bgSwap: true, finish: { vig: light ? 0.1 : 0.28, grain: light ? 0.1 : 0.2 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, fam: V,
+  DIR = { dur: P.dur, bg: BLK, bgSwap: true, finish: { vig: light ? 0.1 : 0.28, grain: light ? 0.1 : 0.2 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, fam: V, elements: P.elements,
     setup() { if (!window.STUDIO && LIGHTPAL) { const w = IMG.logoW; IMG.logoW = IMG.logoB; IMG.logoB = w; } } };
 });

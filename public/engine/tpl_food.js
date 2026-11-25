@@ -15,6 +15,18 @@ STUDIO_REG['food'] = (() => {
   const FM = K7.FAM[V] || K7.FAM.fire;
   if (!window.STUDIO) setBrandColors(FM.pal);
   const G = K3.G, D = K3.D, up = K7.up, nz = K7.nz, seg = K7.seg, mix = K7.mix;
+  // Per-element model (b): same contract as tpl_nx9.js / tpl_brand.js — when
+  // this template runs as a nested block inside a free edit, tpl_free sets
+  // window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // function and clears it after. The template captures that (live) object
+  // at build time; render() reads positions from it. No `el` (standalone
+  // projects, old blocks) -> EL is null and every position below falls back
+  // to the original hardcoded value, so rendering is byte-for-byte the old path.
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
+  const mkEl = (id, label, dx, dy, t0, d, boxFn) => { const p = posOf(elP(id), [dx, dy]); return { id, kind: 'pos', label, x: p[0], y: p[1], t0, d, box: boxFn(p), dup: false, del: false }; };
   const NONE = k => ['nofoot.' + k, 0];
   // [[key, label, seconds, kind, placeholder shape]] -> shots one after another from t0
   function shots(list, t0, group) {
@@ -49,6 +61,10 @@ STUDIO_REG['food'] = (() => {
     const words = [W1, W2, W3];
     let M = null; const m = () => M || (M = { hs: Math.min(400, ...words.map(w => fitSize(w, 900, 940, 400, DSP, 2))), DL: K7.fitLines(DISH, 900, DSP, 940, 200, 2, { ls: 2 }),
       XL: K7.fitLines(DESC.toUpperCase(), 900, DSP, 940, 132, 3, { ls: 1 }), ENDS: Math.min(170, fitSize(END, 900, 940, 170, DSP, 2)) });   // measured on the first frame, once fonts are in
+    // dish-section geometry, shared by render() and elements() so they cannot drift
+    function dishGeom() { const DL = m().DL, sh = S[1], landscape = !vert(sh), lh = DL.size * 0.88, br = stageRect(sh, 700);
+      const yb = landscape ? Math.max(1300, br[1] + br[3] + 110 + DL.size * 0.8 + (DL.lines.length - 1) * lh) : 1370, yTop = yb - (DL.lines.length - 1) * lh - DL.size * 0.8;
+      return { DL, lh, yb, yTop }; }
     // white-hot -> cooled text. h: 1 hot .. 0 cool
     function heat(str, x, y, size, h, o) {
       if (VID.collecting || !str) return; o = o || {}; const c = G(), f = F(900, size, o.fam || DSP); setF(f, o.ls === undefined ? 2 : o.ls);
@@ -83,8 +99,26 @@ STUDIO_REG['food'] = (() => {
       for (let k = -3; k <= 3; k++) { const x = off + k * 250; c.fillStyle = '#0A0807'; c.fillRect(x - 58, -1500, 116, 3000); c.fillStyle = OR; c.shadowColor = OR; c.shadowBlur = 30; c.fillRect(x + 50, -1500, 8, 3000); c.shadowBlur = 0; }
       D();
     }
+    function elements() {
+      const hs = m().hs, lh = hs * 0.86, y0 = 960 - lh + hs * 0.36;
+      const { DL, yb, yTop } = dishGeom(), dlh = DL.size * 0.88;
+      const pw = PRICE ? textW(PRICE, F(900, 64, DSP), 2) + 56 : 0;
+      const lh2 = logoBox(760)[1];
+      const els = [
+        mkEl('hook', W1 + ' ' + W2 + ' ' + W3, 72, y0, b(1), T2 + 0.3 - b(1), p => [p[0], p[1] - hs * 0.6, 940, lh * 3 + hs * 0.6]),
+        mkEl('tags', TAGS, 72, yTop - 52, T2 + 0.15, T3 - T2 + 0.1, p => [p[0], p[1] - 12, 940, 60]),
+        mkEl('dish', DISH, 72, yb, T2 + 0.25, T3 - T2, p => [p[0], p[1] - DL.size * 0.8 - (DL.lines.length - 1) * dlh, 940, DL.size * 0.8 + DL.lines.length * dlh]),
+      ];
+      if (PRICE) els.push(mkEl('price', PRICE, W - 72 - pw / 2, yTop - 70, T2 + 0.9, T3 - T2 - 0.65, p => [p[0] - pw / 2 - 10, p[1] - 48, pw + 20, 96]));
+      els.push(
+        mkEl('desc', DESC, 72, 1380, T3 + 0.25, OUT - T3, p => { const XL = m().XL; return [p[0], p[1] - XL.size * 0.9 * (XL.lines.length - 1) - XL.size, 940, XL.size * 0.9 * XL.lines.length + XL.size * 0.4]; }),
+        mkEl('end', END, W / 2, 640 + lh2 / 2 + 210, OUT + 1.0, DUR - OUT - 1.0, p => [p[0] - 470, p[1] - m().ENDS, 940, m().ENDS * 1.2]),
+        mkEl('cta', CONTACT.cta, W / 2, 640 + lh2 / 2 + 360, OUT + 1.7, DUR - OUT - 1.7, p => [p[0] - 480, p[1] - 44, 960, 88]),
+      );
+      return els;
+    }
     return {
-      dur: DUR, shakes: [[b(0), 10], [b(1), 9], [b(2), 11], [T2 + 0.15, 6], [OUT + 0.6, 7]],
+      dur: DUR, shakes: [[b(0), 10], [b(1), 9], [b(2), 11], [T2 + 0.15, 6], [OUT + 0.6, 7]], elements,
       render(t) {
         backdrop(t);
         // heat wire (before the first word)
@@ -103,19 +137,21 @@ STUDIO_REG['food'] = (() => {
         // the hook: three words slam in, white-hot, and cool
         if (t < T2 + 0.3) {
           const hs = m().hs, out = E.inC(seg(t, T2 - 0.1, 0.28)), lh = hs * 0.86, y0 = 960 - lh + hs * 0.36;
+          const [hkx, hky] = posOf(elP('hook'), [72, y0]);
           words.forEach((w, k) => {
             const tw = b(k), p = seg(t, tw, 0.12); if (p <= 0) return;
-            heat(w, 72, y0 + k * lh - out * (500 + k * 140), hs, 1 - seg(t, tw + 0.12, 1.3), { s: lerp(1.3, 1, E.outC(p)), a: clamp(p * 3) * (1 - out) });
+            heat(w, hkx, hky + k * lh - out * (500 + k * 140), hs, 1 - seg(t, tw + 0.12, 1.3), { s: lerp(1.3, 1, E.outC(p)), a: clamp(p * 3) * (1 - out) });
           });
         }
         // the dish: hero footage, the name cools from white-hot, tags + description, optional price
         if (t >= T2 && t < T3 + 0.25) {
-          const DL = m().DL, q = seg(t, T3 - 0.1, 0.25), sh = S[1], landscape = !vert(sh), lh = DL.size * 0.88, br = stageRect(sh, 700);
-          const yb = landscape ? Math.max(1300, br[1] + br[3] + 110 + DL.size * 0.8 + (DL.lines.length - 1) * lh) : 1370, yTop = yb - (DL.lines.length - 1) * lh - DL.size * 0.8;
+          const { DL, lh, yb, yTop } = dishGeom(), q = seg(t, T3 - 0.1, 0.25);
           const tp = seg(t, T2 + 0.15, 0.35);
-          if (tp > 0) { const c = G(); c.globalAlpha = tp * (1 - q); setF(F(700, 30, SANS), 7); c.fillStyle = OR; c.fillRect(72, yTop - 52, 28 * E.outC(tp), 4); c.fillStyle = ACC2; c.textBaseline = 'alphabetic'; c.fillText(TAGS, 72 + 46, yTop - 40); D(); }
-          DL.lines.forEach((ln, k) => { const p = seg(t, T2 + 0.25 + k * 0.12, 0.16); if (p > 0) heat(ln, 72, yb - (DL.lines.length - 1 - k) * lh, DL.size, 1 - seg(t, T2 + 0.4, 1.5), { s: lerp(1.15, 1, E.outC(p)), a: clamp(p * 3) * (1 - q) }); });
-          if (PRICE) { const pp = seg(t, T2 + 0.9, 0.25); if (pp > 0) { const c = G(), f = F(900, 64, DSP), w = textW(PRICE, f, 2) + 56; c.globalAlpha = (1 - q) * clamp(pp * 3); c.translate(W - 72 - w / 2, yTop - 70); c.rotate(-0.06); c.scale(lerp(1.4, 1, E.outC(pp)), lerp(1.4, 1, E.outC(pp))); c.fillStyle = OR; c.fillRect(-w / 2, -48, w, 96); setF(f, 2); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(PRICE, 0, 4); D(); } }
+          const [tgx, tgy] = posOf(elP('tags'), [72, yTop - 52]);
+          if (tp > 0) { const c = G(); c.globalAlpha = tp * (1 - q); setF(F(700, 30, SANS), 7); c.fillStyle = OR; c.fillRect(tgx, tgy, 28 * E.outC(tp), 4); c.fillStyle = ACC2; c.textBaseline = 'alphabetic'; c.fillText(TAGS, tgx + 46, tgy + 12); D(); }
+          const [dix, diy] = posOf(elP('dish'), [72, yb]);
+          DL.lines.forEach((ln, k) => { const p = seg(t, T2 + 0.25 + k * 0.12, 0.16); if (p > 0) heat(ln, dix, diy - (DL.lines.length - 1 - k) * lh, DL.size, 1 - seg(t, T2 + 0.4, 1.5), { s: lerp(1.15, 1, E.outC(p)), a: clamp(p * 3) * (1 - q) }); });
+          if (PRICE) { const pp = seg(t, T2 + 0.9, 0.25); if (pp > 0) { const c = G(), f = F(900, 64, DSP), w = textW(PRICE, f, 2) + 56; const [prx, pry] = posOf(elP('price'), [W - 72 - w / 2, yTop - 70]); c.globalAlpha = (1 - q) * clamp(pp * 3); c.translate(prx, pry); c.rotate(-0.06); c.scale(lerp(1.4, 1, E.outC(pp)), lerp(1.4, 1, E.outC(pp))); c.fillStyle = OR; c.fillRect(-w / 2, -48, w, 96); setF(f, 2); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(PRICE, 0, 4); D(); } }
         }
         // the close-ups: the dish name rides as a header, the description sits low
         if (t >= T3 && t < OUT) {
@@ -124,8 +160,9 @@ STUDIO_REG['food'] = (() => {
           const c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.fillRect(72, 352, 120 * E.outC(p), 4); D();
           if (PRICE) K7.txt(PRICE, W - 72, 330, F(900, 72, DSP), ACC2, { align: 'right', a: E.outC(p) * (1 - q), ls: 2 });
           // the description, big and low, one line per beat
-          const XL = m().XL, lh = XL.size * 0.9, yb = 1380;
-          XL.lines.forEach((ln, k) => { const lp = seg(t, T3 + 0.25 + k * BT * 0.5, 0.14); if (lp > 0) heat(ln, 72, yb - (XL.lines.length - 1 - k) * lh, XL.size, 0.55 * (1 - seg(t, T3 + 0.3 + k * BT * 0.5, 1.0)), { s: lerp(1.12, 1, E.outC(lp)), a: clamp(lp * 3) * (1 - q), ls: 1 }); });
+          const XL = m().XL, lh = XL.size * 0.9;
+          const [dex, dey] = posOf(elP('desc'), [72, 1380]);
+          XL.lines.forEach((ln, k) => { const lp = seg(t, T3 + 0.25 + k * BT * 0.5, 0.14); if (lp > 0) heat(ln, dex, dey - (XL.lines.length - 1 - k) * lh, XL.size, 0.55 * (1 - seg(t, T3 + 0.3 + k * BT * 0.5, 1.0)), { s: lerp(1.12, 1, E.outC(lp)), a: clamp(lp * 3) * (1 - q), ls: 1 }); });
         }
         [T2, T3, T4].forEach(tc => sear(t, tc));
         // embers: a few, only from the bottom, never over the dish name for long
@@ -138,9 +175,11 @@ STUDIO_REG['food'] = (() => {
             if (h > 0.02) { c.shadowColor = rgbaOf(OR, 0.9); c.shadowBlur = 60 * h; c.drawImage(K7.tinted(IMG.logoW, OR), -lw / 2, -lh / 2, lw, lh); c.shadowBlur = 0; }
             c.globalAlpha *= 1 - h * 0.85; c.drawImage(IMG.logoW, -lw / 2, -lh / 2, lw, lh); D();
           }
-          const ep = seg(o, 1.0, 0.16); if (ep > 0) heat(END, W / 2, 640 + lh / 2 + 210, m().ENDS, 1 - seg(o, 1.1, 1.4), { align: 'center', s: lerp(1.2, 1, E.outC(ep)), a: clamp(ep * 3) });
+          const [enx, eny] = posOf(elP('end'), [W / 2, 640 + lh / 2 + 210]);
+          const ep = seg(o, 1.0, 0.16); if (ep > 0) heat(END, enx, eny, m().ENDS, 1 - seg(o, 1.1, 1.4), { align: 'center', s: lerp(1.2, 1, E.outC(ep)), a: clamp(ep * 3) });
           const cp = seg(o, 1.7, 0.3), cy = 640 + lh / 2 + 360;
-          if (cp > 0) { const c = G(), f = F(800, Math.min(34, fitSize(CONTACT.cta, 800, 840, 34, SANS, 5)), SANS), tw = textW(CONTACT.cta, f, 5), bw = Math.min(960, tw + 90); c.globalAlpha = E.outC(cp); c.strokeStyle = OR; c.lineWidth = 4; c.strokeRect(W / 2 - bw / 2, cy - 44, bw, 88); setF(f, 5); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2 + 2.5, cy + 2); D(); }
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, cy]);
+          if (cp > 0) { const c = G(), f = F(800, Math.min(34, fitSize(CONTACT.cta, 800, 840, 34, SANS, 5)), SANS), tw = textW(CONTACT.cta, f, 5), bw = Math.min(960, tw + 90); c.globalAlpha = E.outC(cp); c.strokeStyle = OR; c.lineWidth = 4; c.strokeRect(ct2x - bw / 2, ct2y - 44, bw, 88); setF(f, 5); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, ct2x + 2.5, ct2y + 2); D(); }
           const ip = seg(o, 2.1, 0.4); if (ip > 0) K7.txt(K7.contact().join('   ·   '), W / 2, cy + 120, F(700, 30, SANS), WA(0.8), { align: 'center', a: E.outC(ip), ls: 3 });
         }
       },
@@ -168,6 +207,15 @@ STUDIO_REG['food'] = (() => {
     S.forEach((s, k) => (s.start = T0 + k * CD - 0.2));
     const RN = ['I', 'II', 'III'], LAB = ['FIRST COURSE', 'SECOND COURSE', 'THIRD COURSE'];
     const NAME = BRAND.name; let NS0 = 0; const NSf = () => NS0 || (NS0 = Math.min(96, fitSize(NAME, 600, 900, 96, SER, 0, 'italic')));
+    // course geometry, shared by render() and elements() so they cannot drift
+    function courseGeom(k) {
+      const sh = S[k], right = k % 2 === 1, v = vert(sh);
+      const fw = v ? 540 : 860, fh = v ? 960 : fw / K3.ar(sh.c), by = Math.max(250, (H - fh - 300) / 2 - 30);
+      const [frx, fry] = posOf(elP('frame' + (k + 1)), [right ? W - 100 - fw : 100, by]);
+      const r = K3.wholeIn(sh.c, [frx, fry, fw, fh]);
+      const ax = right ? r[0] + r[2] : r[0], y = r[1] + r[3] + 120;
+      return { sh, right, fw, fh, frx, fry, r, ax, y };
+    }
     function frame(p, a) {   // hairline frame inset 54px, drawn clockwise from the top centre
       if (VID.collecting || p <= 0) return; const c = G(), x0 = 54, y0 = 54, x1 = W - 54, y1 = H - 54, L = 2 * (x1 - x0) + 2 * (y1 - y0), d = L * E.inOutS(clamp(p));
       c.globalAlpha = a === undefined ? 1 : a; c.strokeStyle = OR; c.lineWidth = 1.6; c.beginPath();
@@ -176,33 +224,55 @@ STUDIO_REG['food'] = (() => {
       c.stroke(); D();
     }
     const fadeUp = (str, x, y, f, col, p, o) => { if (p <= 0) return; o = o || {}; K7.txt(str, x, y + (1 - E.outC(p)) * 22, f, col, Object.assign({}, o, { a: E.outC(p) * (o.a === undefined ? 1 : o.a) })); };
+    function elements() {
+      const [lw, lh] = logoBox(420);
+      const els = [
+        mkEl('kick', KICK, W / 2, 760, 0.6, T0 - 0.4, p => [p[0] - 470, p[1] - 26, 940, 52]),
+        mkEl('name', NAME, W / 2, 920, 1.1, T0 - 0.9, p => [p[0] - 450, p[1] - NSf(), 900, NSf() + 20]),
+        mkEl('sub', SUB, W / 2, 1000, 1.6, T0 - 1.4, p => [p[0] - 470, p[1] - 40, 940, 80]),
+      ];
+      for (let k = 0; k < 3; k++) {
+        const t0 = T0 + k * CD, g = courseGeom(k);
+        els.push({ id: 'frame' + (k + 1), kind: 'pos', label: 'Course ' + (k + 1) + ' photo', x: g.frx, y: g.fry, t0, d: CD, box: [g.frx, g.fry, g.fw, g.fh], dup: false, del: false });
+        els.push(mkEl('dish' + (k + 1), C[k].n, g.ax, g.y + 96, t0 + 1.25, CD - 1.0, p => [p[0] - (g.right ? 760 : 0), p[1] - 78, 760, 96]));
+        els.push(mkEl('desc' + (k + 1), C[k].d, g.ax, g.y + 156, t0 + 1.55, CD - 1.3, p => [p[0] - (g.right ? 760 : 0), p[1] - 24, 760, 48]));
+      }
+      els.push(
+        mkEl('end', END, W / 2, 560 + lh / 2 + 200, OUT + 0.9, DUR - OUT - 0.9, p => [p[0] - 450, p[1] - 88, 900, 110]),
+        mkEl('cta', CONTACT.cta, W / 2, 560 + lh / 2 + 500, OUT + 1.9, DUR - OUT - 1.9, p => [p[0] - 480, p[1] - 36, 960, 72]),
+      );
+      return els;
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         if (!VID.collecting) { const c = G(), g = c.createRadialGradient(W / 2, H * 0.42, 100, W / 2, H / 2, H * 0.75); g.addColorStop(0, DEEP2); g.addColorStop(1, DEEP1); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); }
         frame(seg(t, 0.1, 2.2));
         // title
         if (t < T0 + 0.2) {
           const q = seg(t, T0 - 0.6, 0.7);
-          fadeUp(KICK, W / 2, 760, F(600, 26, SANS), OR, seg(t, 0.6, 0.9), { align: 'center', ls: 10, a: 1 - q });
-          if (!VID.collecting) rule(W / 2, 800, 140, seg(t, 0.9, 0.9), { col: OR, alpha: 1 - q });
-          fadeUp(NAME, W / 2, 920, F(500, NSf(), SER, 'italic'), WHT, seg(t, 1.1, 1.0), { align: 'center', a: 1 - q });
-          fadeUp(SUB, W / 2, 1000, F(500, 40, SER), WA(0.7), seg(t, 1.6, 1.0), { align: 'center', a: 1 - q });
+          const [kix, kiy] = posOf(elP('kick'), [W / 2, 760]);
+          fadeUp(KICK, kix, kiy, F(600, 26, SANS), OR, seg(t, 0.6, 0.9), { align: 'center', ls: 10, a: 1 - q });
+          if (!VID.collecting) rule(kix, kiy + 40, 140, seg(t, 0.9, 0.9), { col: OR, alpha: 1 - q });
+          const [nmx, nmy] = posOf(elP('name'), [W / 2, 920]);
+          fadeUp(NAME, nmx, nmy, F(500, NSf(), SER, 'italic'), WHT, seg(t, 1.1, 1.0), { align: 'center', a: 1 - q });
+          const [sux, suy] = posOf(elP('sub'), [W / 2, 1000]);
+          fadeUp(SUB, sux, suy, F(500, 40, SER), WA(0.7), seg(t, 1.6, 1.0), { align: 'center', a: 1 - q });
         }
         // courses
         for (let k = 0; k < 3; k++) {
           const t0 = T0 + k * CD, a = seg(t, t0, 0.6) * (1 - seg(t, t0 + CD - 0.45, 0.5)); if (a <= 0) continue;
-          const sh = S[k], right = k % 2 === 1, v = vert(sh);
-          const fw = v ? 540 : 860, fh = v ? 960 : fw / K3.ar(sh.c), by = Math.max(250, (H - fh - 300) / 2 - 30), box = [right ? W - 100 - fw : 100, by, fw, fh];
-          const r = K3.wholeIn(sh.c, box), cu = E.inOutS(seg(t, t0 + 0.1, 1.3));
+          const { sh, right, r, ax, y } = courseGeom(k), cu = E.inOutS(seg(t, t0 + 0.1, 1.3));
           if (cu > 0) { ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.rect(r[0], r[1], r[2], r[3] * cu); ctx.clip(); K7.photo(sh, t, r); ctx.restore(); }
           if (VID.collecting) continue;
           rule(r[0], r[1] + r[3] + 26, r[2], seg(t, t0 + 0.9, 1.0), { col: OR, alpha: a, from: 'l', h: 1.6 });
-          const ax = right ? r[0] + r[2] : r[0], al = right ? 'right' : 'left', y = r[1] + r[3] + 120;
+          const al = right ? 'right' : 'left';
           fadeUp(LAB[k], ax, y, F(600, 24, SANS), OR, seg(t, t0 + 1.0, 0.9), { align: al, ls: 8, a });
           const ns = Math.min(78, fitSize(C[k].n, 500, 760, 78, SER, 0, 'italic'));
-          fadeUp(C[k].n, ax, y + 96, F(500, ns, SER, 'italic'), WHT, seg(t, t0 + 1.25, 1.0), { align: al, a });
-          fadeUp(up(C[k].d), ax, y + 156, F(500, Math.min(24, fitSize(up(C[k].d), 500, 760, 24, SANS, 4)), SANS), WA(0.72), seg(t, t0 + 1.55, 1.0), { align: al, ls: 4, a });
+          const [dix, diy] = posOf(elP('dish' + (k + 1)), [ax, y + 96]);
+          fadeUp(C[k].n, dix, diy, F(500, ns, SER, 'italic'), WHT, seg(t, t0 + 1.25, 1.0), { align: al, a });
+          const [dex, dey] = posOf(elP('desc' + (k + 1)), [ax, y + 156]);
+          fadeUp(up(C[k].d), dex, dey, F(500, Math.min(24, fitSize(up(C[k].d), 500, 760, 24, SANS, 4)), SANS), WA(0.72), seg(t, t0 + 1.55, 1.0), { align: al, ls: 4, a });
           fadeUp(RN[k], right ? 100 : W - 100, y + 156, F(500, 220, SER), rgbaOf(OR, 0.9), seg(t, t0 + 0.7, 1.4), { align: right ? 'left' : 'right', a });
         }
         // closing
@@ -210,11 +280,13 @@ STUDIO_REG['food'] = (() => {
           const o = t - OUT, [lw, lh] = logoBox(420);
           const lp = seg(o, 0.2, 1.0); if (lp > 0) { const c = G(); c.globalAlpha = E.outC(lp); c.drawImage(IMG.logoW, W / 2 - lw / 2, 560 - lh / 2, lw, lh); D(); }
           fadeUp(KICK, W / 2, 560 + lh / 2 + 90, F(600, 24, SANS), OR, seg(o, 0.6, 0.9), { align: 'center', ls: 10 });
-          fadeUp(END, W / 2, 560 + lh / 2 + 200, F(500, Math.min(88, fitSize(END, 500, 900, 88, SER, 0, 'italic')), SER, 'italic'), WHT, seg(o, 0.9, 1.0), { align: 'center' });
-          rule(W / 2, 560 + lh / 2 + 250, 120, seg(o, 1.2, 0.9), { col: OR });
+          const [enx, eny] = posOf(elP('end'), [W / 2, 560 + lh / 2 + 200]);
+          fadeUp(END, enx, eny, F(500, Math.min(88, fitSize(END, 500, 900, 88, SER, 0, 'italic')), SER, 'italic'), WHT, seg(o, 0.9, 1.0), { align: 'center' });
+          rule(enx, eny + 50, 120, seg(o, 1.2, 0.9), { col: OR });
           if (CONTACT.phone) fadeUp(CONTACT.phone, W / 2, 560 + lh / 2 + 340, F(500, 58, SER), WHT, seg(o, 1.4, 1.0), { align: 'center', ls: 1 });
           if (CONTACT.web) fadeUp(up(CONTACT.web), W / 2, 560 + lh / 2 + 400, F(600, 24, SANS), WA(0.6), seg(o, 1.6, 1.0), { align: 'center', ls: 6 });
-          const cp = seg(o, 1.9, 1.0); if (cp > 0) { const c = G(), f = F(600, Math.min(24, fitSize(CONTACT.cta, 600, 840, 24, SANS, 5)), SANS), tw = textW(CONTACT.cta, f, 6), bw = tw + 90, y = 560 + lh / 2 + 500; c.globalAlpha = E.outC(cp); c.strokeStyle = OR; c.lineWidth = 1.6; c.strokeRect(W / 2 - bw / 2, y - 36, bw, 72); setF(f, 6); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2 + 3, y + 1); D(); }
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, 560 + lh / 2 + 500]);
+          const cp = seg(o, 1.9, 1.0); if (cp > 0) { const c = G(), f = F(600, Math.min(24, fitSize(CONTACT.cta, 600, 840, 24, SANS, 5)), SANS), tw = textW(CONTACT.cta, f, 6), bw = tw + 90, y = ct2y; c.globalAlpha = E.outC(cp); c.strokeStyle = OR; c.lineWidth = 1.6; c.strokeRect(ct2x - bw / 2, y - 36, bw, 72); setF(f, 6); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, ct2x + 3, y + 1); D(); }
         }
       },
       cues() {
@@ -272,46 +344,69 @@ STUDIO_REG['food'] = (() => {
       c.globalAlpha = clamp(p * 3) * (o.a === undefined ? 1 : o.a); c.translate(cx, cy); c.rotate(o.rot || -0.05); c.scale(s, s); c.fillStyle = o.bg || ACC2; c.fillRect(-w / 2, -h / 2, w, h);
       setF(f, 0); c.fillStyle = o.col || OR; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(str, 0, size * 0.06); D();
     }
+    function elements() {
+      const TS = TSf(), lh2 = logoBox(560)[1];
+      const [tix2, tiy2] = posOf(elP('title'), [W / 2, 760 - TS * 0.12]);
+      const els = [
+        mkEl('title', L1 + ' ' + L2, W / 2, 760 - TS * 0.12, b(0), C0 + 0.3 - b(0), p => [p[0] - 470, p[1] - TS, 940, TS * 2.1]),
+      ];
+      if (HOURS) els.push(mkEl('hours', HOURS, W / 2, tiy2 + TS * 0.9 + 170, b(3), C0 + 0.3 - b(3), p => [p[0] - 470, p[1] - 27, 940, 54]));
+      els.push(mkEl('combo', L1 + ' ' + L2, W / 2, 290, C0, SH0 + 0.3 - C0, p => [p[0] - 470, p[1] - 36, 940, 72]));
+      [190, 540, 890].forEach((x, k) => els.push(mkEl('sticker' + (k + 1), IT[k], x, 640, C0 + k * 2 * BT, SH0 + 0.3 - (C0 + k * 2 * BT), p => [p[0] - 157, p[1] - 129, 314, 500])));
+      els.push(
+        mkEl('price', PRICE, W / 2, 1270, b(10), SH0 + 0.3 - b(10), p => [p[0] - 290, p[1] - 290, 580, 580]),
+        mkEl('deal', DEAL, W / 2, 1630, b(11), SH0 + 0.3 - b(11), p => [p[0] - 470, p[1] - 26, 940, 52]),
+        mkEl('itemlabel', 'Item name', W / 2, 1330, SH0, OUT - SH0, p => [p[0] - 430, p[1] - 65, 860, 130]),
+        mkEl('end', END, W / 2, 620 + lh2 / 2 + 220, OUT + 0.35, DUR - OUT - 0.35, p => [p[0] - 480, p[1] - 150, 960, 180]),
+        mkEl('cta', CONTACT.cta, W / 2, 620 + lh2 / 2 + 370, OUT + 0.7, DUR - OUT - 0.7, p => [p[0] - 450, p[1] - 24, 900, 48]),
+      );
+      return els;
+    }
     return {
-      dur: DUR, shakes: [[b(0) + 0.2, 8], [b(1) + 0.2, 8], [b(10) + 0.1, 12], [OUT + 0.05, 6]],
+      dur: DUR, shakes: [[b(0) + 0.2, 8], [b(1) + 0.2, 8], [b(10) + 0.1, 12], [OUT + 0.05, 6]], elements,
       render(t) {
         fillAll(BLK); stripes(t, t < OUT ? 0.55 : 0.35);
         const sx = W / 2;
         // title: two words from both sides, a clock-hand wipe, a mustard disc
         if (t < C0 + 0.3) {
           const q = seg(t, C0 - 0.2, 0.3), dp = E.outElastic(seg(t, b(2), 0.7));
-          if (!VID.collecting && dp > 0) { const c = G(); c.globalAlpha = 1 - q; c.fillStyle = OR; c.beginPath(); c.arc(sx, 760, 400 * dp, 0, TAU0); c.fill();
-            const hp = seg(t, b(2), 0.5); if (hp > 0 && hp < 1) { c.fillStyle = ACC2; c.beginPath(); c.moveTo(sx, 760); c.arc(sx, 760, 400 * dp, -Math.PI / 2, -Math.PI / 2 + hp * TAU0); c.closePath(); c.globalAlpha = 0.18 * (1 - q); c.fill(); c.globalAlpha = 1 - q; c.save(); c.translate(sx, 760); c.rotate(hp * TAU0); c.fillRect(-7, -380 * dp, 14, 380 * dp); c.restore(); }
-            for (let k = 0; k < 12; k++) { c.save(); c.translate(sx, 760); c.rotate(k / 12 * TAU0); c.fillStyle = ACC2; c.fillRect(-4, -386 * dp, 8, k % 3 ? 22 : 44); c.restore(); }
+          const TS = TSf(), y1 = 760 - TS * 0.12;
+          const [tix, tiy] = posOf(elP('title'), [sx, y1]), dcx = tix, dcy = tiy + TS * 0.12, y2 = tiy + TS * 0.9;
+          if (!VID.collecting && dp > 0) { const c = G(); c.globalAlpha = 1 - q; c.fillStyle = OR; c.beginPath(); c.arc(dcx, dcy, 400 * dp, 0, TAU0); c.fill();
+            const hp = seg(t, b(2), 0.5); if (hp > 0 && hp < 1) { c.fillStyle = ACC2; c.beginPath(); c.moveTo(dcx, dcy); c.arc(dcx, dcy, 400 * dp, -Math.PI / 2, -Math.PI / 2 + hp * TAU0); c.closePath(); c.globalAlpha = 0.18 * (1 - q); c.fill(); c.globalAlpha = 1 - q; c.save(); c.translate(dcx, dcy); c.rotate(hp * TAU0); c.fillRect(-7, -380 * dp, 14, 380 * dp); c.restore(); }
+            for (let k = 0; k < 12; k++) { c.save(); c.translate(dcx, dcy); c.rotate(k / 12 * TAU0); c.fillStyle = ACC2; c.fillRect(-4, -386 * dp, 8, k % 3 ? 22 : 44); c.restore(); }
             D(); }
-          const TS = TSf(), p1 = seg(t, b(0), 0.26), p2 = seg(t, b(1), 0.26), y1 = 760 - TS * 0.12, y2 = y1 + TS * 0.9;
-          for (const [str, p, y, dir] of [[L1, p1, y1, -1], [L2, p2, y2, 1]]) {
-            if (p <= 0 || VID.collecting) continue; const x = sx + dir * (1 - E.outBack(p)) * 900 - dir * q * 1200, c = G(); setF(F(900, TS, DSP), 0); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+          const p1 = seg(t, b(0), 0.26), p2 = seg(t, b(1), 0.26);
+          for (const [str, p, y, dir] of [[L1, p1, tiy, -1], [L2, p2, y2, 1]]) {
+            if (p <= 0 || VID.collecting) continue; const x = tix + dir * (1 - E.outBack(p)) * 900 - dir * q * 1200, c = G(); setF(F(900, TS, DSP), 0); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
             c.fillStyle = ACC2; c.fillText(str, x + 10, y + 12); c.fillStyle = WHT; c.fillText(str, x, y); D();
           }
-          if (HOURS) labelBox(HOURS, sx, y2 + 170, 54, seg(t, b(3), 0.25) * (1 - q), { rot: 0.03 });
+          if (HOURS) { const [hox, hoy] = posOf(elP('hours'), [sx, y2 + 170]); labelBox(HOURS, hox, hoy, 54, seg(t, b(3), 0.25) * (1 - q), { rot: 0.03 }); }
         }
         // the combo: frames pop on the beat, + signs, =, the price burst
         if (t >= C0 - 0.1 && t < SH0 + 0.3) {
           const q = seg(t, SH0 - 0.15, 0.3), hy = 290;
-          if (!VID.collecting) { const hp = seg(t, C0, 0.3), c = G(); c.globalAlpha = E.outC(hp) * (1 - q); setF(F(900, 72, DSP), 0); c.textAlign = 'center'; c.fillStyle = ACC2; c.fillText(L1 + ' ' + L2, sx + 5, hy + 6); c.fillStyle = WHT; c.fillText(L1 + ' ' + L2, sx, hy); D(); }
+          const [cox, coy] = posOf(elP('combo'), [sx, hy]);
+          if (!VID.collecting) { const hp = seg(t, C0, 0.3), c = G(); c.globalAlpha = E.outC(hp) * (1 - q); setF(F(900, 72, DSP), 0); c.textAlign = 'center'; c.fillStyle = ACC2; c.fillText(L1 + ' ' + L2, cox + 5, coy + 6); c.fillStyle = WHT; c.fillText(L1 + ' ' + L2, cox, coy); D(); }
           const xs = [190, 540, 890], rots = [-0.07, 0.05, -0.04], ry = 640;
           IT.forEach((it, k) => {
             const tk = C0 + k * 2 * BT, s = pop(t, tk); if (s <= 0) return;
-            sticker(S[k], t, xs[k], ry, 286, 230, rots[k], s * (1 - q * 0.3), 1 - q, t - tk);
-            if (!VID.collecting) { const L = K7.fitLines(it, 800, SANS, 300, 42, 2); L.lines.forEach((ln, j) => K7.txt(ln, xs[k], ry + 200 + j * L.size * 1.05, F(800, L.size, SANS), WHT, { align: 'center', a: clamp(s) * (1 - q), ls: 1 })); }
+            const [stx, sty] = posOf(elP('sticker' + (k + 1)), [xs[k], ry]);
+            sticker(S[k], t, stx, sty, 286, 230, rots[k], s * (1 - q * 0.3), 1 - q, t - tk);
+            if (!VID.collecting) { const L = K7.fitLines(it, 800, SANS, 300, 42, 2); L.lines.forEach((ln, j) => K7.txt(ln, stx, sty + 200 + j * L.size * 1.05, F(800, L.size, SANS), WHT, { align: 'center', a: clamp(s) * (1 - q), ls: 1 })); }
           });
           if (!VID.collecting) for (let k = 0; k < 2; k++) { const ps = pop(t, C0 + (2 * k + 1) * BT); if (ps > 0) { const c = G(), x = (xs[k] + xs[k + 1]) / 2; c.globalAlpha = 1 - q; c.translate(x, ry); c.scale(ps, ps); c.fillStyle = ACC2; c.fillRect(-34 + 6, -11 + 7, 68, 22); c.fillRect(-11 + 6, -34 + 7, 22, 68); c.fillStyle = OR; c.fillRect(-34, -11, 68, 22); c.fillRect(-11, -34, 22, 68); D(); } }
           const es = pop(t, b(9)); if (es > 0 && !VID.collecting) { const c = G(); c.globalAlpha = 1 - q; c.translate(sx, 970); c.scale(es, es); c.fillStyle = ACC2; c.fillRect(-110, -34, 220, 22); c.fillRect(-110, 12, 220, 22); D(); }
-          const bs = pop(t, b(10)); burst(sx, 1270, 280, t * 0.25, bs * (1 - q * 0.4), 1 - q);
-          if (bs > 0) priceTxt(sx, 1270 + 70, Math.min(230, 230 * 4 / Math.max(4, nz(PRICE).length)), K7.on(OR), clamp(bs * 2) * (1 - q));
-          labelBox(DEAL, sx, 1630, 52, seg(t, b(11), 0.25) * (1 - q), { rot: -0.03 });
+          const bs = pop(t, b(10)); const [prx, pry] = posOf(elP('price'), [sx, 1270]); burst(prx, pry, 280, t * 0.25, bs * (1 - q * 0.4), 1 - q);
+          if (bs > 0) priceTxt(prx, pry + 70, Math.min(230, 230 * 4 / Math.max(4, nz(PRICE).length)), K7.on(OR), clamp(bs * 2) * (1 - q));
+          const [dex, dey] = posOf(elP('deal'), [sx, 1630]);
+          labelBox(DEAL, dex, dey, 52, seg(t, b(11), 0.25) * (1 - q), { rot: -0.03 });
         }
         // each item at full size: stripe wipes on the beat, a skewed label, the price chip
         if (t >= SH0 && t < OUT) {
           const k = Math.min(2, Math.floor((t - SH0) / (3 * BT))), tk = SH0 + k * 3 * BT, sh = S[k];
           const r = stageRect(sh, 860); K7.photo(sh, t, r, { lt: t - tk + 1.2 });
-          if (!VID.collecting) { if (r[3] >= H - 2) shade(H * 0.55, H, 0, 0.75, BLK); labelBox(IT[k], sx, 1330, Math.min(130, fitSize(IT[k], 900, 860, 130, DSP, 0)), seg(t, tk + 0.12, 0.24));
+          if (!VID.collecting) { if (r[3] >= H - 2) shade(H * 0.55, H, 0, 0.75, BLK); const [ilx, ily] = posOf(elP('itemlabel'), [sx, 1330]); labelBox(IT[k], ilx, ily, Math.min(130, fitSize(IT[k], 900, 860, 130, DSP, 0)), seg(t, tk + 0.12, 0.24));
             K7.txt((k + 1) + ' / 3', 72, 300, F(900, 40, DSP), OR, {}); burst(W - 170, 320, 120, t * 0.4, 1, 1); priceTxt(W - 170, 352, Math.min(100, 100 * 4 / Math.max(4, nz(PRICE).length)), K7.on(OR), 1); }
         }
         [SH0, SH0 + 3 * BT, SH0 + 6 * BT].forEach(tc => wipe(t, tc));
@@ -319,8 +414,9 @@ STUDIO_REG['food'] = (() => {
         if (t >= OUT && !VID.collecting) {
           const o = t - OUT; if (o < 0.07) fillAll(PAPER);
           const [lw, lh] = logoBox(560), lp = pop(t, OUT + 0.1); if (lp > 0) { const c = G(); c.translate(sx, 620); c.scale(lp, lp); c.drawImage(IMG.logoW, -lw / 2, -lh / 2, lw, lh); D(); }
-          const es = Math.min(150, fitSize(END, 900, 960, 150, DSP, 0)), ep = seg(t, OUT + 0.35, 0.25); if (ep > 0) { const c = G(), x = sx + (1 - E.outBack(ep)) * 800; setF(F(900, es, DSP), 0); c.textAlign = 'center'; c.fillStyle = ACC2; c.fillText(END, x + 8, 620 + lh / 2 + 220 + 10); c.fillStyle = WHT; c.fillText(END, x, 620 + lh / 2 + 220); D(); }
-          labelBox(CONTACT.cta, sx, 620 + lh / 2 + 370, Math.min(48, fitSize(CONTACT.cta, 900, 900, 48, DSP, 0)), seg(t, OUT + 0.7, 0.25), { rot: 0, bg: ACC2, col: OR });
+          const es = Math.min(150, fitSize(END, 900, 960, 150, DSP, 0)), ep = seg(t, OUT + 0.35, 0.25); const [enx, eny] = posOf(elP('end'), [sx, 620 + lh / 2 + 220]); if (ep > 0) { const c = G(), x = enx + (1 - E.outBack(ep)) * 800; setF(F(900, es, DSP), 0); c.textAlign = 'center'; c.fillStyle = ACC2; c.fillText(END, x + 8, eny + 10); c.fillStyle = WHT; c.fillText(END, x, eny); D(); }
+          const [ct2x, ct2y] = posOf(elP('cta'), [sx, 620 + lh / 2 + 370]);
+          labelBox(CONTACT.cta, ct2x, ct2y, Math.min(48, fitSize(CONTACT.cta, 900, 900, 48, DSP, 0)), seg(t, OUT + 0.7, 0.25), { rot: 0, bg: ACC2, col: OR });
           const ip = seg(t, OUT + 1.0, 0.3); if (ip > 0) K7.txt(K7.contact().join('   ·   '), sx, 620 + lh / 2 + 490, F(800, 32, SANS), WHT, { align: 'center', a: ip, ls: 2 });
           if (HOURS) labelBox(HOURS, sx, 620 + lh / 2 + 600, 40, seg(t, OUT + 1.2, 0.25), { rot: 0.03, bg: OR, col: K7.on(OR) });
         }
@@ -388,8 +484,17 @@ STUDIO_REG['food'] = (() => {
     let TT = 0;
     function steel(t) { if (VID.collecting) return; const c = G(), g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, DEEP1); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); c.globalAlpha = 0.05; c.fillStyle = WHT; const rr = rng(5); for (let i = 0; i < 70; i++) c.fillRect(0, rr() * H, W, 1); D(); }
     function rail(y, a) { if (VID.collecting || a <= 0) return; const c = G(); c.globalAlpha = a; const g = c.createLinearGradient(0, y - 18, 0, y + 18); g.addColorStop(0, '#9A9E9C'); g.addColorStop(0.5, '#E9ECEA'); g.addColorStop(1, '#6E7270'); c.fillStyle = g; c.fillRect(0, y - 16, W, 32); c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(0, y + 16, W, 6); D(); }
+    function elements() {
+      return [
+        mkEl('ticket', 'Kitchen ticket', 286, 268, MV, OUT - MV, p => [p[0] - 200, p[1], 400, 500]),
+        mkEl('dish', DISH, 72, 1320, F0 + 0.2, OUT - F0 - 0.2, p => [p[0], p[1] - 170, 940, 200]),
+        ...(NOTE ? [mkEl('note', NOTE, 78, 1415, F0 + 1.0, OUT - F0 - 1.0, p => [p[0], p[1] - 56, 500, 80])] : []),
+        mkEl('end', END, W / 2, 820, OUT + 0.3, DUR - OUT - 0.3, p => [p[0] - 470, p[1] - 190, 940, 220]),
+        mkEl('cta', CONTACT.cta, W / 2, 900, OUT + 0.8, DUR - OUT - 0.8, p => [p[0] - 480, p[1], 960, 84]),
+      ];
+    }
     return {
-      dur: DUR, shakes: [[ST + 0.05, 9]],
+      dur: DUR, shakes: [[ST + 0.05, 9]], elements,
       render(t) {
         TT = t; steel(t);
         // footage behind the hanging ticket: pushes left
@@ -408,21 +513,25 @@ STUDIO_REG['food'] = (() => {
         // the ticket: prints, gets stamped, moves to the rail and sways, drops away for the closing
         const { rows, TH } = ly(), steps = rows.length, u = seg(t, P0, P1 - P0), su = u * steps, vis = TH * ((Math.floor(su) + E.outC(su % 1)) / steps), mv = E.inOutC(seg(t, MV, 0.7));
         const drop = E.inC(seg(t, OUT - 0.2, 0.6));
-        const x = lerp(W / 2, 286, mv), y = lerp(250, 268, mv) + drop * 2400, s = lerp(Math.min(1.5, 1380 / TH), 0.66, mv), rot = mv * (0.04 * Math.sin((t - MV) * 2.1)) + drop * 0.5;
+        const [tkx, tky] = posOf(elP('ticket'), [286, 268]);
+        const x = lerp(W / 2, tkx, mv), y = lerp(250, tky, mv) + drop * 2400, s = lerp(Math.min(1.5, 1380 / TH), 0.66, mv), rot = mv * (0.04 * Math.sin((t - MV) * 2.1)) + drop * 0.5;
         ticket(x, y, s, rot, u >= 1 ? TH : vis, 1);
         if (mv > 0) { const c = G(); c.translate(x, y); c.rotate(rot); c.fillStyle = '#C9CDCB'; c.fillRect(-40, -22, 80, 34); c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(-40, 8, 80, 4); D(); }
         // over the footage: the dish name big and low, the handwritten note
         if (t >= F0 && t < OUT) {
           const p = seg(t, F0 + 0.2, 0.4), q = seg(t, OUT - 0.3, 0.3), L = K7.fitLines(DISH, 400, DSP, 940, 170, 2);
-          L.lines.forEach((ln, k) => T([[ln, WHT]], 72, 1320 + k * L.size * 1.0 - (L.lines.length - 1) * L.size * 1.0, F(400, L.size, DSP), { p: seg(t, F0 + 0.2 + k * 0.1, 0.45), q, ls: 1 }));
-          if (NOTE) { const np = seg(t, F0 + 1.0, 0.8); if (np > 0) hand(NOTE, 78, 1415, 56, np, { col: ACC2, rot: -0.03, align: 'left', q }); }
-          const c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.fillRect(72, 1360, 90 * E.outC(p), 6); D();
+          const [dix, diy] = posOf(elP('dish'), [72, 1320]);
+          L.lines.forEach((ln, k) => T([[ln, WHT]], dix, diy + k * L.size * 1.0 - (L.lines.length - 1) * L.size * 1.0, F(400, L.size, DSP), { p: seg(t, F0 + 0.2 + k * 0.1, 0.45), q, ls: 1 }));
+          if (NOTE) { const np = seg(t, F0 + 1.0, 0.8); const [ntx, nty] = posOf(elP('note'), [78, 1415]); if (np > 0) hand(NOTE, ntx, nty, 56, np, { col: ACC2, rot: -0.03, align: 'left', q }); }
+          const c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.fillRect(dix, diy + 40, 90 * E.outC(p), 6); D();
         }
         // closing
         if (t >= OUT) {
           const o = t - OUT, es = Math.min(190, fitSize(END, 400, 940, 190, DSP, 1)), [lw, lh] = logoBox(520);
-          T([[END, WHT]], W / 2, 820, F(400, es, DSP), { align: 'center', p: seg(o, 0.3, 0.5), ls: 1 });
-          const cp = seg(o, 0.8, 0.3); if (cp > 0) { const c = G(), f = F(800, Math.min(32, fitSize(CONTACT.cta, 800, 840, 32, 'Mono', 5)), 'Mono'), bw = Math.min(960, textW(CONTACT.cta, f, 4) + 90); c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(W / 2 - bw / 2, 900, bw * E.outC(cp), 84); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2 + 2, 943); D(); }
+          const [enx, eny] = posOf(elP('end'), [W / 2, 820]);
+          T([[END, WHT]], enx, eny, F(400, es, DSP), { align: 'center', p: seg(o, 0.3, 0.5), ls: 1 });
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, 900]);
+          const cp = seg(o, 0.8, 0.3); if (cp > 0) { const c = G(), f = F(800, Math.min(32, fitSize(CONTACT.cta, 800, 840, 32, 'Mono', 5)), 'Mono'), bw = Math.min(960, textW(CONTACT.cta, f, 4) + 90); c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(ct2x - bw / 2, ct2y, bw * E.outC(cp), 84); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, ct2x + 2, ct2y + 43); D(); }
           const ip = seg(o, 1.1, 0.4); if (ip > 0) K7.txt(K7.contact().join('   ·   '), W / 2, 1060, F(700, 28, 'Mono'), WA(0.8), { align: 'center', a: ip, ls: 2 });
           const lp = seg(o, 1.3, 0.5); if (lp > 0) K7.logo(W / 2, 1200 + lh / 2, 520, E.outC(lp));
         }
@@ -462,26 +571,51 @@ STUDIO_REG['food'] = (() => {
       for (const y of [270, 1690]) c.fillRect(X0, y, (X1 - X0) * E.inOutC(p), 1); D();
     }
     function frameOf(sh) { return vert(sh) ? K3.wholeIn(sh.c, [X0 + 3 * CW - 20, 540, 3 * CW + 20, 760]) : K3.wholeIn(sh.c, [X0 + 1.5 * CW, 540, 4.5 * CW, 560]); }
+    // frame geometry, shared by render() and elements() so they cannot drift
+    function frameGeom() { const r0 = frameOf(S[0]), r1 = frameOf(S[1]);
+      const [frx, fry] = posOf(elP('frame'), [r0[0], r0[1]]);
+      const dx = frx - r0[0], dy = fry - r0[1];
+      return { r0: [frx, fry, r0[2], r0[3]], r1: [r1[0] + dx, r1[1] + dy, r1[2], r1[3]], dx, dy };
+    }
     function slats(sh, t, r, u, lt) {   // the frame revealed (or swapped) in six vertical slats
       const n = 6, sw = r[2] / n;
       for (let k = 0; k < n; k++) { const v = E.inOutC(clamp(u * 1.6 - k * 0.12)); if (v <= 0) continue; ctx.save(); ctx.beginPath(); ctx.rect(r[0] + k * sw, r[1] + r[3] * (1 - v), sw + 0.5, r[3] * v); ctx.clip(); K7.photo(sh, t, r, { lt }); ctx.restore(); }
     }
+    function elements() {
+      const FG = frameGeom(), NS = NSf(), lh2 = logoBox(440)[1], ns = Math.min(150, fitSize(NAME, 900, 940, 150, DSP, 0));
+      const lx = X0 + 1.5 * CW, ly0 = Math.max(FG.r0[1] + FG.r0[3] + 190, 1170), y0 = Math.max(FG.r1[1] + FG.r1[3] + 120, 1220);
+      const els = [
+        mkEl('kick', KICK, X0, 250, 0.3, OUT - 0.3, p => [p[0], p[1] - 22, 500, 44]),
+        mkEl('num', NUM, X1, 470, 0.5, OUT - 0.5, p => [p[0] - 300, p[1] - 230, 300, 260]),
+        mkEl('name', NAME, X0 + NS * 0.78, 1680, 1.0, OUT - 1.0, p => [p[0] - NS * 0.78 - 10, p[1] - 1400, NS + 30, 1400]),
+        { id: 'frame', kind: 'pos', label: 'Item photo', x: FG.r0[0], y: FG.r0[1], t0: T1 + 0.3, d: OUT - T1 - 0.3, box: [FG.r0[0], FG.r0[1], FG.r0[2], FG.r0[3]], dup: false, del: false },
+      ];
+      PARTS.forEach((pt, k) => els.push(mkEl('part' + (k + 1), pt, lx, ly0 + k * 92, T1 + 1.7 + k * 0.7, T2 - (T1 + 1.7 + k * 0.7), p => [p[0], p[1] - 26, X1 - lx, 60])));
+      els.push(mkEl('spec', spec.length ? 'Spec sheet' : END, lx, y0, T2 + 0.8, OUT - T2 - 0.8, p => [p[0], p[1] - 34, X1 - lx, 110 * (spec.length ? spec.length : 1)]));
+      els.push(
+        mkEl('endname', NAME, W / 2, 540 + lh2 / 2 + 40 + ns * 0.92, OUT + 0.45, DUR - OUT - 0.45, p => [p[0] - 470, p[1] - ns, 940, ns * 1.1]),
+        mkEl('end', END, W / 2, 540 + lh2 / 2 + 110 + ns, OUT + 0.8, DUR - OUT - 0.8, p => [p[0] - 470, p[1] - 56, 940, 70]),
+        mkEl('cta', CONTACT.cta, W / 2, 540 + lh2 / 2 + 230 + ns, OUT + 1.1, DUR - OUT - 1.1, p => [p[0] - 470, p[1], 940, 86]),
+      );
+      return els;
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         if (!VID.collecting) { const c = G(); c.fillStyle = BLK; c.fillRect(-20, -20, W + 40, H + 40); D(); }
         const q = seg(t, OUT - 0.4, 0.5); grid(seg(t, 0.05, 1.1), q);
+        const FG = frameGeom();
         // header row
         if (!VID.collecting && t < OUT + 0.2) {
-          const hp = seg(t, 0.3, 0.4); K7.txt(KICK, X0, 250, F(700, 22, 'Mono'), WHT, { a: E.outC(hp) * (1 - q), ls: 4 });
+          const hp = seg(t, 0.3, 0.4); const [kix, kiy] = posOf(elP('kick'), [X0, 250]); K7.txt(KICK, kix, kiy, F(700, 22, 'Mono'), WHT, { a: E.outC(hp) * (1 - q), ls: 4 });
           K7.txt(up(BRAND.short || BRAND.name), X1, 250, F(700, 22, 'Mono'), WA(0.55), { align: 'right', a: E.outC(hp) * (1 - q), ls: 4 });
-          const np = seg(t, 0.5, 0.6); if (np > 0) { const c = G(); c.globalAlpha = (1 - q) * E.outC(np); setF(F(900, 230, DSP), -4); c.textAlign = 'right'; c.textBaseline = 'alphabetic'; c.strokeStyle = WHT; c.lineWidth = 2.5; c.strokeText(NUM, X1 - (1 - E.outC(np)) * 60, 470); setF(F(700, 26, 'Mono'), 2); c.fillStyle = OR; c.fillText('Nº', X1 - textW(NUM, F(900, 230, DSP), -4) - 18, 300); D(); }
+          const np = seg(t, 0.5, 0.6); const [nux, nuy] = posOf(elP('num'), [X1, 470]); if (np > 0) { const c = G(); c.globalAlpha = (1 - q) * E.outC(np); setF(F(900, 230, DSP), -4); c.textAlign = 'right'; c.textBaseline = 'alphabetic'; c.strokeStyle = WHT; c.lineWidth = 2.5; c.strokeText(NUM, nux - (1 - E.outC(np)) * 60, nuy); setF(F(700, 26, 'Mono'), 2); c.fillStyle = OR; c.fillText('Nº', nux - textW(NUM, F(900, 230, DSP), -4) - 18, nuy - 170); D(); }
         }
         // the name, vertical along the left edge
-        if (!VID.collecting && t < OUT + 0.2) { const NS = NSf(), p = seg(t, 1.0, 0.7), c = G(); c.globalAlpha = 1 - q; c.beginPath(); c.rect(X0 - 10, 280, NS + 30, 1400); c.clip(); c.translate(X0 + NS * 0.78, 1680 + (1 - E.outC(p)) * 1400); c.rotate(-Math.PI / 2); setF(F(900, NS, DSP), 0); c.fillStyle = WHT; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(NAME, 0, 0); D(); }
+        if (!VID.collecting && t < OUT + 0.2) { const NS = NSf(), p = seg(t, 1.0, 0.7), c = G(); const [nmx, nmy] = posOf(elP('name'), [X0 + NS * 0.78, 1680]), ndx = nmx - (X0 + NS * 0.78), ndy = nmy - 1680; c.globalAlpha = 1 - q; c.beginPath(); c.rect(X0 - 10 + ndx, 280 + ndy, NS + 30, 1400); c.clip(); c.translate(nmx, nmy + (1 - E.outC(p)) * 1400); c.rotate(-Math.PI / 2); setF(F(900, NS, DSP), 0); c.fillStyle = WHT; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(NAME, 0, 0); D(); }
         // the frame: slats in, slats to the second shot
         if (t >= T1 + 0.3 && t < OUT + 0.3) {
-          const sh0 = S[0], sh1 = S[1], r0 = frameOf(sh0), r1 = frameOf(sh1), sw = seg(t, T2, 0.9);
+          const sh0 = S[0], sh1 = S[1], r0 = FG.r0, r1 = FG.r1, sw = seg(t, T2, 0.9);
           ctx.save(); ctx.globalAlpha = 1 - q;
           if (sw < 1) slats(sh0, t, r0, seg(t, T1 + 0.4, 1.0), t - T1);
           if (sw > 0) slats(sh1, t, r1, sw, t - T2);
@@ -490,33 +624,37 @@ STUDIO_REG['food'] = (() => {
         }
         if (VID.collecting) return;
         // callouts: numbered ticks on the frame's bottom edge, the numbered parts list below
-        const r0 = frameOf(S[0]), pq = seg(t, T2 - 0.3, 0.4), lx = X0 + 1.5 * CW, ly0 = Math.max(r0[1] + r0[3] + 190, 1170);
+        const r0 = FG.r0, pq = seg(t, T2 - 0.3, 0.4), lx = X0 + 1.5 * CW, ly0 = Math.max(r0[1] + r0[3] + 190, 1170);
         if (t >= T1 + 1.6 && pq < 1) PARTS.forEach((pt, k) => {
           const tk = T1 + 1.7 + k * 0.7, p = seg(t, tk, 0.5); if (p <= 0) return;
           const mx = r0[0] + r0[2] * (0.2 + 0.3 * k), my = r0[1] + r0[3] + 10, c = G(); c.globalAlpha = 1 - pq;
           c.fillStyle = OR; c.fillRect(mx - 1, my, 2, 46 * E.outC(p)); c.fillRect(mx - 6, my - 6, 12, 12); setF(F(700, 22, 'Mono'), 1); c.textAlign = 'center'; c.fillText('0' + (k + 1), mx, my + 76); D();
-          const ry = ly0 + k * 92, lp = seg(t, tk + 0.2, 0.5); if (lp <= 0) return;
-          const c2 = G(); c2.globalAlpha = 1 - pq; c2.fillStyle = WA(0.35); c2.fillRect(lx, ry + 26, (X1 - lx) * E.inOutC(lp), 1); c2.fillStyle = OR; c2.fillRect(lx, ry - 26, 44, 34); setF(F(700, 22, 'Mono'), 1); c2.fillStyle = K7.on(OR); c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText('0' + (k + 1), lx + 22, ry - 8); D();
-          K7.txt(pt, lx + 66 + (1 - E.outC(lp)) * 30, ry, F(700, Math.min(38, fitSize(pt, 700, X1 - lx - 70, 38, SANS, 1)), SANS), WHT, { a: E.outC(lp) * (1 - pq), ls: 1 });
+          const [ptx, pty] = posOf(elP('part' + (k + 1)), [lx, ly0 + k * 92]), ry = pty, lp = seg(t, tk + 0.2, 0.5); if (lp <= 0) return;
+          const c2 = G(); c2.globalAlpha = 1 - pq; c2.fillStyle = WA(0.35); c2.fillRect(ptx, ry + 26, (X1 - lx) * E.inOutC(lp), 1); c2.fillStyle = OR; c2.fillRect(ptx, ry - 26, 44, 34); setF(F(700, 22, 'Mono'), 1); c2.fillStyle = K7.on(OR); c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText('0' + (k + 1), ptx + 22, ry - 8); D();
+          K7.txt(pt, ptx + 66 + (1 - E.outC(lp)) * 30, ry, F(700, Math.min(38, fitSize(pt, 700, X1 - lx - 70, 38, SANS, 1)), SANS), WHT, { a: E.outC(lp) * (1 - pq), ls: 1 });
         });
         // spec table (only the rows that were given; if none, the closing line takes the space)
         if (t >= T2 + 0.5 && t < OUT + 0.2) {
-          const r1 = frameOf(S[1]), y0 = Math.max(r1[1] + r1[3] + 120, 1220);
+          const r1 = FG.r1, y0 = Math.max(r1[1] + r1[3] + 120, 1220);
+          const [spx, spy] = posOf(elP('spec'), [lx, y0]), sdx = spx - lx;
           const rowsT = spec.length ? spec : [['', END]];
           rowsT.forEach(([lab, val], k) => {
-            const p = seg(t, T2 + 0.8 + k * 0.3, 0.5), y = y0 + k * 110; if (p <= 0) return; const c = G(); c.globalAlpha = 1 - q; c.fillStyle = WA(0.4); c.fillRect(lx, y + 34, (X1 - lx) * E.inOutC(p), 1); D();
-            if (lab) K7.txt(lab, lx, y, F(700, 22, 'Mono'), OR, { a: E.outC(p) * (1 - q), ls: 3 });
-            K7.txt(lab ? val : val, lab ? X1 : lx, y, lab ? F(700, Math.min(40, fitSize(val, 700, 420, 40, SANS, 0)), SANS) : F(400, Math.min(52, fitSize(val, 400, X1 - lx, 52, SER, 0, 'italic')), SER, 'italic'), WHT, { align: lab ? 'right' : 'left', a: E.outC(p) * (1 - q) });
+            const p = seg(t, T2 + 0.8 + k * 0.3, 0.5), y = spy + k * 110; if (p <= 0) return; const c = G(); c.globalAlpha = 1 - q; c.fillStyle = WA(0.4); c.fillRect(spx, y + 34, (X1 - lx) * E.inOutC(p), 1); D();
+            if (lab) K7.txt(lab, spx, y, F(700, 22, 'Mono'), OR, { a: E.outC(p) * (1 - q), ls: 3 });
+            K7.txt(lab ? val : val, lab ? X1 + sdx : spx, y, lab ? F(700, Math.min(40, fitSize(val, 700, 420, 40, SANS, 0)), SANS) : F(400, Math.min(52, fitSize(val, 400, X1 - lx, 52, SER, 0, 'italic')), SER, 'italic'), WHT, { align: lab ? 'right' : 'left', a: E.outC(p) * (1 - q) });
           });
         }
         // closing
         if (t >= OUT) {
           const o = t - OUT, [lw, lh] = logoBox(440), ns = Math.min(150, fitSize(NAME, 900, 940, 150, DSP, 0));
           const lp = seg(o, 0.2, 0.5); if (lp > 0) K7.logo(W / 2, 540, 440, E.outC(lp));
-          const np = seg(o, 0.45, 0.5); if (np > 0) { const c = G(); c.beginPath(); c.rect(0, 540 + lh / 2 + 40, W, ns * 1.1); c.clip(); setF(F(900, ns, DSP), 0); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(NAME, W / 2, 540 + lh / 2 + 40 + ns * 0.92 + (1 - E.outC(np)) * ns); D(); }
-          const ep = seg(o, 0.8, 0.6); if (ep > 0) K7.txt(END, W / 2, 540 + lh / 2 + 110 + ns, F(400, Math.min(56, fitSize(END, 400, 940, 56, SER, 0, 'italic')), SER, 'italic'), WA(0.8), { align: 'center', a: E.outC(ep) });
-          const cp = seg(o, 1.1, 0.4); if (cp > 0) { const c = G(), f = F(700, Math.min(30, fitSize(CONTACT.cta, 700, 840, 30, 'Mono', 5)), 'Mono'), bw = Math.min(940, textW(CONTACT.cta, f, 4) + 100), y = 540 + lh / 2 + 230 + ns; c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(W / 2 - bw / 2, y, bw, 86); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2 + 2, y + 44); D();
-            K7.txt(K7.contact().join('   /   '), W / 2, y + 160, F(700, 26, 'Mono'), WA(0.7), { align: 'center', a: seg(o, 1.4, 0.4), ls: 2 }); }
+          const [nnx, nny] = posOf(elP('endname'), [W / 2, 540 + lh / 2 + 40 + ns * 0.92]);
+          const np = seg(o, 0.45, 0.5); if (np > 0) { const c = G(); c.beginPath(); c.rect(0, nny - ns * 0.92, W, ns * 1.1); c.clip(); setF(F(900, ns, DSP), 0); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(NAME, nnx, nny + (1 - E.outC(np)) * ns); D(); }
+          const [enx, eny] = posOf(elP('end'), [W / 2, 540 + lh / 2 + 110 + ns]);
+          const ep = seg(o, 0.8, 0.6); if (ep > 0) K7.txt(END, enx, eny, F(400, Math.min(56, fitSize(END, 400, 940, 56, SER, 0, 'italic')), SER, 'italic'), WA(0.8), { align: 'center', a: E.outC(ep) });
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, 540 + lh / 2 + 230 + ns]);
+          const cp = seg(o, 1.1, 0.4); if (cp > 0) { const c = G(), f = F(700, Math.min(30, fitSize(CONTACT.cta, 700, 840, 30, 'Mono', 5)), 'Mono'), bw = Math.min(940, textW(CONTACT.cta, f, 4) + 100), y = ct2y; c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(ct2x - bw / 2, y, bw, 86); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, ct2x + 2, y + 44); D();
+            K7.txt(K7.contact().join('   /   '), ct2x, y + 160, F(700, 26, 'Mono'), WA(0.7), { align: 'center', a: seg(o, 1.4, 0.4), ls: 2 }); }
         }
       },
       cues() {
@@ -563,15 +701,33 @@ STUDIO_REG['food'] = (() => {
       for (let j = 0; j < rh; j += 4) { const sy = y0 + h - 1 - j * (h / rh); if (sy < y0) break; const dx = Math.sin(j * 0.09 + t * 2.4) * (2 + j * 0.03); c.globalAlpha = a * (1 - j / rh) * (1 - j / rh); c.drawImage(src, 0, sy, W, 4, dx, y1 + j, W, 4); }
       D();
     }
+    function drinkY(r) { return r[3] >= H - 2 ? 1340 : Math.min(1300, r[1] + r[3] + 210); }   // drink names hang below the band (or at 1340 when it is full-bleed)
+    function elements() {
+      const lh2 = logoBox(640)[1], ly = 560;
+      const rF = vert(S[0]) ? K3.wholeIn(S[0].c, [0, 0, W, H]) : stageRect(S[0], 760);
+      const BX = EL && EL.box ? [num(EL.box.x, rF[0]), num(EL.box.y, rF[1]), rF[2], rF[3]] : rF;
+      const ctaY = ly + lh2 / 2 + 300 + (HOURS ? 80 : 0);
+      return [
+        mkEl('sign', SIGN, W / 2, 300, D0, OUT - D0, p => [p[0] - 470, p[1] - 120, 940, 140]),
+        mkEl('kick', KICK, W / 2, 300 + 190 * 0.46, D0, OUT - D0, p => [p[0] - 300, p[1] - 42, 600, 84]),
+        { id: 'frame', kind: 'box', label: 'Bar footage', x: BX[0], y: BX[1], w: BX[2], h: BX[3], t0: D0, d: OUT - D0, box: [BX[0], BX[1], BX[2], BX[3]], dup: false, del: false },
+        mkEl('drink', DR[0].n, W / 2, drinkY(BX), D0, OUT - D0, p => [p[0] - 480, p[1] - 118, 960, 260]),
+        ...(HOURS ? [mkEl('hours', HOURS, W / 2, ly + lh2 / 2 + 300, OUT + 1.2, DUR - OUT - 1.2, p => [p[0] - 400, p[1] - 30, 800, 60])] : []),
+        mkEl('end', END, W / 2, ly + lh2 / 2 + 200, OUT + 0.6, DUR - OUT - 0.6, p => [p[0] - 450, p[1] - 150, 900, 180]),
+        mkEl('cta', CONTACT.cta, W / 2, ctaY, OUT + 1.4, DUR - OUT - 1.4, p => [p[0] - 470, p[1], 940, 88]),
+        ...(LEGAL ? [mkEl('legal', LEGAL, W / 2, ctaY + 230, OUT + 1.9, DUR - OUT - 1.9, p => [p[0] - 440, p[1] - 22, 880, 44])] : []),
+      ];
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         if (!VID.collecting) { const c = G(), g = c.createRadialGradient(W / 2, 760, 50, W / 2, 900, 1300); g.addColorStop(0, mix(DEEP1, OR, 0.06 + 0.05 * beat(t))); g.addColorStop(0.5, BLK); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); }
         const k1 = flick(t, 0.25), mv = E.inOutC(seg(t, D0 - 0.35, 0.5)), q = seg(t, OUT - 0.35, 0.35);
         // footage on the bar top
         let band = null;
         if (t >= D0 - 0.05 && t < OUT) {
-          const { i, sh } = cur(S, Math.max(t, D0)), lt = t - S[i].start, r = vert(sh) ? K3.wholeIn(sh.c, [0, 0, W, H]) : stageRect(sh, 760);
+          const { i, sh } = cur(S, Math.max(t, D0)), lt = t - S[i].start, r0 = vert(sh) ? K3.wholeIn(sh.c, [0, 0, W, H]) : stageRect(sh, 760);
+          const r = EL && EL.box ? [num(EL.box.x, r0[0]), num(EL.box.y, r0[1]), r0[2], r0[3]] : r0;
           const ip = seg(t, S[i].start, 0.14);
           ctx.save(); ctx.globalAlpha = (1 - q) * (i === 0 ? seg(t, D0 - 0.05, 0.3) : 1); K7.photo(sh, t, r, { lt }); ctx.restore();
           if (!VID.collecting) {
@@ -583,31 +739,35 @@ STUDIO_REG['food'] = (() => {
         if (VID.collecting) return;
         // the sign: big and centred at first, then up into the header where it breathes with the beat
         if (t < OUT) {
-          const SS = SSf(), sy = lerp(760, 300, mv), sc = lerp(1, 0.46, mv), kk = k1 * (1 - q) * (mv > 0 ? 0.82 + 0.18 * beat(t) : 1);
-          neon(SIGN, W / 2, sy, F(400, SS, SCR), OR, kk, { s: sc });
-          neon(KICK, W / 2, sy + 190 * sc, F(400, Math.min(84, fitSize(KICK, 400, 860, 84, DSP, 6)), DSP), ACC2, flick(t, 0.95) * (1 - q), { ls: 6, s: sc });
+          const [sgx, sgy] = posOf(elP('sign'), [W / 2, 300]);
+          const SS = SSf(), sy = lerp(760, sgy, mv), sc = lerp(1, 0.46, mv), kk = k1 * (1 - q) * (mv > 0 ? 0.82 + 0.18 * beat(t) : 1);
+          neon(SIGN, sgx, sy, F(400, SS, SCR), OR, kk, { s: sc });
+          const [kix, kiy] = posOf(elP('kick'), [sgx, sy + 190 * sc]);
+          neon(KICK, kix, kiy, F(400, Math.min(84, fitSize(KICK, 400, 860, 84, DSP, 6)), DSP), ACC2, flick(t, 0.95) * (1 - q), { ls: 6, s: sc });
           if (mv < 1) reflect(sy - SS * 0.9, SS * 1.6 + 200, 1180, 380, 0.22 * (1 - mv), t);
         }
         // the drinks: kinetic names, ingredients, an index
         if (t >= D0 && t < OUT) {
           const k = Math.min(2, Math.floor((t - D0) / DL)), t0 = D0 + k * DL, p = seg(t, t0 + 0.15, 0.55), x2 = seg(t, t0 + DL - 0.3, 0.3);
-          const y = band ? Math.min(1300, band[1] + band[3] + 210) : 1340, nm = DR[k].n, fs = Math.min(118, fitSize(nm, 800, 960, 118, SANS, 2));
+          const [drx, dry] = posOf(elP('drink'), [W / 2, band ? Math.min(1300, band[1] + band[3] + 210) : 1340]), y = dry, nm = DR[k].n, fs = Math.min(118, fitSize(nm, 800, 960, 118, SANS, 2));
           const ls = lerp(46, 2, E.outExpo(p)) + x2 * 30;
-          neon(nm, W / 2, y, F(800, fs, SANS), OR, E.outC(p) * (1 - x2) * (0.8 + 0.2 * beat(t)), { ls, a: 0.75 });
-          K7.txt(nm, W / 2, y, F(800, fs, SANS), WHT, { align: 'center', ls, a: E.outC(p) * (1 - x2) });
-          K7.txt(DR[k].d, W / 2, y + 74, F(700, 28, 'Mono'), ACC2, { align: 'center', ls: 4, a: seg(t, t0 + 0.5, 0.4) * (1 - x2) });
-          K7.txt('0' + (k + 1) + ' / 03', W / 2, y + 140, F(700, 22, 'Mono'), WA(0.5), { align: 'center', ls: 4, a: seg(t, t0 + 0.6, 0.4) * (1 - x2) });
+          neon(nm, drx, y, F(800, fs, SANS), OR, E.outC(p) * (1 - x2) * (0.8 + 0.2 * beat(t)), { ls, a: 0.75 });
+          K7.txt(nm, drx, y, F(800, fs, SANS), WHT, { align: 'center', ls, a: E.outC(p) * (1 - x2) });
+          K7.txt(DR[k].d, drx, y + 74, F(700, 28, 'Mono'), ACC2, { align: 'center', ls: 4, a: seg(t, t0 + 0.5, 0.4) * (1 - x2) });
+          K7.txt('0' + (k + 1) + ' / 03', drx, y + 140, F(700, 22, 'Mono'), WA(0.5), { align: 'center', ls: 4, a: seg(t, t0 + 0.6, 0.4) * (1 - x2) });
         }
         // closing: the logo comes on like neon, the script line, hours, a neon-outlined CTA
         if (t >= OUT) {
           const o = t - OUT, kk = flick(t, OUT + 0.1), [lw, lh] = logoBox(640), ly = 560;
           if (kk > 0) { const c = G(); c.globalAlpha = kk; c.globalCompositeOperation = 'lighter'; c.shadowColor = OR; c.shadowBlur = 50; c.drawImage(K7.tinted(IMG.logoW, OR), W / 2 - lw / 2, ly - lh / 2, lw, lh); c.globalCompositeOperation = 'source-over'; c.shadowBlur = 0; c.globalAlpha = kk * 0.85; c.drawImage(IMG.logoW, W / 2 - lw / 2, ly - lh / 2, lw, lh); D(); }
-          neon(END, W / 2, ly + lh / 2 + 200, F(400, Math.min(150, fitSize(END, 400, 900, 150, SCR, 0)), SCR), ACC2, flick(t, OUT + 0.6));
+          const [enx, eny] = posOf(elP('end'), [W / 2, ly + lh / 2 + 200]);
+          neon(END, enx, eny, F(400, Math.min(150, fitSize(END, 400, 900, 150, SCR, 0)), SCR), ACC2, flick(t, OUT + 0.6));
           let y = ly + lh / 2 + 300;
-          if (HOURS) { K7.txt(HOURS, W / 2, y, F(700, 30, 'Mono'), WHT, { align: 'center', ls: 5, a: seg(o, 1.2, 0.4) }); y += 80; }
-          const cp = seg(o, 1.4, 0.4); if (cp > 0) { const c = G(), f = F(800, Math.min(32, fitSize(CONTACT.cta, 800, 840, 32, SANS, 5)), SANS), bw = Math.min(940, textW(CONTACT.cta, f, 4) + 100); c.globalAlpha = E.outC(cp); c.strokeStyle = OR; c.shadowColor = OR; c.shadowBlur = 26; c.lineWidth = 4; c.strokeRect(W / 2 - bw / 2, y, bw, 88); c.shadowBlur = 0; setF(f, 4); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2 + 2, y + 45); D(); }
-          K7.txt(K7.contact().join('   ·   '), W / 2, y + 160, F(700, 26, 'Mono'), WA(0.7), { align: 'center', ls: 2, a: seg(o, 1.7, 0.4) });
-          if (LEGAL) K7.txt(LEGAL, W / 2, y + 230, F(500, 22, 'Mono'), WA(0.5), { align: 'center', ls: 1, a: seg(o, 1.9, 0.4) });
+          if (HOURS) { const [hox, hoy] = posOf(elP('hours'), [W / 2, y]); K7.txt(HOURS, hox, hoy, F(700, 30, 'Mono'), WHT, { align: 'center', ls: 5, a: seg(o, 1.2, 0.4) }); y += 80; }
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, y]);
+          const cp = seg(o, 1.4, 0.4); if (cp > 0) { const c = G(), f = F(800, Math.min(32, fitSize(CONTACT.cta, 800, 840, 32, SANS, 5)), SANS), bw = Math.min(940, textW(CONTACT.cta, f, 4) + 100); c.globalAlpha = E.outC(cp); c.strokeStyle = OR; c.shadowColor = OR; c.shadowBlur = 26; c.lineWidth = 4; c.strokeRect(ct2x - bw / 2, ct2y, bw, 88); c.shadowBlur = 0; setF(f, 4); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, ct2x + 2, ct2y + 45); D(); }
+          K7.txt(K7.contact().join('   ·   '), ct2x, ct2y + 160, F(700, 26, 'Mono'), WA(0.7), { align: 'center', ls: 2, a: seg(o, 1.7, 0.4) });
+          if (LEGAL) { const [lgx, lgy] = posOf(elP('legal'), [W / 2, ct2y + 230]); K7.txt(LEGAL, lgx, lgy, F(500, 22, 'Mono'), WA(0.5), { align: 'center', ls: 1, a: seg(o, 1.9, 0.4) }); }
         }
       },
       cues() {
@@ -621,6 +781,6 @@ STUDIO_REG['food'] = (() => {
 
   const MAKE = { fire, chef, rush, today, icon, after };
   const P = (MAKE[V] || fire)();
-  DIR = { dur: P.dur, bg: BLK, finish: { vig: V === 'chef' || V === 'icon' ? 0.12 : 0.3, grain: V === 'chef' || V === 'icon' ? 0.1 : 0.22 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, fam: V,
+  DIR = { dur: P.dur, bg: BLK, finish: { vig: V === 'chef' || V === 'icon' ? 0.12 : 0.3, grain: V === 'chef' || V === 'icon' ? 0.1 : 0.22 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, fam: V, elements: P.elements,
     setup() { if (!window.STUDIO && LIGHTPAL) { const w = IMG.logoW; IMG.logoW = IMG.logoB; IMG.logoB = w; } } };
 });
