@@ -5,6 +5,7 @@
    ?v=greet  Holiday Greeting   ?v=special  Holiday Special   ?v=hours  Holiday Hours   ?v=count  Countdown */
 STUDIO_REG['hol'] = (() => {
   const V = QS.get('v') || 'greet';
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null; const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d); const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d; const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const HID = (typeof PRM !== 'undefined' && PRM.hol && HOL.THEMES[PRM.hol]) ? PRM.hol : (HOL.THEMES[QS.get('h')] ? QS.get('h') : 'christmas');
   const TH = HOL.THEMES[HID], CP = HOL.copy(HID), L = K5.LAND, VT = K5.VERT;
   if (!window.STUDIO) setBrandColors(TH.pal);
@@ -83,8 +84,17 @@ STUDIO_REG['hol'] = (() => {
     const TAG = TX('tag', tagDef(), { label: 'Ending line', group: 'Ending', upper: true, max: 36 });
     const OUT = 7.0, DUR = 12, CY = 900, GL = lines2(GREET, 13);
     const gsize = Math.min(GL.length > 1 ? 190 : 170, ...GL.map(l => fitSize(l, 700, 930, 220, 'Hand', 0)));
+    function elements() {
+      const lh = gsize * 1.02, yb = CY + gsize * (GL.length > 1 ? 1.0 : 0.62) + 30;
+      return [
+        { id: 'kick', kind: 'pos', label: KICK, x: W / 2, y: CY - gsize * (GL.length > 1 ? 1.15 : 0.75) - 40, t0: 0.5, d: OUT - 0.5, box: [W / 2 - 450, CY - gsize * (GL.length > 1 ? 1.15 : 0.75) - 62, 900, 44], dup: false, del: false },
+        { id: 'greet', kind: 'pos', label: GREET, x: W / 2, y: CY, t0: 0.9, d: OUT - 0.9, box: [W / 2 - 465, CY - lh * (GL.length / 2), 930, lh * GL.length], dup: false, del: false },
+        { id: 'flourish', kind: 'pos', label: 'Flourish under the greeting', x: W / 2, y: yb, t0: 2.0, d: OUT - 2.0, box: [W / 2 - 180, yb - 6, 360, 12], dup: false, del: false },
+        { id: 'sub', kind: 'pos', label: SUB, x: W / 2, y: yb + 78, t0: 2.3, d: OUT - 2.3, box: [W / 2 - 450, yb + 56, 900, 44], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         const qo = clamp((t - (OUT - 0.4)) / 0.5);
         BACKDROP(() => HOL.backdrop(t, { cols: TH.cols }));
@@ -96,10 +106,13 @@ STUDIO_REG['hol'] = (() => {
         hero(t, 'greet', { q: qo * 0, menorah: TH.hero.includes('menorah') ? { cx: W / 2, y: 1660, size: 0.95, lit: clamp((t - 0.8) / 3.2), p: clamp((t - 0.3) / 0.8), q: qo } : null, noBottom: false });
         if (t < OUT) {
           const q = qo;
-          caps(KICK, W / 2, CY - gsize * (GL.length > 1 ? 1.15 : 0.75) - 40, 30, clamp((t - 0.5) / 0.5), q, { w: 700, ls: 8, col: ACC2, maxW: 900, shadow: LIGHTPAL ? null : 'rgba(0,0,0,0.5)' });
-          script(GL, CY, gsize, 0.9, t, { q });
-          const yb = CY + gsize * (GL.length > 1 ? 1.0 : 0.62) + 30; flourish(yb, 360, clamp((t - 2.0) / 0.6), q);
-          T(SUB, W / 2, yb + 78, F(600, fitT(SUB, 600, 46, 900, 'Corm', 0, 'italic'), 'Corm', 'italic'), { align: 'center', p: clamp((t - 2.3) / 0.6), q, mode: 'fade', shadow: LIGHTPAL ? null : ['rgba(0,0,0,0.5)', 16] });
+          const [kx, ky] = posOf(elP('kick'), [W / 2, CY - gsize * (GL.length > 1 ? 1.15 : 0.75) - 40]);
+          caps(KICK, kx, ky, 30, clamp((t - 0.5) / 0.5), q, { w: 700, ls: 8, col: ACC2, maxW: 900, shadow: LIGHTPAL ? null : 'rgba(0,0,0,0.5)' });
+          const gy = posOf(elP('greet'), [W / 2, CY])[1];
+          script(GL, gy, gsize, 0.9, t, { q });
+          const yb = gy + gsize * (GL.length > 1 ? 1.0 : 0.62) + 30; flourish(posOf(elP('flourish'), [W / 2, yb])[1], 360, clamp((t - 2.0) / 0.6), q);
+          const [sx, sy] = posOf(elP('sub'), [W / 2, yb + 78]);
+          T(SUB, sx, sy, F(600, fitT(SUB, 600, 46, 900, 'Corm', 0, 'italic'), 'Corm', 'italic'), { align: 'center', p: clamp((t - 2.3) / 0.6), q, mode: 'fade', shadow: LIGHTPAL ? null : ['rgba(0,0,0,0.5)', 16] });
         }
         seasonal(t, {});
         if (t >= OUT) K3.outro('kinetic', t - OUT, TAG);
@@ -125,8 +138,8 @@ STUDIO_REG['hol'] = (() => {
     const TAG = TX('tag', tagDef(), { label: 'Ending line', group: 'Ending', upper: true, max: 36 });
     const T0 = 1.3, OUT = T0 + S.total + 0.5, DUR = 15, PR = [90, 560, 900, 506];
     S.forEach(s => (s.start += T0)); S.total += T0;
-    function wrap(t, u) {   // gift paper over the frame that splits open (u 0..1) as the ribbon pulls away
-      if (VID.collecting || u >= 1) return; const c = G(), [x, y, w, h] = PR, e = E.inOutC(clamp(u)), half = w / 2;
+    function wrap(t, u, R) {   // gift paper over the frame that splits open (u 0..1) as the ribbon pulls away
+      if (VID.collecting || u >= 1) return; const c = G(), [x, y, w, h] = R || PR, e = E.inOutC(clamp(u)), half = w / 2;
       c.beginPath(); c.rect(x, y, w, h); c.clip();
       for (const sd of [-1, 1]) {
         c.save(); c.translate(sd * e * (half + 40), 0);
@@ -141,24 +154,37 @@ STUDIO_REG['hol'] = (() => {
       c.fillStyle = ACC2; c.beginPath(); c.arc(0, -6, 24, 0, TAU0); c.fill(); D();
     }
     const TAU0 = Math.PI * 2;
+    function elements() {
+      const hs = fitT(HOOK, 400, 150, 940, 'Bebas', 2);
+      return [
+        { id: 'kick', kind: 'pos', label: KICK, x: W / 2, y: 300, t0: 0.2, d: OUT - 0.2, box: [W / 2 - 450, 278, 900, 44], dup: false, del: false },
+        { id: 'hook', kind: 'pos', label: HOOK, x: W / 2, y: 330 + hs * 0.95, t0: 0.35, d: OUT - 0.35, box: [W / 2 - 470, 330 + hs * 0.95 - hs / 2, 940, hs], dup: false, del: false },
+        { id: 'frame', kind: 'box', label: 'Footage frame', x: PR[0], y: PR[1], w: PR[2], h: PR[3], t0: 0.9, d: OUT - 0.9, box: [PR[0], PR[1], PR[2], PR[3]], dup: false, del: false },
+        { id: 'head', kind: 'pos', label: HEAD, x: W / 2, y: 1172, t0: T0 + 1.0, d: OUT - (T0 + 1.0), box: [W / 2 - 430, 1150, 860, 44], dup: false, del: false },
+        { id: 'det', kind: 'pos', label: DET, x: W / 2, y: 1236, t0: T0 + 1.3, d: OUT - (T0 + 1.3), box: [W / 2 - 430, 1214, 860, 44], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: 'Call to action', x: W / 2, y: 1322, t0: T0 + 1.7, d: OUT - (T0 + 1.7), box: [W / 2 - 300, 1300, 600, 44], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         BACKDROP(() => HOL.backdrop(t, { cols: TH.cols })); if (!VID.collecting) hero(t, 'special', { only: ['bokeh', 'fireworks', 'moon', 'burst', 'florals'], burstY: 420 });
         const q = clamp((t - (OUT - 0.35)) / 0.35);
         if (t < OUT) {
-          caps(KICK, W / 2, 300, 28, clamp((t - 0.2) / 0.4), q, { w: 700, ls: 7, col: ACC2, maxW: 900 });
-          const hs = fitT(HOOK, 400, 150, 940, 'Bebas', 2); T([[HOOK, TH.tone === 'sale' ? OR : WHT]], W / 2, 330 + hs * 0.95, F(400, hs, 'Bebas'), { align: 'center', ls: 2, p: clamp((t - 0.35) / 0.45), q });
+          const [kx, ky] = posOf(elP('kick'), [W / 2, 300]);
+          caps(KICK, kx, ky, 28, clamp((t - 0.2) / 0.4), q, { w: 700, ls: 7, col: ACC2, maxW: 900 });
+          const hs = fitT(HOOK, 400, 150, 940, 'Bebas', 2), [hx, hy] = posOf(elP('hook'), [W / 2, 330 + hs * 0.95]); T([[HOOK, TH.tone === 'sale' ? OR : WHT]], hx, hy, F(400, hs, 'Bebas'), { align: 'center', ls: 2, p: clamp((t - 0.35) / 0.45), q });
           if (t >= 0.9) {
-            const a = clamp((t - 0.9) / 0.35) * (1 - q), [x, y, w, h] = PR;
+            const a = clamp((t - 0.9) / 0.35) * (1 - q), [fx, fy] = posOf(elP('frame'), [PR[0], PR[1]]), [x, y, w, h] = [fx, fy, PR[2], PR[3]];
             if (!VID.collecting) { const c = G(); c.globalAlpha = a; c.shadowColor = 'rgba(0,0,0,0.45)'; c.shadowBlur = 40; c.shadowOffsetY = 16; c.fillStyle = PAPER; c.fillRect(x - 14, y - 14, w + 28, h + 28); D(); }
-            if (t >= T0 + 0.1) { ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); K5.seq(S, t, PR, ['cut', 'dissolve'], 0.6); ctx.restore(); }
-            ctx.save(); ctx.globalAlpha = a; wrap(t, (t - T0 - 0.25) / 0.9); ctx.restore();
+            if (t >= T0 + 0.1) { ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); K5.seq(S, t, [x, y, w, h], ['cut', 'dissolve'], 0.6); ctx.restore(); }
+            ctx.save(); ctx.globalAlpha = a; wrap(t, (t - T0 - 0.25) / 0.9, [x, y, w, h]); ctx.restore();
           }
-          const hy = 1172, hz = fitT(HEAD, 900, 76, 860, 'Mont', 0);
-          T(HEAD, W / 2, hy, F(900, hz, 'Mont'), { align: 'center', p: clamp((t - T0 - 1.0) / 0.45), q });
-          T(DET, W / 2, hy + 64, F(600, fitT(DET, 600, 40, 860, 'Mont', 0), 'Mont'), { align: 'center', p: clamp((t - T0 - 1.3) / 0.45), q, mode: 'fade', col: HOL.hexA(WHT, 0.85) });
-          K5.ctaRow(t, 1322, T0 + 1.7, 1 - q);
+          const hyy = 1172, hz = fitT(HEAD, 900, 76, 860, 'Mont', 0), [hdx, hdy] = posOf(elP('head'), [W / 2, hyy]);
+          T(HEAD, hdx, hdy, F(900, hz, 'Mont'), { align: 'center', p: clamp((t - T0 - 1.0) / 0.45), q });
+          const [dx2, dy2] = posOf(elP('det'), [W / 2, hyy + 64]);
+          T(DET, dx2, dy2, F(600, fitT(DET, 600, 40, 860, 'Mont', 0), 'Mont'), { align: 'center', p: clamp((t - T0 - 1.3) / 0.45), q, mode: 'fade', col: HOL.hexA(WHT, 0.85) });
+          K5.ctaRow(t, posOf(elP('cta'), [W / 2, 1322])[1], T0 + 1.7, 1 - q);
         }
         if (!VID.collecting) seasonal(t, {});
         if (t >= OUT) K3.outro('kinetic', t - OUT, TAG);
@@ -177,30 +203,49 @@ STUDIO_REG['hol'] = (() => {
     const TITLE = TX('title', titleDef, { label: 'Title', group: 'Hours', upper: true, max: 26 });
     const ROWS = CP.hours.map(([d, h], i) => [TX('d' + (i + 1), d, { label: 'Day ' + (i + 1), group: 'Hours', upper: true, max: 20, req: true }), TX('h' + (i + 1), h, { label: 'Hours ' + (i + 1), group: 'Hours', upper: true, max: 20, req: true })]);
     const NOTE = TX('note', TH.greet.replace(/[!¡]/g, '') + '!', { label: 'Note under the card', group: 'Hours', max: 40 });
+    const SCRIPT = TX('script', TH.greet.replace(/[!¡]/g, ''), { label: 'Script line', group: 'Hours', max: 30 });
     const TAG = TX('tag', tagDef(), { label: 'Ending line', group: 'Ending', upper: true, max: 36 });
     const OUT = 6.6, DUR = 10, CARD = [100, 760, 880, 470];
+    function elements() {
+      const rows = ROWS.map(([d, hh], i) => ([
+        { id: 'day' + (i + 1), kind: 'pos', label: d, x: CARD[0] + 60, y: CARD[1] + 110 + i * 130, t0: 1.5 + i * 0.22, d: OUT - (1.5 + i * 0.22), box: [CARD[0] + 60, CARD[1] + 110 + i * 130 - 22, 400, 44], dup: false, del: false },
+        { id: 'hrs' + (i + 1), kind: 'pos', label: hh, x: CARD[0] + CARD[2] - 60, y: CARD[1] + 110 + i * 130, t0: 1.5 + i * 0.22, d: OUT - (1.5 + i * 0.22), box: [CARD[0] + CARD[2] - 420, CARD[1] + 110 + i * 130 - 22, 360, 44], dup: false, del: false },
+      ])).flat();
+      const line = [CONTACT.phone, CONTACT.web].filter(Boolean).join('   ·   ');
+      return [
+        { id: 'logo', kind: 'pos', label: 'Business logo', x: W / 2, y: 330, t0: 0.2, d: OUT - 0.2, box: [W / 2 - 200, 230, 400, 200], dup: false, del: false },
+        { id: 'script', kind: 'pos', label: SCRIPT, x: W / 2, y: 530, t0: 0.6, d: OUT - 0.6, box: [W / 2 - 450, 482, 900, 96], dup: false, del: false },
+        { id: 'title', kind: 'pos', label: TITLE, x: W / 2, y: 690, t0: 0.9, d: OUT - 0.9, box: [W / 2 - 450, 638, 900, 104], dup: false, del: false },
+        { id: 'card', kind: 'card', label: 'Hours card', x: CARD[0], y: CARD[1], w: CARD[2], h: CARD[3], t0: 1.2, d: OUT - 1.2, box: [CARD[0], CARD[1], CARD[2], CARD[3]], dup: false, del: false },
+        ...rows,
+        { id: 'note', kind: 'pos', label: NOTE, x: W / 2, y: 1330, t0: 2.4, d: OUT - 2.4, box: [W / 2 - 450, 1308, 900, 44], dup: false, del: false },
+        { id: 'contact', kind: 'pos', label: line || 'Contact', x: W / 2, y: 1420, t0: 2.7, d: OUT - 2.7, box: [W / 2 - 480, 1398, 960, 44], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         BACKDROP(() => HOL.backdrop(t, { cols: TH.cols })); if (VID.collecting) return;
         const q = clamp((t - (OUT - 0.35)) / 0.35);
         hero(t, 'hours', { only: ['bokeh', 'moon', 'florals', 'ornaments', 'flag'], q });
         if (t < OUT) {
-          ctx.save(); ctx.globalAlpha = 1 - q; K3.logoBuild(W / 2, 330, 400, 0.2, t, { img: IMG.logoW }); ctx.restore();
-          script([TH.greet.replace(/[!¡]/g, '')], 530, Math.min(96, fitSize(TH.greet, 700, 900, 96, 'Hand', 0)), 0.6, t, { q });
-          const ts = fitT(TITLE, 400, 104, 900, 'Bebas', 3); T([[TITLE, OR]], W / 2, 690, F(400, ts, 'Bebas'), { align: 'center', ls: 3, p: clamp((t - 0.9) / 0.4), q });
-          const [x, y, w, h] = CARD, a = clamp((t - 1.2) / 0.4) * (1 - q), c = G();
+          ctx.save(); ctx.globalAlpha = 1 - q; const [lx, ly] = posOf(elP('logo'), [W / 2, 330]); K3.logoBuild(lx, ly, 400, 0.2, t, { img: IMG.logoW }); ctx.restore();
+          script([SCRIPT], posOf(elP('script'), [W / 2, 530])[1], Math.min(96, fitSize(SCRIPT, 700, 900, 96, 'Hand', 0)), 0.6, t, { q });
+          const ts = fitT(TITLE, 400, 104, 900, 'Bebas', 3), [tx2, ty2] = posOf(elP('title'), [W / 2, 690]); T([[TITLE, OR]], tx2, ty2, F(400, ts, 'Bebas'), { align: 'center', ls: 3, p: clamp((t - 0.9) / 0.4), q });
+          const [cx0, cy0] = posOf(elP('card'), [CARD[0], CARD[1]]), [x, y, w, h] = [cx0, cy0, CARD[2], CARD[3]], a = clamp((t - 1.2) / 0.4) * (1 - q), c = G();
           c.globalAlpha = a; c.shadowColor = 'rgba(0,0,0,0.35)'; c.shadowBlur = 40; c.shadowOffsetY = 14; c.fillStyle = PAPER; rrect(x, y + (1 - E.outC(clamp((t - 1.2) / 0.5))) * 40, w, h, 28); c.fill(); D();
           ROWS.forEach(([d, hh], i) => {
             const p = clamp((t - 1.5 - i * 0.22) / 0.45); if (p <= 0) return; const ry = y + 110 + i * 130, c2 = G(); c2.globalAlpha = E.outC(p) * (1 - q);
             const dx = (1 - E.outC(p)) * -30, sz = Math.min(44, fitSize(d, 800, 400, 44, 'Mont', 1)), hz = Math.min(44, fitSize(hh, 800, 360, 44, 'Mont', 1));
-            setF(F(800, sz, 'Mont'), 1); c2.fillStyle = BLK; c2.textAlign = 'left'; c2.textBaseline = 'middle'; c2.fillText(d, x + 60 + dx, ry);
-            setF(F(800, hz, 'Mont'), 1); c2.fillStyle = HOL.mix(OR, BLK, LIGHTPAL ? 0.1 : 0.25); c2.textAlign = 'right'; c2.fillText(hh, x + w - 60 + dx, ry);
-            if (i < ROWS.length - 1) { c2.fillStyle = HOL.hexA(BLK, 0.14); c2.fillRect(x + 60, ry + 65, w - 120, 2); } D();
+            const [ddx, ddy] = posOf(elP('day' + (i + 1)), [x + 60, ry]), [hhx, hhy] = posOf(elP('hrs' + (i + 1)), [x + w - 60, ry]);
+            setF(F(800, sz, 'Mont'), 1); c2.fillStyle = BLK; c2.textAlign = 'left'; c2.textBaseline = 'middle'; c2.fillText(d, ddx + dx, ddy);
+            setF(F(800, hz, 'Mont'), 1); c2.fillStyle = HOL.mix(OR, BLK, LIGHTPAL ? 0.1 : 0.25); c2.textAlign = 'right'; c2.fillText(hh, hhx + dx, hhy);
+            if (i < ROWS.length - 1) { c2.fillStyle = HOL.hexA(BLK, 0.14); c2.fillRect(x + 60, ddy + 65, w - 120, 2); } D();
           });
-          T(NOTE, W / 2, 1330, F(600, fitT(NOTE, 600, 52, 900, 'Corm', 0, 'italic'), 'Corm', 'italic'), { align: 'center', p: clamp((t - 2.4) / 0.5), q, mode: 'fade' });
+          const [nx2, ny2] = posOf(elP('note'), [W / 2, 1330]);
+          T(NOTE, nx2, ny2, F(600, fitT(NOTE, 600, 52, 900, 'Corm', 0, 'italic'), 'Corm', 'italic'), { align: 'center', p: clamp((t - 2.4) / 0.5), q, mode: 'fade' });
           const line = [CONTACT.phone, CONTACT.web].filter(Boolean).join('   ·   ');
-          if (line) caps(line, W / 2, 1420, 28, clamp((t - 2.7) / 0.5), q, { w: 800, ls: 2, maxW: 960, col: WHT });
+          if (line) { const [cpx, cpy] = posOf(elP('contact'), [W / 2, 1420]); caps(line, cpx, cpy, 28, clamp((t - 2.7) / 0.5), q, { w: 800, ls: 2, maxW: 960, col: WHT }); }
         }
         seasonal(t, {});
         if (t >= OUT) K3.outro('kinetic', t - OUT, TAG);
@@ -228,29 +273,43 @@ STUDIO_REG['hol'] = (() => {
       if (VID.collecting) return; const land = 1.4, n = isFinite(NUMV) ? NUMV : null;
       const step = n === null ? 0 : Math.max(0, Math.min(6, Math.ceil((land - t) / 0.2))), shown = n === null ? NUM : String(n + step), pop = clamp((t - land) / 0.35);
       const s = (t < land ? 1 : 1 + 0.08 * Math.sin(Math.PI * pop)) * E.outBack(clamp(t / 0.4)), f = F(400, Math.min(300, fitSize(shown, 400, 820, 300, 'Bebas', 4)), 'Bebas'), tw = textW(shown, f, 4);
-      const cw = Math.max(320, tw + 120), ch = 300, cy = 520, c = G(); c.translate(W / 2, cy); c.scale(s, s);
+      const cw = Math.max(320, tw + 120), ch = 300, cy = 520, c = G(), [nx, ny] = posOf(elP('number'), [W / 2, cy]); c.translate(nx, ny); c.scale(s, s);
       c.fillStyle = HOL.mix(BLK, WHT, 0.1); c.shadowColor = 'rgba(0,0,0,0.45)'; c.shadowBlur = 30; c.shadowOffsetY = 12; rrect(-cw / 2, -ch / 2, cw, ch, 26); c.fill(); c.shadowColor = 'transparent';
       setF(f, 4); c.fillStyle = OR; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(shown, 2, 14);
       const ph = (t * 5) % 1; c.fillStyle = HOL.hexA(BLK, 0.55); c.fillRect(-cw / 2, -2, cw, 4); if (t < land) { c.globalAlpha = 0.25 * (1 - ph); c.fillStyle = BLK; c.fillRect(-cw / 2, -ch / 2, cw, ch / 2 * (1 - ph)); }
       D();
       if (t > land && t < land + 0.9) HOL.particles('sparkles', t * 3, { amt: 0.5, alpha: 1 - clamp((t - land) / 0.9), cols: [OR, ACC2] });
     }
+    function elements() {
+      const f = F(400, Math.min(300, fitSize(NUM, 400, 820, 300, 'Bebas', 4)), 'Bebas'), tw = textW(NUM, f, 4), cw = Math.max(320, tw + 120);
+      return [
+        { id: 'occasion', kind: 'pos', label: up(TH.name), x: W / 2, y: 300, t0: 0.1, d: OUT - 0.1, box: [W / 2 - 450, 278, 900, 44], dup: false, del: false },
+        { id: 'number', kind: 'box', label: NUM + ' days to go', x: W / 2, y: 520, w: cw, h: 300, t0: 0, d: OUT, box: [W / 2 - cw / 2, 370, cw, 300], dup: false, del: false },
+        { id: 'lab', kind: 'pos', label: LAB, x: W / 2, y: 730, t0: 1.5, d: OUT - 1.5, box: [W / 2 - 480, 708, 960, 44], dup: false, del: false },
+        { id: 'line', kind: 'pos', label: LINE, x: W / 2, y: 820, t0: 1.75, d: OUT - 1.75, box: [W / 2 - 470, 798, 940, 44], dup: false, del: false },
+        { id: 'frame', kind: 'box', label: 'Footage frame', x: PR[0], y: PR[1], w: PR[2], h: PR[3], t0: T0 - 0.2, d: OUT - (T0 - 0.2), box: [PR[0], PR[1], PR[2], PR[3]], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: 'Call to action', x: W / 2, y: 1342, t0: T0 + 0.8, d: OUT - (T0 + 0.8), box: [W / 2 - 300, 1320, 600, 44], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [[1.4, 8]],
+      dur: DUR, shakes: [[1.4, 8]], elements,
       render(t) {
         BACKDROP(() => HOL.backdrop(t, { cols: TH.cols })); if (!VID.collecting) hero(t, 'count', { only: ['bokeh', 'fireworks', 'moon', 'florals'] });
         const q = clamp((t - (OUT - 0.35)) / 0.35);
         if (t < OUT) {
-          caps(up(TH.name), W / 2, 300, 28, clamp((t - 0.1) / 0.4), q, { w: 700, ls: 8, col: ACC2, maxW: 900 });
+          const [ocx, ocy] = posOf(elP('occasion'), [W / 2, 300]);
+          caps(up(TH.name), ocx, ocy, 28, clamp((t - 0.1) / 0.4), q, { w: 700, ls: 8, col: ACC2, maxW: 900 });
           ctx.save(); ctx.globalAlpha = 1 - q; flipNum(t); ctx.restore();
-          caps(LAB, W / 2, 730, 44, clamp((t - 1.5) / 0.4), q, { w: 800, ls: 5, maxW: 960 });
-          T([[LINE, ACC2]], W / 2, 820, F(800, fitT(LINE, 800, 54, 940, 'Mont', 1), 'Mont'), { align: 'center', ls: 1, p: clamp((t - 1.75) / 0.4), q });
+          const [lbx, lby] = posOf(elP('lab'), [W / 2, 730]);
+          caps(LAB, lbx, lby, 44, clamp((t - 1.5) / 0.4), q, { w: 800, ls: 5, maxW: 960 });
+          const [lnx, lny] = posOf(elP('line'), [W / 2, 820]);
+          T([[LINE, ACC2]], lnx, lny, F(800, fitT(LINE, 800, 54, 940, 'Mont', 1), 'Mont'), { align: 'center', ls: 1, p: clamp((t - 1.75) / 0.4), q });
           if (t >= T0 - 0.2) {
-            const a = clamp((t - (T0 - 0.2)) / 0.35) * (1 - q), [x, y, w, h] = PR;
+            const a = clamp((t - (T0 - 0.2)) / 0.35) * (1 - q), [fx, fy] = posOf(elP('frame'), [PR[0], PR[1]]), [x, y, w, h] = [fx, fy, PR[2], PR[3]];
             if (!VID.collecting) { const c = G(); c.globalAlpha = a; c.shadowColor = 'rgba(0,0,0,0.45)'; c.shadowBlur = 36; c.shadowOffsetY = 14; c.fillStyle = PAPER; c.fillRect(x - 12, y - 12, w + 24, h + 24); D(); }
-            ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); K5.seq(S, t, PR, ['cut', 'push', 'push'], 0.5); ctx.restore();
+            ctx.save(); ctx.globalAlpha = a; ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); K5.seq(S, t, [x, y, w, h], ['cut', 'push', 'push'], 0.5); ctx.restore();
           }
-          K5.ctaRow(t, 1342, T0 + 0.8, 1 - q);
+          K5.ctaRow(t, posOf(elP('cta'), [W / 2, 1342])[1], T0 + 0.8, 1 - q);
         }
         if (!VID.collecting) seasonal(t, {});
         if (t >= OUT) K3.outro('kinetic', t - OUT, TAG);
@@ -265,5 +324,5 @@ STUDIO_REG['hol'] = (() => {
 
   const MAKE = { greet, special, hours, count };
   const P = (MAKE[V] || greet)();
-  DIR = { dur: P.dur, bg: BLK, bgSwap: true, finish: { vig: 0.2, grain: 0.14 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, hol: HID };
+  DIR = { dur: P.dur, bg: BLK, bgSwap: true, finish: { vig: 0.2, grain: 0.14 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}), hol: HID };
 });

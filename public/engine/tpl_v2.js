@@ -11,6 +11,13 @@
    ?v=mpr      #34 Modern Pool Retreat: the landscape band expands into full-bleed vertical shots and collapses back */
 STUDIO_REG['v2'] = (() => {
   const V = QS.get('v') || 'thisor';
+  // Per-element model: tpl_free sets window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // factory; positions below fall back to the original hardcoded values when EL is null, so rendering
+  // is byte-for-byte the old path. (Same pattern as tpl_trade.js / tpl_nx9.js.)
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const lmod = (x, m) => ((x % m) + m) % m;
   const segOf = (c, t) => { const s = VID.meta(c).segs, f = Math.round(t * 30); let best = s[0], bd = 1e9;
     for (const g of s) { const d = f < g[0] ? g[0] - f : f > g[1] ? f - g[1] : 0; if (d < bd) { bd = d; best = g; } } return best; };
@@ -80,12 +87,15 @@ STUDIO_REG['v2'] = (() => {
     caps(footLine('  ·  '), W / 2, y + 144, 18, 1, 0, { w: 500, fam: 'Mono', ls: 2, col: 'rgba(255,255,255,0.55)', maxW: 980 });
   }
   // end card for these 9:16s, all inside the safe zone: optional headline + line, logo, CTA, phone, site, license
+  // o.headP / o.subP / o.ctaP optionally move the headline, sub line and CTA pill
   function endCustom(lt, o) {
     o = o || {}; let y = 400;
-    if (o.head) { headline(o.head, W / 2, y, lt, 0.05, undefined, { hl: o.hl === undefined ? null : { line: o.hl }, max: 104, maxW: 920 }); y += 104 * (o.head.length - 1) + 80; }
-    if (o.sub) { caps(o.sub, W / 2, y, 24, ramp(lt, 0.3, 0.4), 0, { w: 700, fam: 'Mono', ls: 3, col: 'rgba(255,255,255,0.8)', maxW: 960 }); }
+    const hp = o.headP || [W / 2, 400];
+    if (o.head) { headline(o.head, hp[0], hp[1], lt, 0.05, undefined, { hl: o.hl === undefined ? null : { line: o.hl }, max: 104, maxW: 920 }); y = hp[1] + 104 * (o.head.length - 1) + 80; }
+    if (o.sub) { const sp = o.subP || [W / 2, y]; caps(o.sub, sp[0], sp[1], 24, ramp(lt, 0.3, 0.4), 0, { w: 700, fam: 'Mono', ls: 3, col: 'rgba(255,255,255,0.8)', maxW: 960 }); }
     drawLogo('w', W / 2, 700, 660, E.outQ(ramp(lt, 0.15, 0.55)));
-    pill(CONTACT.cta, W / 2, 872, { p: ramp(lt, 0.5, 0.4), size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)) });
+    const cp = o.ctaP || [W / 2, 872];
+    pill(CONTACT.cta, cp[0], cp[1], { p: ramp(lt, 0.5, 0.4), size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)) });
     caps(CONTACT.phone, W / 2, 1000, 70, ramp(lt, 0.65, 0.45), 0, { w: 800, ls: 1, maxW: 960 });
     caps(CONTACT.web, W / 2, 1064, 32, ramp(lt, 0.75, 0.45), 0, { w: 700, ls: 5, col: OR, maxW: 960 });
     caps(footLine('  ·  '), W / 2, 1150, 21, ramp(lt, 0.9, 0.5), 0, { w: 500, fam: 'Mono', ls: 2, col: 'rgba(255,255,255,0.6)', maxW: 980 });
@@ -139,15 +149,36 @@ STUDIO_REG['v2'] = (() => {
       } else { const n = side(k, which, lt); clip(n.c, n.in, n.lt, r, { clip: win }); if (lt > HALF && lt < HALF + 0.2) cutFX(r, lt - HALF); }
       if (VID.collecting) return;
       const lab = R[k][which === 'A' ? 0 : 2], p = clamp((lt - 0.12) / 0.3), db = Math.pow(1 - lmod(t, bar) / bar, 4);
-      badge(which, 66, y + 66, 38, (k === 0 && t < 0.12 ? 1 : E.outBack(clamp((lt - 0.05) / 0.3))) * (1 + 0.07 * db), { square: true });
-      const fs = Math.min(34, fitSize(lab, 800, 820, 34, 'Mont', 1.5)), f = F(800, fs, 'Mont'), tw = textW(lab, f, 1.5), x0 = 120;
+      const [bgx, bgy] = posOf(elP('badge' + which), [66, y + 66]);
+      badge(which, bgx, bgy, 38, (k === 0 && t < 0.12 ? 1 : E.outBack(clamp((lt - 0.05) / 0.3))) * (1 + 0.07 * db), { square: true });
+      const fs = Math.min(34, fitSize(lab, 800, 820, 34, 'Mont', 1.5)), f = F(800, fs, 'Mont'), tw = textW(lab, f, 1.5), [lx, ly] = posOf(elP('label' + which), [120, y + 36]);
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = k === 0 && t < 0.12 ? 1 : p;
-      ctx.beginPath(); ctx.rect(x0, y + 28, (tw + 44) * (k === 0 && t < 0.12 ? 1 : E.outQ(p)), 76); ctx.clip();
-      ctx.fillStyle = 'rgba(11,11,11,0.82)'; rrect(x0, y + 36, tw + 44, 60, 8); ctx.fill();
-      setF(f, 1.5); ctx.fillStyle = WHT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(lab, x0 + 22, y + 67);
+      ctx.beginPath(); ctx.rect(lx, ly - 8, (tw + 44) * (k === 0 && t < 0.12 ? 1 : E.outQ(p)), 76); ctx.clip();
+      ctx.fillStyle = 'rgba(11,11,11,0.82)'; rrect(lx, ly, tw + 44, 60, 8); ctx.fill();
+      setF(f, 1.5); ctx.fillStyle = WHT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(lab, lx + 22, ly + 31);
       ctx.restore();
     }
     const NR = R.length;
+    function elements() {
+      const bAy = posOf(elP('bandA'), [0, AY])[1], bBy = posOf(elP('bandB'), [0, BY])[1];
+      const kiP = posOf(elP('kicker'), [W / 2, 292]), heP = posOf(elP('head'), [W / 2, 382]);
+      const vsP = posOf(elP('vs'), [W / 2, 1060]), asP = posOf(elP('ask'), [W / 2, 1780]);
+      const ehP = posOf(elP('endhead'), [W / 2, 400]), esP = posOf(elP('endsub'), [W / 2, 480]), ecP = posOf(elP('endcta'), [W / 2, 872]);
+      const bandEl = (id, y) => { const p = posOf(elP(id), [0, y]); return { id, kind: 'box', label: id === 'bandA' ? 'Option A band' : 'Option B band', x: p[0], y: p[1], w: W, h: BH, t0: 0, d: END, box: [p[0], p[1], W, BH], dup: false, del: false }; };
+      const badgeEl = (id, y) => { const p = posOf(elP(id), [66, y + 66]); return { id, kind: 'pos', label: id === 'badgeA' ? 'A badge' : 'B badge', x: p[0], y: p[1], t0: 0, d: END, box: [p[0] - 38, p[1] - 38, 76, 76], dup: false, del: false }; };
+      const labelEl = (id, y) => { const p = posOf(elP(id), [120, y + 36]); return { id, kind: 'pos', label: 'Option label', x: p[0], y: p[1], t0: 0, d: END, box: [p[0], p[1], 820, 60], dup: false, del: false }; };
+      return [
+        { id: 'kicker', kind: 'pos', label: KICK, x: kiP[0], y: kiP[1], t0: 0, d: END, box: [kiP[0] - 480, kiP[1] - 30, 960, 40], dup: false, del: false },
+        { id: 'head', kind: 'pos', label: HEAD, x: heP[0], y: heP[1], t0: 0, d: END, box: [heP[0] - 450, heP[1] - 92, 900, 100], dup: false, del: false },
+        bandEl('bandA', AY), badgeEl('badgeA', bAy), labelEl('labelA', bAy),
+        bandEl('bandB', BY), badgeEl('badgeB', bBy), labelEl('labelB', bBy),
+        { id: 'vs', kind: 'pos', label: 'OR', x: vsP[0], y: vsP[1], t0: 0, d: END, box: [vsP[0] - 42, vsP[1] - 42, 84, 84], dup: false, del: false },
+        { id: 'ask', kind: 'pos', label: ASK, x: asP[0], y: asP[1], t0: 0, d: END, box: [asP[0] - 480, asP[1] - 30, 960, 40], dup: false, del: false },
+        { id: 'endhead', kind: 'pos', label: EHEAD, x: ehP[0], y: ehP[1], t0: END, d: DUR - END, box: [ehP[0] - 450, ehP[1] - 104, 900, 110], dup: false, del: false },
+        { id: 'endsub', kind: 'pos', label: ESUB, x: esP[0], y: esP[1], t0: END, d: DUR - END, box: [esP[0] - 480, esP[1] - 30, 960, 40], dup: false, del: false },
+        { id: 'endcta', kind: 'pos', label: CONTACT.cta, x: ecP[0], y: ecP[1], t0: END, d: DUR - END, box: [ecP[0] - 400, ecP[1] - 35, 800, 70], dup: false, del: false },
+      ];
+    }
     return {
       dur: DUR,
       render(t) {
@@ -156,17 +187,21 @@ STUDIO_REG['v2'] = (() => {
         if (t < END + 0.4) {
           ctx.save(); ctx.globalAlpha = ea;
           const k = Math.min(NR - 1, Math.floor(t / RD));
-          kicker(`${KICK}  ·  ROUND ${k + 1} OF ${NR}`, W / 2, 292, 1, { align: 'center', size: 22, ls: 4, maxW: 960 });
-          headline([HEAD], W / 2, 382, 9, 0, undefined, { max: 92, maxW: 900 });
-          bandDraw(t, AY, 'A'); bandDraw(t, BY, 'B');
+          const [kix, kiy] = posOf(elP('kicker'), [W / 2, 292]);
+          kicker(`${KICK}  ·  ROUND ${k + 1} OF ${NR}`, kix, kiy, 1, { align: 'center', size: 22, ls: 4, maxW: 960 });
+          const [hx, hy] = posOf(elP('head'), [W / 2, 382]);
+          headline([HEAD], hx, hy, 9, 0, undefined, { max: 92, maxW: 900 });
+          bandDraw(t, posOf(elP('bandA'), [0, AY])[1], 'A'); bandDraw(t, posOf(elP('bandB'), [0, BY])[1], 'B');
           if (!VID.collecting) {   // divider with the OR disc
-            ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(60, 1058, 380, 3); ctx.fillRect(W - 440, 1058, 380, 3); ctx.restore();
-            badge('OR', W / 2, 1060, 42, 1 + 0.08 * Math.pow(1 - lmod(t, bar) / bar, 4));
+            const [vsx, vsy] = posOf(elP('vs'), [W / 2, 1060]);
+            ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(60, vsy - 2, 380, 3); ctx.fillRect(W - 440, vsy - 2, 380, 3); ctx.restore();
+            badge('OR', vsx, vsy, 42, 1 + 0.08 * Math.pow(1 - lmod(t, bar) / bar, 4));
           }
-          caps(ASK, W / 2, 1780, 26, 1, 0, { w: 700, fam: 'Mono', ls: 3, maxW: 960 });
+          const [asx, asy] = posOf(elP('ask'), [W / 2, 1780]);
+          caps(ASK, asx, asy, 26, 1, 0, { w: 700, fam: 'Mono', ls: 3, maxW: 960 });
           ctx.restore();
         }
-        if (t >= END) endCustom(t - END - 0.2, { head: [EHEAD], hl: 0, sub: ESUB });
+        if (t >= END) endCustom(t - END - 0.2, { head: [EHEAD], hl: 0, sub: ESUB, headP: posOf(elP('endhead'), [W / 2, 400]), subP: posOf(elP('endsub'), [W / 2, 480]), ctaP: posOf(elP('endcta'), [W / 2, 872]) });
       },
       cues() {
         const ev = [];
@@ -175,6 +210,7 @@ STUDIO_REG['v2'] = (() => {
         ev.push(['whoosh', END, 0.3, 0]); ev.push(['impact', END + 0.3, 0.45, 0]); ev.push(['chime', END + 0.9, 0.3, 0]);
         return { dur: DUR, beds: [['music', 0, DUR, 1.0, { style: 'pulse', bpm: BPM, key: 0 }]], events: ev };
       },
+      elements,
     };
   }
 
@@ -191,29 +227,53 @@ STUDIO_REG['v2'] = (() => {
         SHOT(`o${n}s1`, o[1], { label: 'Shot in the band', group: g, kind: 'land', d: k === 3 ? 3.2 : 2.9 }), SHOT(`o${n}s2`, o[2], { label: 'Second shot (grid)', group: g, kind: 'land', d: 2.4 })]; });
     const ASK = TX('ask', 'COMMENT 1, 2, 3 OR 4', { label: 'Comment prompt', group: 'Ending', upper: true, max: 22 });
     const BAND = [0, 560, W, 608];
-    const cell = n => [n % 2 ? 544 : 0, n < 2 ? 560 : 870, 536, 302];
+    const bandY = posOf(elP('band'), [0, 560])[1], BANDR = [0, bandY, W, 608];
+    const gridP = posOf(elP('grid'), [0, 560]);
+    const cell = n => [(n % 2 ? 544 : 0) + gridP[0], (n < 2 ? 560 : 870) + (gridP[1] - 560), 536, 302];
+    function elements() {
+      const kiP = posOf(elP('kicker'), [W / 2, 296]), heP = posOf(elP('head'), [W / 2, 394]);
+      const baP = posOf(elP('band'), [0, 560]), bgP = posOf(elP('badge'), [92, bandY + 92]), onP = posOf(elP('optname'), [40, bandY + 568]);
+      const meP = posOf(elP('menu'), [330, 1250]), grP = posOf(elP('grid'), [0, 560]);
+      const asP = posOf(elP('ask'), [W / 2 - 24, 1262]), ctP = posOf(elP('cta'), [W / 2, 1372]);
+      return [
+        { id: 'kicker', kind: 'pos', label: KICK, x: kiP[0], y: kiP[1], t0: 0, d: DUR, box: [kiP[0] - 480, kiP[1] - 30, 960, 40], dup: false, del: false },
+        { id: 'head', kind: 'pos', label: H1 + ' / ' + H2, x: heP[0], y: heP[1], t0: 0, d: DUR, box: [heP[0] - 460, heP[1] - 80, 920, 170], dup: false, del: false },
+        { id: 'band', kind: 'box', label: 'Option band', x: baP[0], y: baP[1], w: W, h: 608, t0: 0, d: G0, box: [baP[0], baP[1], W, 608], dup: false, del: false },
+        { id: 'badge', kind: 'pos', label: 'Option number', x: bgP[0], y: bgP[1], t0: T1, d: G0 - T1, box: [bgP[0] - 56, bgP[1] - 56, 112, 112], dup: false, del: false },
+        { id: 'optname', kind: 'pos', label: OPT[0][0], x: onP[0], y: onP[1], t0: T1, d: G0 - T1, box: [onP[0], onP[1] - 58, 1000, 70], dup: false, del: false },
+        { id: 'menu', kind: 'pos', label: 'Option menu', x: meP[0], y: meP[1], t0: T1, d: G0 - T1, box: [meP[0] - 20, meP[1] - 40, 760, 260], dup: false, del: false },
+        { id: 'grid', kind: 'box', label: 'Options grid', x: grP[0], y: grP[1], w: W, h: 612, t0: G0, d: DUR - G0, box: [grP[0], grP[1], W, 612], dup: false, del: false },
+        { id: 'ask', kind: 'pos', label: ASK, x: asP[0], y: asP[1], t0: G0 + 0.5, d: DUR - (G0 + 0.5), box: [asP[0] - 450, asP[1] - 42, 900, 50], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: G0 + 0.8, d: DUR - (G0 + 0.8), box: [ctP[0] - 400, ctP[1] - 35, 800, 200], dup: false, del: false },
+      ];
+    }
     return {
       dur: DUR,
       render(t) {
         glowBG(866);
-        kicker(KICK, W / 2, 296, 1, { align: 'center', size: 22, ls: 4, maxW: 960 });
-        headline([H1, H2], W / 2, 394, 9, 0, undefined, { hl: { line: 1 }, max: 80, maxW: 920, lh: 1.05 });
+        const [kix, kiy] = posOf(elP('kicker'), [W / 2, 296]);
+        kicker(KICK, kix, kiy, 1, { align: 'center', size: 22, ls: 4, maxW: 960 });
+        const [hx, hy] = posOf(elP('head'), [W / 2, 394]);
+        headline([H1, H2], hx, hy, 9, 0, undefined, { hl: { line: 1 }, max: 80, maxW: 920, lh: 1.05 });
         if (t < G0) {   // one option at a time in the band
           const k = Math.min(3, Math.max(0, Math.floor((t - T1) / OD))), lt = t - T1 - k * OD, o = OPT[k], TD = 0.3;
-          fillR(BAND, BLK);
-          const win = () => ctx.rect(BAND[0], BAND[1], BAND[2], BAND[3]);
+          fillR(BANDR, BLK);
+          const win = () => ctx.rect(BANDR[0], BANDR[1], BANDR[2], BANDR[3]);
           if (k > 0 && lt < TD) { const u = E.inOutC(lt / TD), p = OPT[k - 1][1];
-            clip(p[0], p[1], lt + OD, BAND, { clip: win, dx: -u * W }); clip(o[1][0], o[1][1], lt, BAND, { clip: win, dx: (1 - u) * W }); }
-          else clip(o[1][0], o[1][1], Math.max(0, lt), BAND, { clip: win });
+            clip(p[0], p[1], lt + OD, BANDR, { clip: win, dx: -u * W }); clip(o[1][0], o[1][1], lt, BANDR, { clip: win, dx: (1 - u) * W }); }
+          else clip(o[1][0], o[1][1], Math.max(0, lt), BANDR, { clip: win });
           if (!VID.collecting) {
             const p = k === 0 && t < T1 + 0.1 ? 1 : E.outBack(clamp((lt - 0.08) / 0.35));
-            badge(String(k + 1), 92, 652, 56, p);
-            T(o[0], 40, 1128, F(900, Math.min(58, fitSize(o[0], 900, 1000, 58, 'Mont')), 'Mont'), { p: clamp((lt - 0.15) / 0.4), shadow: ['rgba(0,0,0,0.75)', 30, 3] });
+            const [bgx, bgy] = posOf(elP('badge'), [92, bandY + 92]);
+            badge(String(k + 1), bgx, bgy, 56, p);
+            const [onx, ony] = posOf(elP('optname'), [40, bandY + 568]);
+            T(o[0], onx, ony, F(900, Math.min(58, fitSize(o[0], 900, 1000, 58, 'Mont')), 'Mont'), { p: clamp((lt - 0.15) / 0.4), shadow: ['rgba(0,0,0,0.75)', 30, 3] });
+            const [mex, mey] = posOf(elP('menu'), [330, 1250]);
             OPT.forEach((x, j) => {   // the menu under the band
-              const y = 1250 + j * 60, on = j === k;
+              const y = mey + j * 60, on = j === k;
               ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = on ? 1 : 0.38;
-              badge(String(j + 1), 330, y - 12, 19, 1, on ? {} : { bg: 'rgba(255,255,255,0.85)' });
-              setF(F(800, Math.min(32, fitSize(x[0], 800, 660, 32, 'Mont', 1.5)), 'Mont'), 1.5); ctx.fillStyle = on ? OR : WHT; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText(x[0], 368, y);
+              badge(String(j + 1), mex, y - 12, 19, 1, on ? {} : { bg: 'rgba(255,255,255,0.85)' });
+              setF(F(800, Math.min(32, fitSize(x[0], 800, 660, 32, 'Mont', 1.5)), 'Mont'), 1.5); ctx.fillStyle = on ? OR : WHT; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText(x[0], mex + 38, y);
               ctx.restore();
             });
           }
@@ -221,7 +281,7 @@ STUDIO_REG['v2'] = (() => {
           const g = t - G0;
           OPT.forEach((o, n) => {
             const c = cell(n), stag = n * 0.08, u = E.outQ(clamp((g - stag) / GT));
-            const r = n === 3 ? [lerp(BAND[0], c[0], u), lerp(BAND[1], c[1], u), lerp(BAND[2], c[2], u), lerp(BAND[3], c[3], u)]
+            const r = n === 3 ? [lerp(BANDR[0], c[0], u), lerp(BANDR[1], c[1], u), lerp(BANDR[2], c[2], u), lerp(BANDR[3], c[3], u)]
               : [c[0] + c[2] * (1 - u) / 2, c[1] + c[3] * (1 - u) / 2, c[2] * u, c[3] * u];
             if (r[2] < 4) return;
             const slot = Math.floor(lmod(g + n * bt, 2 * 2.4) / 2.4), lt = lmod(g + n * bt, 2.4), sh = o[1 + slot];
@@ -231,9 +291,10 @@ STUDIO_REG['v2'] = (() => {
           });
           const p = ramp(g, 0.5, 0.4);
           const asz = Math.min(42, fitSize(ASK, 900, 900, 42, 'Mont', 2));
-          caps(ASK, W / 2 - 24, 1262, asz, p, 0, { w: 900, ls: 2 });
-          if (p > 0.5) chevrons(W / 2 + textW(ASK, F(900, asz, 'Mont'), 2) / 2 + 6, 1246, t, bar);
-          if (g > 0.8) ctaLine(t, 1372, bar);
+          const [asx, asy] = posOf(elP('ask'), [W / 2 - 24, 1262]);
+          caps(ASK, asx, asy, asz, p, 0, { w: 900, ls: 2 });
+          if (p > 0.5) chevrons(asx + 24 + textW(ASK, F(900, asz, 'Mont'), 2) / 2 + 6, asy - 16, t, bar);
+          if (g > 0.8) ctaLine(t, posOf(elP('cta'), [W / 2, 1372])[1], bar);
         }
       },
       cues() {
@@ -244,6 +305,7 @@ STUDIO_REG['v2'] = (() => {
         ev.push(['chime', G0 + 1.0, 0.25, 0]);
         return { dur: DUR, beds: [['music', 0, DUR, 1.0, { style: 'lounge', bpm: BPM, key: 2 }]], events: ev };
       },
+      elements,
     };
   }
 
@@ -409,27 +471,47 @@ STUDIO_REG['v2'] = (() => {
     const S = P.shots.map(([c, inn, d, lab, cont], i) => S_(c, inn, d, { lab, tr: i && !cont ? 'push' : null }));
     const END = lay(S, 0), DUR = END + 3.2;
     const BH = Math.round(W / AR(P.shots[0][0])), BAND = [0, 540, W, BH], BOT = 540 + BH;
+    const bandY = posOf(elP('band'), [0, 540])[1], BANDR = [0, bandY, W, BH], BOTR = bandY + BH;
+    function elements() {
+      const kiP = posOf(elP('kicker'), [W / 2, 300]), tiP = posOf(elP('title'), [W / 2, 440]), ruP = posOf(elP('rule'), [W / 2, 478]);
+      const baP = posOf(elP('band'), [0, 540]), slP = posOf(elP('shotlabel'), [W / 2, BOTR + 96]);
+      const ehP = posOf(elP('endhead'), [W / 2, 400]), esP = posOf(elP('endsub'), [W / 2, 480]), ecP = posOf(elP('endcta'), [W / 2, 872]);
+      return [
+        { id: 'kicker', kind: 'pos', label: KICK, x: kiP[0], y: kiP[1], t0: 0, d: END, box: [kiP[0] - 480, kiP[1] - 30, 960, 40], dup: false, del: false },
+        { id: 'title', kind: 'pos', label: P.title, x: tiP[0], y: tiP[1], t0: 0.05, d: END - 0.05, box: [tiP[0] - 480, tiP[1] - 112, 960, 120], dup: false, del: false },
+        { id: 'rule', kind: 'pos', label: 'Title rule', x: ruP[0], y: ruP[1], t0: 0.3, d: END - 0.3, box: [ruP[0] - 120, ruP[1] - 2, 240, 4], dup: false, del: false },
+        { id: 'band', kind: 'box', label: 'Spotlight band', x: baP[0], y: baP[1], w: W, h: BH, t0: 0, d: END, box: [baP[0], baP[1], W, BH], dup: false, del: false },
+        { id: 'shotlabel', kind: 'pos', label: P.shots[0][3], x: slP[0], y: slP[1], t0: 0.1, d: END - 0.1, box: [slP[0] - 480, slP[1] - 36, 960, 44], dup: false, del: false },
+        { id: 'endhead', kind: 'pos', label: P.title.toUpperCase(), x: ehP[0], y: ehP[1], t0: END, d: DUR - END, box: [ehP[0] - 450, ehP[1] - 104, 900, 110], dup: false, del: false },
+        { id: 'endsub', kind: 'pos', label: ESUB, x: esP[0], y: esP[1], t0: END, d: DUR - END, box: [esP[0] - 480, esP[1] - 30, 960, 40], dup: false, del: false },
+        { id: 'endcta', kind: 'pos', label: CONTACT.cta, x: ecP[0], y: ecP[1], t0: END, d: DUR - END, box: [ecP[0] - 400, ecP[1] - 35, 800, 70], dup: false, del: false },
+      ];
+    }
     return {
       dur: DUR,
       render(t) {
-        glowBG(540 + BH / 2, 0.07);
+        glowBG(bandY + BH / 2, 0.07);
         const ea = 1 - ramp(t, END, 0.35);
         if (ea > 0) {
           ctx.save(); ctx.globalAlpha = ea;
-          kicker(KICK, W / 2, 300, ramp(t, 0, 0.3), { align: 'center', size: 22, ls: 4, maxW: 960 });
-          serif(P.title, W / 2, 440, Math.min(112, fitSize(P.title, 600, 960, 112, 'Corm', 0, 'italic')), t < 0.05 ? 1 : ramp(t, 0.05, 0.6), 0, { w: 600, col: WHT });
-          rule(W / 2, 478, 240, ramp(t, 0.3, 0.5), { col: OR, h: 3 });
-          const r = bandPlay(S, Math.min(t, END - 0.01), BAND);
+          const [kix, kiy] = posOf(elP('kicker'), [W / 2, 300]);
+          kicker(KICK, kix, kiy, ramp(t, 0, 0.3), { align: 'center', size: 22, ls: 4, maxW: 960 });
+          const [tix, tiy] = posOf(elP('title'), [W / 2, 440]);
+          serif(P.title, tix, tiy, Math.min(112, fitSize(P.title, 600, 960, 112, 'Corm', 0, 'italic')), t < 0.05 ? 1 : ramp(t, 0.05, 0.6), 0, { w: 600, col: WHT });
+          const [rux, ruy] = posOf(elP('rule'), [W / 2, 478]);
+          rule(rux, ruy, 240, ramp(t, 0.3, 0.5), { col: OR, h: 3 });
+          const r = bandPlay(S, Math.min(t, END - 0.01), BANDR);
           if (!VID.collecting) {
             ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);   // progress rail under the band, one segment per shot
             const n = S.length, gw = (W - 120 - (n - 1) * 8) / n;
-            S.forEach((sh, i) => { const x = 60 + i * (gw + 8), u = clamp((t - sh.start) / sh.d); ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(x, BOT + 22, gw, 5); ctx.fillStyle = OR; ctx.fillRect(x, BOT + 22, gw * u, 5); });
+            S.forEach((sh, i) => { const x = 60 + i * (gw + 8), u = clamp((t - sh.start) / sh.d); ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(x, BOTR + 22, gw, 5); ctx.fillStyle = OR; ctx.fillRect(x, BOTR + 22, gw * u, 5); });
             ctx.restore();
           }
-          kicker(r.sh.lab, W / 2, BOT + 96, clamp((r.lt - 0.1) / 0.35), { align: 'center', size: 30, ls: 3, maxW: 960 });
+          const [slx, sly] = posOf(elP('shotlabel'), [W / 2, BOTR + 96]);
+          kicker(r.sh.lab, slx, sly, clamp((r.lt - 0.1) / 0.35), { align: 'center', size: 30, ls: 3, maxW: 960 });
           ctx.restore();
         }
-        if (t >= END) endCustom(t - END - 0.15, { head: [P.title.toUpperCase()], sub: ESUB });
+        if (t >= END) endCustom(t - END - 0.15, { head: [P.title.toUpperCase()], sub: ESUB, headP: posOf(elP('endhead'), [W / 2, 400]), subP: posOf(elP('endsub'), [W / 2, 480]), ctaP: posOf(elP('endcta'), [W / 2, 872]) });
       },
       cues() {
         const ev = [];
@@ -437,6 +519,7 @@ STUDIO_REG['v2'] = (() => {
         ev.push(['whoosh', END, 0.28, 0]); ev.push(['chime', END + 0.5, 0.3, 0]);
         return { dur: DUR, beds: [['music', 0, DUR, 1.0, { style: 'lounge', bpm: BPM, key: P.key }]], events: ev };
       },
+      elements,
     };
   }
 
@@ -504,5 +587,5 @@ STUDIO_REG['v2'] = (() => {
   const P = V === 'thisor' ? thisor() : V === 'upgrade' ? upgrade() : V === 'dream' ? dream() : V === 'bento' ? bento() : V === 'scroll' ? scrollWall()
     : V === 'mpr' ? mpr() : V.startsWith('spot_') ? spot(V.slice(5)) : thisor();
   const loop = V === 'bento' || V === 'scroll';
-  DIR = { dur: P.dur, bg: BLK, finish: loop ? { vig: 0.12, grain: 0.16 } : { vig: 0.22, grain: 0.2 }, edl: [], render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: BLK, finish: loop ? { vig: 0.12, grain: 0.16 } : { vig: 0.22, grain: 0.2 }, edl: [], render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

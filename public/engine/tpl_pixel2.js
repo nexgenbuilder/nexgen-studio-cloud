@@ -8,6 +8,10 @@
    Prices, offers and dates are fields: the defaults are Webflix's November sale and are replaced per clip. */
 STUDIO_REG['pixel2'] = (() => {
   const V = QS.get('v') || 'pxbf';
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const { g, clamp, ease, bounce, typed, rng, rect, rectO, pt, line, ellipse, poly, txt, tw, sprite, people, logoAny, scan, stars, tri, button, wipe, flash, cue, bed } = PX;
   const isWF = /webflix/i.test((typeof BRAND !== 'undefined' && BRAND.name) || '') || !window.STUDIO;
   const LOGO = PX.logoSetup(isWF);
@@ -17,10 +21,10 @@ STUDIO_REG['pixel2'] = (() => {
   const C = (r, gg, b) => `rgb(${r},${gg},${b})`;
   const ORANGE = C(240, 130, 40), BROWN = C(120, 70, 35), DBROWN = C(70, 38, 20), GOLD = C(255, 196, 60);
   function grid(rows, pal, x, y, k) { for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) { const ch = rows[j][i]; if (ch !== '.' && pal[ch]) rect(g, x + i * k, y + j * k, x + i * k + k - 1, y + j * k + k - 1, pal[ch]); } }
-  function priceDrop(cx, y, t0, t, was, now, k, col, P) {   // the old price struck through, then the new one bounces in
-    if (t < t0) return; txt(g, cx, y, was, { f: 'ps16', col: P.GREY, a: 'm' }); const w = tw(was, 'ps16');
-    if (t > t0 + 0.35) { const u = clamp((t - t0 - 0.35) / 0.2); rect(g, cx - w / 2 - 3, y + 6, cx - w / 2 - 3 + Math.round((w + 6) * u), y + 8, P.RED); }
-    if (t > t0 + 0.7) txt(g, cx, Math.round(y - 60 + 84 * bounce((t - t0 - 0.7) / 0.5)), now, { f: 'ps16', k, col, sh: P.DRED, a: 'm' });
+  function priceDrop(cx, y, t0, t, was, now, k, col, P, o) {   // the old price struck through, then the new one bounces in
+    if (t < t0) return; const [wx, wy] = (o && o.was) || [cx, y]; txt(g, wx, wy, was, { f: 'ps16', col: P.GREY, a: 'm' }); const w = tw(was, 'ps16');
+    if (t > t0 + 0.35) { const u = clamp((t - t0 - 0.35) / 0.2); rect(g, wx - w / 2 - 3, wy + 6, wx - w / 2 - 3 + Math.round((w + 6) * u), wy + 8, P.RED); }
+    if (t > t0 + 0.7) { const [nx, ny] = (o && o.now) || [cx, y + 24]; txt(g, nx, Math.round(ny - 84 + 84 * bounce((t - t0 - 0.7) / 0.5)), now, { f: 'ps16', k, col, sh: P.DRED, a: 'm' }); }
   }
   function confetti(t, t0, seed, n, P) { if (t < t0) return; const r = rng(seed || 4), cols = [P.RED, P.WHITE, P.YEL, P.GREEN];
     for (let i = 0; i < (n || 70); i++) { const x0 = Math.floor(r() * 270), sp = 50 + r() * 70, ph = r(), c = cols[Math.floor(r() * 4)]; const y = ((t - t0) * sp + ph * 480) % 480, x = x0 + Math.round(4 * Math.sin(t * 4 + ph * 9)); rect(g, x, y, x + 1, y + 2, c); } }
@@ -33,32 +37,53 @@ STUDIO_REG['pixel2'] = (() => {
     'WW....WWWWWWWWWWWWWWWWWWWW', '.WW..WWWWWWWWWWWWWWWWWWWWW', '..WWWWWWWWWWWWWWWWWWWWWWWW', '...WWWWWWWWWWWWWWWWWWWWWWW', '....WWWWWWWWWWWWWWWWWWWWWW'];
   function pxbf() {
     const H1 = W_('head1', 'BLACK', 'Big word 1', 7), H2 = W_('head2', 'FRIDAY', 'Big word 2', 7), BAN = W_('banner', '* BOSS LEVEL SALE *', 'Banner', 28), S = SALE();
+    const OFFL = W_('offlabel', 'OFF', 'Off label', 4);
     const DUR = 10.0;
     function render(t) {
       const P = PX.begin();
       if (t < 0.4) { if (Math.floor(t * 20) % 2) flash(g, C(30, 10, 16)); return; }
       scan(g); confetti(t, 4.4, 4, 70, P);
       const sh = (t > 0.9 && t < 1.2) || (t > 3.6 && t < 3.9) ? (rng(Math.floor(t * 40))() < 0.5 ? -2 : 2) : 0;
-      txt(g, 135 + sh, Math.round(-40 + 84 * bounce((t - 0.4) / 0.4)), H1, { f: 'ps16', k: 2, col: P.WHITE, sh: P.EDGE, a: 'm' });
-      if (t > 0.8) txt(g, 135 - sh, Math.round(-40 + 124 * bounce((t - 0.8) / 0.4)), H2, { f: 'ps16', k: 2, col: P.RED, sh: P.DRED, a: 'm' });
-      if (t > 1.6) { const u = ease((t - 1.6) / 0.3), bw = Math.round(250 * u); rect(g, 135 - bw / 2, 158, 135 + bw / 2, 176, P.RED); if (u >= 1) txt(g, 135, 163, typed(BAN, t - 1.9, 40), { col: P.INK, a: 'm' }); }
+      const [h1x, h1y] = posOf(elP('head1'), [135, 44]); txt(g, h1x + sh, Math.round(-40 + (h1y + 40) * bounce((t - 0.4) / 0.4)), H1, { f: 'ps16', k: 2, col: P.WHITE, sh: P.EDGE, a: 'm' });
+      if (t > 0.8) { const [h2x, h2y] = posOf(elP('head2'), [135, 84]); txt(g, h2x - sh, Math.round(-40 + (h2y + 40) * bounce((t - 0.8) / 0.4)), H2, { f: 'ps16', k: 2, col: P.RED, sh: P.DRED, a: 'm' }); }
+      if (t > 1.6) { const [bnx, bny] = posOf(elP('banner'), [135, 163]); const u = ease((t - 1.6) / 0.3), bw = Math.round(250 * u); rect(g, bnx - bw / 2, bny - 5, bnx + bw / 2, bny + 13, P.RED); if (u >= 1) txt(g, bnx, bny, typed(BAN, t - 1.9, 40), { col: P.INK, a: 'm' }); }
       if (t > 2.4 && t < 4.8) {
-        const k = 8, twd = TAG[0].length * k, tx = 135 - twd / 2, ty = Math.round(200 - 200 * (1 - bounce((t - 2.4) / 0.35))), split = clamp((t - 3.6) / 1.0);
+        const [tgx, tgy] = posOf(elP('tag'), [31, 200]); const k = 8, twd = TAG[0].length * k, tx = tgx, ty = Math.round(tgy - 200 * (1 - bounce((t - 2.4) / 0.35))), split = clamp((t - 3.6) / 1.0);
         TAG.forEach((row, j) => { const off = Math.round(split * 60 * (j < 5 ? 1 : -1)), dy = j >= 5 ? Math.round(split * split * 220) : -Math.round(split * 120);
           for (let i = 0; i < row.length; i++) if (row[i] === 'W') rect(g, tx + i * k - off, ty + j * k + dy, tx + i * k - off + k - 1, ty + j * k + dy + k - 1, P.WHITE); });
-        if (split === 0) txt(g, 151, 214, S.was, { f: 'ps16', k: 2, col: P.INK, a: 'm' });
+        if (split === 0) txt(g, tgx + 120, tgy + 14, S.was, { f: 'ps16', k: 2, col: P.INK, a: 'm' });
         if (t > 3.4 && t < 3.75) { const x0 = Math.round(-20 + 320 * (t - 3.4) / 0.35); for (let s = -2; s <= 2; s++) line(g, [x0 - 60, 180 + s, x0, 320 + s], s ? P.WHITE : P.YEL); }
         if (t > 3.6 && t < 3.75) flash(g, P.WHITE);
       }
-      if (t > 4.3) { txt(g, 135, 196, S.was, { f: 'ps16', col: P.GREY, a: 'm' }); const w = tw(S.was, 'ps16'); rect(g, 135 - w / 2 - 3, 202, 135 + w / 2 + 3, 204, P.RED);
-        txt(g, 135, Math.round(150 + 74 * bounce((t - 4.3) / 0.5)), S.now, { f: 'ps16', k: 3, col: P.YEL, sh: P.DRED, a: 'm' }); }
-      if (t > 5.0) { const sc = 1 + 0.08 * Math.sin(t * 8); starburst(222, 196, Math.round(30 * sc), P.RED, t); starburst(222, 196, Math.round(24 * sc), blink(t, 4) ? P.WHITE : P.YEL, -t);
-        txt(g, 222, 186, S.off, { col: P.INK, a: 'm' }); txt(g, 222, 198, 'OFF', { col: P.INK, a: 'm' }); }
-      if (t > 5.6) { txt(g, 135, 290, typed(S.what, t - 5.6, 30), { col: P.WHITE, a: 'm' }); txt(g, 135, 308, typed(S.when, t - 6.3, 30), { col: P.YEL, a: 'm' }); }
-      if (t > 7.2) { logoAny(LOGO, g, 135, 340, 2, false); button(g, 135, 396, S.cta, blink(t)); }
+      if (t > 4.3) { const [wx, wy] = posOf(elP('was'), [135, 196]), [nx, ny] = posOf(elP('now'), [135, 224]); txt(g, wx, wy, S.was, { f: 'ps16', col: P.GREY, a: 'm' }); const w = tw(S.was, 'ps16'); rect(g, wx - w / 2 - 3, wy + 6, wx + w / 2 + 3, wy + 8, P.RED);
+        txt(g, nx, Math.round(ny - 74 + 74 * bounce((t - 4.3) / 0.5)), S.now, { f: 'ps16', k: 3, col: P.YEL, sh: P.DRED, a: 'm' }); }
+      if (t > 5.0) { const [ox, oy] = posOf(elP('off'), [222, 196]); const sc = 1 + 0.08 * Math.sin(t * 8); starburst(ox, oy, Math.round(30 * sc), P.RED, t); starburst(ox, oy, Math.round(24 * sc), blink(t, 4) ? P.WHITE : P.YEL, -t);
+        txt(g, ox, oy - 10, S.off, { col: P.INK, a: 'm' }); txt(g, ox, oy + 2, OFFL, { col: P.INK, a: 'm' }); }
+      if (t > 5.6) { const [wax, way] = posOf(elP('what'), [135, 290]); txt(g, wax, way, typed(S.what, t - 5.6, 30), { col: P.WHITE, a: 'm' }); const [wnx, wny] = posOf(elP('when'), [135, 308]); txt(g, wnx, wny, typed(S.when, t - 6.3, 30), { col: P.YEL, a: 'm' }); }
+      if (t > 7.2) { const [lgx, lgy] = posOf(elP('logo'), [135, 340]); logoAny(LOGO, g, lgx, lgy, 2, false); const [cx, cy] = posOf(elP('cta'), [135, 396]); button(g, cx, cy, S.cta, blink(t)); }
+    }
+    function elements() {
+      const [h1x, h1y] = posOf(elP('head1'), [135, 44]), [h2x, h2y] = posOf(elP('head2'), [135, 84]);
+      const [bnx, bny] = posOf(elP('banner'), [135, 163]), [tgx, tgy] = posOf(elP('tag'), [31, 200]);
+      const [wx, wy] = posOf(elP('was'), [135, 196]), [nx, ny] = posOf(elP('now'), [135, 224]), [ox, oy] = posOf(elP('off'), [222, 196]);
+      const [wax, way] = posOf(elP('what'), [135, 290]), [wnx, wny] = posOf(elP('when'), [135, 308]);
+      const [lgx, lgy] = posOf(elP('logo'), [135, 340]), [cx, cy] = posOf(elP('cta'), [135, 396]);
+      return [
+        { id: 'head1', kind: 'pos', label: H1, x: h1x, y: h1y, t0: 0.4, d: DUR - 0.4, box: [h1x - 90, h1y - 10, 180, 40], dup: false, del: false },
+        { id: 'head2', kind: 'pos', label: H2, x: h2x, y: h2y, t0: 0.8, d: DUR - 0.8, box: [h2x - 90, h2y - 10, 180, 40], dup: false, del: false },
+        { id: 'banner', kind: 'box', label: BAN, x: bnx, y: bny, w: 250, h: 18, t0: 1.6, d: DUR - 1.6, box: [bnx - 125, bny - 5, 250, 18], dup: false, del: false },
+        { id: 'tag', kind: 'box', label: 'Price tag ' + S.was, x: tgx, y: tgy, w: 208, h: 80, t0: 2.4, d: 2.4, box: [tgx, tgy, 208, 80], dup: false, del: false },
+        { id: 'was', kind: 'pos', label: 'Was ' + S.was, x: wx, y: wy, t0: 4.3, d: DUR - 4.3, box: [wx - 60, wy - 8, 120, 24], dup: false, del: false },
+        { id: 'now', kind: 'pos', label: 'Now ' + S.now, x: nx, y: ny, t0: 5.0, d: DUR - 5.0, box: [nx - 80, ny - 12, 160, 48], dup: false, del: false },
+        { id: 'off', kind: 'pos', label: S.off + ' ' + OFFL, x: ox, y: oy, t0: 5.0, d: DUR - 5.0, box: [ox - 30, oy - 30, 60, 60], dup: false, del: false },
+        { id: 'what', kind: 'pos', label: S.what, x: wax, y: way, t0: 5.6, d: DUR - 5.6, box: [wax - 110, way - 4, 220, 16], dup: false, del: false },
+        { id: 'when', kind: 'pos', label: S.when, x: wnx, y: wny, t0: 6.3, d: DUR - 6.3, box: [wnx - 110, wny - 4, 220, 16], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 7.2, d: DUR - 7.2, box: [lgx - 60, lgy, 120, 40], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: S.cta, x: cx, y: cy, t0: 7.2, d: DUR - 7.2, box: [cx - 80, cy - 4, 160, 28], dup: false, del: false },
+      ];
     }
     const cues = () => ({ dur: DUR, beds: [['chip', 1.6, DUR, 0.5, { style: 'chip' }]], events: [cue('hit', 0.4, 0.6), cue('hit', 0.8, 0.6), cue('select', 1.6), cue('drop', 2.4), cue('shoot', 3.4), cue('hit', 3.6, 0.6), cue('drop', 4.3), cue('powerup', 4.8, 0.6), cue('coin', 5.0), cue('fanfare', 7.2, 0.6)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ THANKSGIVING (10s)
@@ -73,16 +98,37 @@ STUDIO_REG['pixel2'] = (() => {
     function render(t) {
       const P = PX.begin(); g.fillStyle = C(34, 20, 16); g.fillRect(0, 0, 270, 480); g.fillStyle = C(40, 25, 19); for (let y = 0; y < 480; y += 3) g.fillRect(0, y, 270, 1);
       leaves(t);
-      txt(g, 135, 40, typed(TOP, t - 0.2, 20), { col: GOLD, a: 'm' }); txt(g, 135, 56, typed(HEAD, t - 0.5, 20), { f: 'ps16', col: ORANGE, sh: DBROWN, a: 'm' });
-      if (t > 1.0) { const k = 6, twd = TURKEY[0].length * k, y = Math.round(-120 + 212 * bounce((t - 1.0) / 0.6)) + Math.round(2 * Math.sin(t * 6)); grid(TURKEY, TPAL, 135 - twd / 2, y, k); rect(g, 40, 196, 230, 200, DBROWN); }
-      if (t > 2.6) { txt(g, 135, 214, typed(L1, t - 2.6, 30), { col: P.WHITE, a: 'm' }); txt(g, 135, 230, typed(L2, t - 3.2, 30), { col: P.WHITE, a: 'm' }); }
-      if (t > 4.0) txt(g, 135, 254, typed(L3, t - 4.0, 30), { f: 'vt', col: P.GREY, a: 'm' });
-      priceDrop(135, 276, 4.6, t, S.was, S.now, 3, GOLD, P);
-      if (t > 6.4) { const bw = Math.round(240 * ease((t - 6.4) / 0.3)); rect(g, 135 - bw / 2, 360, 135 + bw / 2, 380, P.RED); if (bw >= 240) txt(g, 135, 366, BAR, { col: P.INK, a: 'm' }); txt(g, 135, 388, typed(S.when, t - 6.8, 30), { col: GOLD, a: 'm' }); }
-      if (t > 7.6) { logoAny(LOGO, g, 135, 406, 1, false); button(g, 135, 436, S.cta, blink(t)); }
+      const [tpx, tpy] = posOf(elP('top'), [135, 40]); txt(g, tpx, tpy, typed(TOP, t - 0.2, 20), { col: GOLD, a: 'm' }); const [hx, hy] = posOf(elP('head'), [135, 56]); txt(g, hx, hy, typed(HEAD, t - 0.5, 20), { f: 'ps16', col: ORANGE, sh: DBROWN, a: 'm' });
+      if (t > 1.0) { const [tkx, tky] = posOf(elP('turkey'), [135, 92]); const k = 6, twd = TURKEY[0].length * k, y = Math.round(tky - 212 + 212 * bounce((t - 1.0) / 0.6)) + Math.round(2 * Math.sin(t * 6)); grid(TURKEY, TPAL, tkx - twd / 2, y, k); rect(g, tkx - 95, tky + 104, tkx + 95, tky + 108, DBROWN); }
+      if (t > 2.6) { const [l1x, l1y] = posOf(elP('line1'), [135, 214]); txt(g, l1x, l1y, typed(L1, t - 2.6, 30), { col: P.WHITE, a: 'm' }); const [l2x, l2y] = posOf(elP('line2'), [135, 230]); txt(g, l2x, l2y, typed(L2, t - 3.2, 30), { col: P.WHITE, a: 'm' }); }
+      if (t > 4.0) { const [l3x, l3y] = posOf(elP('line3'), [135, 254]); txt(g, l3x, l3y, typed(L3, t - 4.0, 30), { f: 'vt', col: P.GREY, a: 'm' }); }
+      const [wx, wy] = posOf(elP('was'), [135, 276]), [nx, ny] = posOf(elP('now'), [135, 300]); priceDrop(wx, wy, 4.6, t, S.was, S.now, 3, GOLD, P, { was: [wx, wy], now: [nx, ny] });
+      if (t > 6.4) { const [ofx, ofy] = posOf(elP('offer'), [135, 366]); const bw = Math.round(240 * ease((t - 6.4) / 0.3)); rect(g, ofx - bw / 2, ofy - 6, ofx + bw / 2, ofy + 14, P.RED); if (bw >= 240) txt(g, ofx, ofy, BAR, { col: P.INK, a: 'm' }); const [wnx, wny] = posOf(elP('when'), [135, 388]); txt(g, wnx, wny, typed(S.when, t - 6.8, 30), { col: GOLD, a: 'm' }); }
+      if (t > 7.6) { const [lgx, lgy] = posOf(elP('logo'), [135, 406]); logoAny(LOGO, g, lgx, lgy, 1, false); const [cx, cy] = posOf(elP('cta'), [135, 436]); button(g, cx, cy, S.cta, blink(t)); }
+    }
+    function elements() {
+      const [tpx, tpy] = posOf(elP('top'), [135, 40]), [hx, hy] = posOf(elP('head'), [135, 56]), [tkx, tky] = posOf(elP('turkey'), [135, 92]);
+      const [l1x, l1y] = posOf(elP('line1'), [135, 214]), [l2x, l2y] = posOf(elP('line2'), [135, 230]), [l3x, l3y] = posOf(elP('line3'), [135, 254]);
+      const [wx, wy] = posOf(elP('was'), [135, 276]), [nx, ny] = posOf(elP('now'), [135, 300]);
+      const [ofx, ofy] = posOf(elP('offer'), [135, 366]), [wnx, wny] = posOf(elP('when'), [135, 388]);
+      const [lgx, lgy] = posOf(elP('logo'), [135, 406]), [cx, cy] = posOf(elP('cta'), [135, 436]);
+      return [
+        { id: 'top', kind: 'pos', label: TOP, x: tpx, y: tpy, t0: 0.2, d: DUR - 0.2, box: [tpx - 60, tpy - 4, 120, 16], dup: false, del: false },
+        { id: 'head', kind: 'pos', label: HEAD, x: hx, y: hy, t0: 0.5, d: DUR - 0.5, box: [hx - 100, hy - 8, 200, 28], dup: false, del: false },
+        { id: 'turkey', kind: 'pos', label: 'Turkey', x: tkx, y: tky, t0: 1.0, d: DUR - 1.0, box: [tkx - 54, tky - 28, 108, 118], dup: false, del: false },
+        { id: 'line1', kind: 'pos', label: L1, x: l1x, y: l1y, t0: 2.6, d: DUR - 2.6, box: [l1x - 110, l1y - 4, 220, 16], dup: false, del: false },
+        { id: 'line2', kind: 'pos', label: L2, x: l2x, y: l2y, t0: 3.2, d: DUR - 3.2, box: [l2x - 110, l2y - 4, 220, 16], dup: false, del: false },
+        { id: 'line3', kind: 'pos', label: L3, x: l3x, y: l3y, t0: 4.0, d: DUR - 4.0, box: [l3x - 110, l3y - 4, 220, 16], dup: false, del: false },
+        { id: 'was', kind: 'pos', label: 'Was ' + S.was, x: wx, y: wy, t0: 4.6, d: DUR - 4.6, box: [wx - 60, wy - 8, 120, 24], dup: false, del: false },
+        { id: 'now', kind: 'pos', label: 'Now ' + S.now, x: nx, y: ny, t0: 5.3, d: DUR - 5.3, box: [nx - 80, ny - 12, 160, 48], dup: false, del: false },
+        { id: 'offer', kind: 'box', label: BAR, x: ofx, y: ofy, w: 240, h: 20, t0: 6.4, d: DUR - 6.4, box: [ofx - 120, ofy - 6, 240, 20], dup: false, del: false },
+        { id: 'when', kind: 'pos', label: S.when, x: wnx, y: wny, t0: 6.8, d: DUR - 6.8, box: [wnx - 110, wny - 4, 220, 16], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 7.6, d: DUR - 7.6, box: [lgx - 30, lgy, 60, 20], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: S.cta, x: cx, y: cy, t0: 7.6, d: DUR - 7.6, box: [cx - 80, cy - 4, 160, 28], dup: false, del: false },
+      ];
     }
     const cues = () => ({ dur: DUR, beds: [bed(DUR)], events: [cue('blip', 0.5), cue('drop', 1.0), cue('select', 1.6), cue('blip', 2.6), cue('tick', 4.6), cue('bonk', 4.95), cue('drop', 5.3), cue('powerup', 5.8, 0.6), cue('coin', 6.4), cue('fanfare', 7.6, 0.6)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ LOOT DROP (9s)
@@ -91,25 +137,43 @@ STUDIO_REG['pixel2'] = (() => {
   const CPAL = { b: DBROWN, B: C(150, 90, 45), G: GOLD, k: '#120C16' };
   function pxloot() {
     const HEAD = W_('head', 'LOOT DROP!', 'Headline', 12), ITEM = W_('item', 'WEBSITE', 'Item name', 16), RAR = W_('rarity', 'RARITY: LEGENDARY', 'Item tag', 24), S = SALE();
+    const PRICEL = W_('pricelabel', 'PRICE', 'Price label', 8);
     const DUR = 9.0;
     function render(t) {
       const P = PX.begin(); stars(g, t, 3, 30); scan(g);
-      txt(g, 135, 26, HEAD, { f: 'ps16', col: blink(t, 4) ? P.WHITE : P.YEL, sh: P.DRED, a: 'm' });
-      const k = 6, cw = CHEST[0].length * k, cx = 135 - cw / 2, base = 262, shake = t > 0.6 && t < 1.6 ? [-2, 0, 2][Math.floor(rng(Math.floor(t * 30))() * 3)] : 0, open = t > 1.6;
-      if (open) for (let i = 0; i < 9; i++) { const a = Math.PI * (0.15 + 0.7 * i / 8) + 0.05 * Math.sin(t * 3); line(g, [135, base - 60, 135 + Math.round(160 * Math.cos(a)), base - 60 - Math.round(160 * Math.sin(a))], i % 2 ? C(90, 70, 20) : C(140, 110, 30), 3); }
+      const [hx, hy] = posOf(elP('head'), [135, 26]); txt(g, hx, hy, HEAD, { f: 'ps16', col: blink(t, 4) ? P.WHITE : P.YEL, sh: P.DRED, a: 'm' });
+      const [chx, chy] = posOf(elP('chest'), [135, 262]); const k = 6, cw = CHEST[0].length * k, cx = chx - cw / 2, base = chy, shake = t > 0.6 && t < 1.6 ? [-2, 0, 2][Math.floor(rng(Math.floor(t * 30))() * 3)] : 0, open = t > 1.6;
+      if (open) for (let i = 0; i < 9; i++) { const a = Math.PI * (0.15 + 0.7 * i / 8) + 0.05 * Math.sin(t * 3); line(g, [chx, base - 60, chx + Math.round(160 * Math.cos(a)), base - 60 - Math.round(160 * Math.sin(a))], i % 2 ? C(90, 70, 20) : C(140, 110, 30), 3); }
       const body = open ? CHEST.slice(4) : CHEST, by = base - body.length * k;
       if (open) grid(CHEST.slice(0, 4), CPAL, cx, by - 4 * k - 22, k);
       grid(body, CPAL, cx + shake, by, k);
-      if (t > 1.6 && t < 3.6) { const r = rng(2), tt = t - 1.6; for (let i = 0; i < 22; i++) { const vx = -90 + r() * 180, vy = -200 + r() * 80; ellipse(g, Math.round(135 + vx * tt), Math.round(base - 60 + vy * tt + 160 * tt * tt), Math.round(140 + vx * tt), Math.round(base - 55 + vy * tt + 160 * tt * tt), GOLD); } }
-      if (t > 2.2) { const cy = Math.round(base - 70 - 132 * ease((t - 2.2) / 0.6)); rect(g, 60, cy, 210, cy + 64, P.PANEL); rectO(g, 60, cy, 210, cy + 64, GOLD, 2);
-        logoAny(LOGO === 'none' ? 'none' : LOGO, g, 135, cy + 8, 1, false); txt(g, 135, cy + 32, ITEM, { col: P.WHITE, a: 'm' }); txt(g, 135, cy + 46, RAR, { f: 'vt', col: GOLD, a: 'm' }); }
-      if (t > 3.4) { rect(g, 20, 276, 250, 352, P.INK); rectO(g, 20, 276, 250, 352, P.WHITE, 2); txt(g, 30, 284, 'PRICE', { col: P.GREY }); }
-      priceDrop(135, 284, 3.5, t, S.was, S.now, 2, P.YEL, P);
-      if (t > 5.0) { txt(g, 135, 364, typed(S.off + ' OFF', t - 5.0, 20), { f: 'ps16', col: P.RED, sh: P.DRED, a: 'm' }); txt(g, 135, 388, typed(S.when, t - 5.4, 30), { col: P.YEL, a: 'm' }); }
-      if (t > 6.6) button(g, 135, 408, S.cta, blink(t));
+      if (t > 1.6 && t < 3.6) { const r = rng(2), tt = t - 1.6; for (let i = 0; i < 22; i++) { const vx = -90 + r() * 180, vy = -200 + r() * 80; ellipse(g, Math.round(chx + vx * tt), Math.round(base - 60 + vy * tt + 160 * tt * tt), Math.round(chx + 5 + vx * tt), Math.round(base - 55 + vy * tt + 160 * tt * tt), GOLD); } }
+      if (t > 2.2) { const [ix, iy] = posOf(elP('item'), [60, 60]); const cy = Math.round(iy + 132 - 132 * ease((t - 2.2) / 0.6)); rect(g, ix, cy, ix + 150, cy + 64, P.PANEL); rectO(g, ix, cy, ix + 150, cy + 64, GOLD, 2);
+        logoAny(LOGO === 'none' ? 'none' : LOGO, g, ix + 75, cy + 8, 1, false); txt(g, ix + 75, cy + 32, ITEM, { col: P.WHITE, a: 'm' }); txt(g, ix + 75, cy + 46, RAR, { f: 'vt', col: GOLD, a: 'm' }); }
+      if (t > 3.4) { const [pbx, pby] = posOf(elP('pricebox'), [20, 276]); rect(g, pbx, pby, pbx + 230, pby + 76, P.INK); rectO(g, pbx, pby, pbx + 230, pby + 76, P.WHITE, 2); txt(g, pbx + 10, pby + 8, PRICEL, { col: P.GREY }); }
+      const [wx, wy] = posOf(elP('was'), [135, 284]), [nx, ny] = posOf(elP('now'), [135, 308]); priceDrop(wx, wy, 3.5, t, S.was, S.now, 2, P.YEL, P, { was: [wx, wy], now: [nx, ny] });
+      if (t > 5.0) { const [ofx, ofy] = posOf(elP('off'), [135, 364]); txt(g, ofx, ofy, typed(S.off + ' OFF', t - 5.0, 20), { f: 'ps16', col: P.RED, sh: P.DRED, a: 'm' }); const [wnx, wny] = posOf(elP('when'), [135, 388]); txt(g, wnx, wny, typed(S.when, t - 5.4, 30), { col: P.YEL, a: 'm' }); }
+      if (t > 6.6) { const [cx, cy] = posOf(elP('cta'), [135, 408]); button(g, cx, cy, S.cta, blink(t)); }
+    }
+    function elements() {
+      const [hx, hy] = posOf(elP('head'), [135, 26]), [chx, chy] = posOf(elP('chest'), [135, 262]);
+      const [ix, iy] = posOf(elP('item'), [60, 60]), [pbx, pby] = posOf(elP('pricebox'), [20, 276]);
+      const [wx, wy] = posOf(elP('was'), [135, 284]), [nx, ny] = posOf(elP('now'), [135, 308]);
+      const [ofx, ofy] = posOf(elP('off'), [135, 364]), [wnx, wny] = posOf(elP('when'), [135, 388]), [cx, cy] = posOf(elP('cta'), [135, 408]);
+      return [
+        { id: 'head', kind: 'pos', label: HEAD, x: hx, y: hy, t0: 0, d: DUR, box: [hx - 80, hy - 8, 160, 28], dup: false, del: false },
+        { id: 'chest', kind: 'pos', label: 'Treasure chest', x: chx, y: chy, t0: 0, d: DUR, box: [chx - 66, chy - 72, 132, 72], dup: false, del: false },
+        { id: 'item', kind: 'card', label: ITEM + ' · ' + RAR, x: ix, y: iy, w: 150, h: 64, t0: 2.2, d: DUR - 2.2, box: [ix, iy, 150, 64], dup: false, del: false },
+        { id: 'pricebox', kind: 'box', label: PRICEL, x: pbx, y: pby, w: 230, h: 76, t0: 3.4, d: DUR - 3.4, box: [pbx, pby, 230, 76], dup: false, del: false },
+        { id: 'was', kind: 'pos', label: 'Was ' + S.was, x: wx, y: wy, t0: 3.5, d: DUR - 3.5, box: [wx - 60, wy - 8, 120, 24], dup: false, del: false },
+        { id: 'now', kind: 'pos', label: 'Now ' + S.now, x: nx, y: ny, t0: 4.2, d: DUR - 4.2, box: [nx - 80, ny - 12, 160, 48], dup: false, del: false },
+        { id: 'off', kind: 'pos', label: S.off + ' OFF', x: ofx, y: ofy, t0: 5.0, d: DUR - 5.0, box: [ofx - 70, ofy - 8, 140, 28], dup: false, del: false },
+        { id: 'when', kind: 'pos', label: S.when, x: wnx, y: wny, t0: 5.4, d: DUR - 5.4, box: [wnx - 110, wny - 4, 220, 16], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: S.cta, x: cx, y: cy, t0: 6.6, d: DUR - 6.6, box: [cx - 80, cy - 4, 160, 28], dup: false, del: false },
+      ];
     }
     const cues = () => ({ dur: DUR, beds: [['chip', 1.6, DUR, 0.5, { style: 'chip' }]], events: [cue('tick', 0.6), cue('tick', 0.9), cue('tick', 1.2), cue('powerup', 1.6, 0.6), cue('coin', 2.2), cue('tick', 3.5), cue('bonk', 3.85), cue('drop', 4.2), cue('coin', 4.7), cue('fanfare', 5.0, 0.6), cue('select', 6.6)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ BEFORE & AFTER: scenes (each draws a 270x120 strip at oy)
@@ -332,43 +396,76 @@ STUDIO_REG['pixel2'] = (() => {
     const Q1 = W_('q1', 'WHICH ONE', 'Question line 1', 12, 'Ending'), Q2 = W_('q2', 'IS YOURS?', 'Question line 2', 12, 'Ending');
     const E1 = W_('end1', 'LEVEL UP', 'Ending line 1', 15, 'Ending'), E2 = W_('end2', 'YOUR BUSINESS', 'Ending line 2', 15, 'Ending'), EL = W_('end_line', 'WEBSITES  ·  LEADS  ·  CONTENT', 'Ending sub-line', 36, 'Ending'), CTA = W_('cta', 'DM "START"', 'Button', 18, 'Call to action');
     const N = Math.max(B.length, A.length), TT = 3.4, SPLIT = 0.6 + N * 1.2 + 4.2, ENDT = 4.6, DUR = TT + SPLIT + ENDT;
-    function title(t, P) { stars(g, t, 1, 26); txt(g, 135, 170, typed(T[0], t, 22), { col: P.GREY, a: 'm' }); txt(g, 135, 190, typed(T[1], t - 0.9, 22), { col: P.GREY, a: 'm' }); txt(g, 135, 222, typed(T[2], t - 1.8, 14), { f: 'ps16', col: P.RED, sh: P.DRED, a: 'm' }); if (t > 2.6 && blink(t, 2)) txt(g, 135, 300, 'PRESS START', { col: P.WHITE, a: 'm' }); }
+    const PRESS = W_('press', 'PRESS START', 'Press Start line', 12, 'Intro'), VS = W_('vs', 'VS', 'Versus badge', 4, 'Labels');
+    function title(t, P) { stars(g, t, 1, 26); const [t1x, t1y] = posOf(elP('title1'), [135, 170]); txt(g, t1x, t1y, typed(T[0], t, 22), { col: P.GREY, a: 'm' }); const [t2x, t2y] = posOf(elP('title2'), [135, 190]); txt(g, t2x, t2y, typed(T[1], t - 0.9, 22), { col: P.GREY, a: 'm' }); const [t3x, t3y] = posOf(elP('title3'), [135, 222]); txt(g, t3x, t3y, typed(T[2], t - 1.8, 14), { f: 'ps16', col: P.RED, sh: P.DRED, a: 'm' }); if (t > 2.6 && blink(t, 2)) { const [psx, psy] = posOf(elP('press'), [135, 300]); txt(g, psx, psy, PRESS, { col: P.WHITE, a: 'm' }); } }
     function panel(after, prog, P) {
-      const y0 = after ? 380 : 136, L = after ? A : B; rect(g, 4, y0, 265, y0 + 96, P.PANEL); rectO(g, 4, y0, 265, y0 + 96, P.EDGE, 1); let shown = 0;
+      const [px, py] = posOf(elP(after ? 'after' : 'before'), [4, after ? 380 : 136]), y0 = py, L = after ? A : B; rect(g, px, y0, px + 261, y0 + 96, P.PANEL); rectO(g, px, y0, px + 261, y0 + 96, P.EDGE, 1); let shown = 0;
       L.forEach((ln, i) => { const st = prog - (i * 1.2 + (after ? 0.6 : 0)); if (st <= 0) return; shown++; const yy = y0 + 4 + i * 15;
-        if (st > 0.05) { if (after) [[10, 7], [11, 8], [12, 9], [13, 8], [14, 7], [15, 6], [16, 5]].forEach(([x, y]) => rect(g, x, yy + y, x, yy + y + 1, P.GREEN));
-          else for (let k = 0; k < 6; k++) { pt(g, 10 + k, yy + 4 + k, P.RED); pt(g, 15 - k, yy + 4 + k, P.RED); pt(g, 11 + k, yy + 4 + k, P.RED); pt(g, 16 - k, yy + 4 + k, P.RED); } }
-        txt(g, 22, yy, typed(ln, st, 34), { f: 'vt', col: after ? P.WHITE : P.GREY }); });
+        if (st > 0.05) { if (after) [[6, 7], [7, 8], [8, 9], [9, 8], [10, 7], [11, 6], [12, 5]].forEach(([x, y]) => rect(g, px + x, yy + y, px + x, yy + y + 1, P.GREEN));
+          else for (let k = 0; k < 6; k++) { pt(g, px + 6 + k, yy + 4 + k, P.RED); pt(g, px + 11 - k, yy + 4 + k, P.RED); pt(g, px + 7 + k, yy + 4 + k, P.RED); pt(g, px + 12 - k, yy + 4 + k, P.RED); } }
+        txt(g, px + 18, yy, typed(ln, st, 34), { f: 'vt', col: after ? P.WHITE : P.GREY }); });
       return shown;
     }
     function split(t, P) {
-      scene(14, t, false, SIGN, VAN); scene(258, t, true, SIGN, VAN);
+      const [, sby] = posOf(elP('scenebefore'), [0, 14]); scene(sby, t, false, SIGN, VAN); const [, say] = posOf(elP('sceneafter'), [0, 258]); scene(say, t, true, SIGN, VAN);
       const prog = t - 0.6; panel(false, prog, P); const n = panel(true, prog, P), lv = 1 + Math.round(98 * clamp(n / Math.max(1, A.length)));
-      rect(g, 0, 0, 269, 12, P.BAR); txt(g, 5, 3, TAGB, { col: P.GREY }); txt(g, 264, 3, 'LV  1', { col: P.RED, a: 'r' });
-      rect(g, 0, 244, 269, 256, P.RED); txt(g, 5, 247, TAGA, { col: P.INK }); txt(g, 264, 247, 'LV ' + String(lv).padStart(2, ' '), { col: P.INK, a: 'r' });
+      rect(g, 0, 0, 269, 12, P.BAR); const [tbx, tby] = posOf(elP('tagbefore'), [5, 3]); txt(g, tbx, tby, TAGB, { col: P.GREY }); const [lbx, lby] = posOf(elP('lvbefore'), [264, 3]); txt(g, lbx, lby, 'LV  1', { col: P.RED, a: 'r' });
+      rect(g, 0, 244, 269, 256, P.RED); const [tax, tay] = posOf(elP('tagafter'), [5, 247]); txt(g, tax, tay, TAGA, { col: P.INK }); const [lax, lay] = posOf(elP('lvafter'), [264, 247]); txt(g, lax, lay, 'LV ' + String(lv).padStart(2, ' '), { col: P.INK, a: 'r' });
       rect(g, 0, 234, 269, 243, P.INK); const off = Math.floor(t * 20) % 8; for (let x = -8; x < 278; x += 8) rect(g, x + off, 236, x + off + 3, 241, P.RED);
-      rect(g, 118, 233, 152, 244, P.INK); rectO(g, 118, 233, 152, 244, P.WHITE, 1); txt(g, 136, 235, 'VS', { col: P.WHITE, a: 'm' });
-      const q0 = SPLIT - 3.0; if (t > q0) { const u = clamp((t - q0) / 0.4), bw = Math.round(230 * u); if (bw > 4) { rect(g, 135 - bw / 2, 210, 135 + bw / 2, 268, P.INK); rectO(g, 135 - bw / 2, 210, 135 + bw / 2, 268, P.RED, 2); }
-        if (u >= 1) { txt(g, 135, 222, Q1, { f: 'ps16', col: P.WHITE, a: 'm' }); txt(g, 135, 244, Q2, { f: 'ps16', col: P.RED, a: 'm' }); } }
+      const [vx, vy] = posOf(elP('vs'), [136, 235]); rect(g, vx - 18, vy - 2, vx + 16, vy + 9, P.INK); rectO(g, vx - 18, vy - 2, vx + 16, vy + 9, P.WHITE, 1); txt(g, vx, vy, VS, { col: P.WHITE, a: 'm' });
+      const q0 = SPLIT - 3.0; if (t > q0) { const [qx, qy] = posOf(elP('q1'), [135, 222]); const u = clamp((t - q0) / 0.4), bw = Math.round(230 * u); if (bw > 4) { rect(g, qx - bw / 2, qy - 12, qx + bw / 2, qy + 46, P.INK); rectO(g, qx - bw / 2, qy - 12, qx + bw / 2, qy + 46, P.RED, 2); }
+        if (u >= 1) { txt(g, qx, qy, Q1, { f: 'ps16', col: P.WHITE, a: 'm' }); const [q2x, q2y] = posOf(elP('q2'), [135, 244]); txt(g, q2x, q2y, Q2, { f: 'ps16', col: P.RED, a: 'm' }); } }
       if (t < 0.35) wipe(g, t / 0.35);
     }
     function ending(t, P) {
-      stars(g, t, 5, 26); const ly = Math.round(-80 + 190 * (1 - Math.pow(1 - clamp(t / 0.6), 3))); const yb = logoAny(LOGO, g, 135, ly, 3, false);
-      if (LOGO === 'pixel' && t > 0.6) PX.wordmark(g, 135, yb + 8, 2);
-      txt(g, 135, 230, typed(E1, t - 0.7, 16), { f: 'ps16', col: P.WHITE, a: 'm' }); txt(g, 135, 252, typed(E2, t - 1.2, 16), { f: 'ps16', col: P.WHITE, a: 'm' });
-      txt(g, 135, 286, typed(EL, t - 2.0, 40), { f: 'vt', col: P.GREY, a: 'm' });
-      if (t > 2.6) { const on = blink(t); rect(g, 60, 330, 210, 352, on ? P.RED : P.INK); rectO(g, 60, 330, 210, 352, P.RED, 2); txt(g, 135, 338, CTA, { col: on ? P.INK : P.RED, a: 'm' }); }
+      stars(g, t, 5, 26); const [lgx, lgy] = posOf(elP('logo'), [135, 110]); const ly = Math.round(-80 + (lgy + 80) * (1 - Math.pow(1 - clamp(t / 0.6), 3))); const yb = logoAny(LOGO, g, lgx, ly, 3, false);
+      if (LOGO === 'pixel' && t > 0.6) PX.wordmark(g, lgx, yb + 8, 2);
+      const [e1x, e1y] = posOf(elP('end1'), [135, 230]); txt(g, e1x, e1y, typed(E1, t - 0.7, 16), { f: 'ps16', col: P.WHITE, a: 'm' }); const [e2x, e2y] = posOf(elP('end2'), [135, 252]); txt(g, e2x, e2y, typed(E2, t - 1.2, 16), { f: 'ps16', col: P.WHITE, a: 'm' });
+      const [elx, ely] = posOf(elP('endline'), [135, 286]); txt(g, elx, ely, typed(EL, t - 2.0, 40), { f: 'vt', col: P.GREY, a: 'm' });
+      if (t > 2.6) { const [ex, ey] = posOf(elP('endcta'), [135, 338]); const on = blink(t); rect(g, ex - 75, ey - 8, ex + 75, ey + 14, on ? P.RED : P.INK); rectO(g, ex - 75, ey - 8, ex + 75, ey + 14, P.RED, 2); txt(g, ex, ey, CTA, { col: on ? P.INK : P.RED, a: 'm' }); }
+    }
+    function elements() {
+      const [t1x, t1y] = posOf(elP('title1'), [135, 170]), [t2x, t2y] = posOf(elP('title2'), [135, 190]), [t3x, t3y] = posOf(elP('title3'), [135, 222]), [psx, psy] = posOf(elP('press'), [135, 300]);
+      const [sbx, sby] = posOf(elP('scenebefore'), [0, 14]), [sax, say] = posOf(elP('sceneafter'), [0, 258]);
+      const [tbx, tby] = posOf(elP('tagbefore'), [5, 3]), [lbx, lby] = posOf(elP('lvbefore'), [264, 3]);
+      const [tax, tay] = posOf(elP('tagafter'), [5, 247]), [lax, lay] = posOf(elP('lvafter'), [264, 247]);
+      const [bx, by] = posOf(elP('before'), [4, 136]), [ax, ay] = posOf(elP('after'), [4, 380]);
+      const [vx, vy] = posOf(elP('vs'), [136, 235]), [qx, qy] = posOf(elP('q1'), [135, 222]), [q2x, q2y] = posOf(elP('q2'), [135, 244]);
+      const [lgx, lgy] = posOf(elP('logo'), [135, 110]), [e1x, e1y] = posOf(elP('end1'), [135, 230]), [e2x, e2y] = posOf(elP('end2'), [135, 252]);
+      const [elx, ely] = posOf(elP('endline'), [135, 286]), [ex, ey] = posOf(elP('endcta'), [135, 338]);
+      return [
+        { id: 'title1', kind: 'pos', label: T[0], x: t1x, y: t1y, t0: 0, d: TT, box: [t1x - 110, t1y - 4, 220, 16], dup: false, del: false },
+        { id: 'title2', kind: 'pos', label: T[1], x: t2x, y: t2y, t0: 0.9, d: TT - 0.9, box: [t2x - 110, t2y - 4, 220, 16], dup: false, del: false },
+        { id: 'title3', kind: 'pos', label: T[2], x: t3x, y: t3y, t0: 1.8, d: TT - 1.8, box: [t3x - 110, t3y - 8, 220, 28], dup: false, del: false },
+        { id: 'press', kind: 'pos', label: PRESS, x: psx, y: psy, t0: 2.6, d: 0.8, box: [psx - 60, psy - 4, 120, 16], dup: false, del: false },
+        { id: 'scenebefore', kind: 'box', label: 'Before scene', x: sbx, y: sby, w: 270, h: 120, t0: TT, d: SPLIT, box: [sbx, sby, 270, 120], dup: false, del: false },
+        { id: 'sceneafter', kind: 'box', label: 'After scene', x: sax, y: say, w: 270, h: 120, t0: TT, d: SPLIT, box: [sax, say, 270, 120], dup: false, del: false },
+        { id: 'tagbefore', kind: 'pos', label: TAGB, x: tbx, y: tby, t0: TT, d: SPLIT, box: [tbx, tby - 4, 100, 16], dup: false, del: false },
+        { id: 'lvbefore', kind: 'pos', label: 'LV 1', x: lbx, y: lby, t0: TT, d: SPLIT, box: [lbx - 50, lby - 4, 50, 16], dup: false, del: false },
+        { id: 'tagafter', kind: 'pos', label: TAGA, x: tax, y: tay, t0: TT, d: SPLIT, box: [tax, tay - 4, 140, 16], dup: false, del: false },
+        { id: 'lvafter', kind: 'pos', label: 'LV counter', x: lax, y: lay, t0: TT, d: SPLIT, box: [lax - 50, lay - 4, 50, 16], dup: false, del: false },
+        { id: 'before', kind: 'box', label: 'Before list', x: bx, y: by, w: 261, h: 96, t0: TT + 0.6, d: SPLIT - 0.6, box: [bx, by, 261, 96], dup: false, del: false },
+        { id: 'after', kind: 'box', label: 'After list', x: ax, y: ay, w: 261, h: 96, t0: TT + 1.2, d: SPLIT - 1.2, box: [ax, ay, 261, 96], dup: false, del: false },
+        { id: 'vs', kind: 'pos', label: VS, x: vx, y: vy, t0: TT, d: SPLIT, box: [vx - 18, vy - 2, 34, 11], dup: false, del: false },
+        { id: 'q1', kind: 'pos', label: Q1, x: qx, y: qy, t0: TT + SPLIT - 3.0, d: 3.0, box: [qx - 115, qy - 12, 230, 58], dup: false, del: false },
+        { id: 'q2', kind: 'pos', label: Q2, x: q2x, y: q2y, t0: TT + SPLIT - 3.0, d: 3.0, box: [q2x - 115, q2y - 12, 230, 58], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: TT + SPLIT, d: ENDT, box: [lgx - 90, lgy, 180, 60], dup: false, del: false },
+        { id: 'end1', kind: 'pos', label: E1, x: e1x, y: e1y, t0: TT + SPLIT + 0.7, d: ENDT - 0.7, box: [e1x - 90, e1y - 8, 180, 28], dup: false, del: false },
+        { id: 'end2', kind: 'pos', label: E2, x: e2x, y: e2y, t0: TT + SPLIT + 1.2, d: ENDT - 1.2, box: [e2x - 110, e2y - 8, 220, 28], dup: false, del: false },
+        { id: 'endline', kind: 'pos', label: EL, x: elx, y: ely, t0: TT + SPLIT + 2.0, d: ENDT - 2.0, box: [elx - 120, ely - 4, 240, 16], dup: false, del: false },
+        { id: 'endcta', kind: 'pos', label: CTA, x: ex, y: ey, t0: TT + SPLIT + 2.6, d: ENDT - 2.6, box: [ex - 75, ey - 8, 150, 22], dup: false, del: false },
+      ];
     }
     function render(t) { const P = PX.begin(); if (t < TT) title(t, P); else if (t < TT + SPLIT) split(t - TT, P); else ending(t - TT - SPLIT, P); }
     const cues = () => { const ev = [cue('blip', 0.0, 0.35), cue('blip', 0.9, 0.35), cue('drop', 1.8), cue('select', TT)];
       for (let i = 0; i < N; i++) { const tb = TT + 0.6 + i * 1.2; if (i < B.length) ev.push(cue('bonk', tb, 0.5)); if (i < A.length) ev.push(cue('coin', tb + 0.6, 0.5)); }
       ev.push(cue('select', TT + SPLIT - 3.0), cue('powerup', TT + SPLIT, 0.6), cue('fanfare', TT + SPLIT + 0.7, 0.6), cue('coin', TT + SPLIT + 2.6));
       return { dur: DUR, beds: [bed(DUR)], events: ev }; };
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   const MAKE = { pxbf, pxthanks, pxloot, pxba };
   const Pm = (MAKE[V] || pxbf)();
   DIR = { dur: Pm.dur, bg: BLK, finish: { vig: 0, grain: 0 }, edl: [], shakes: [], preload: () => PX.fontsP,
-    render(t) { if (VID.collecting) return; Pm.render(t); PX.blit(); }, cues: Pm.cues };
+    render(t) { if (VID.collecting) return; Pm.render(t); PX.blit(); }, cues: Pm.cues, ...(Pm.elements ? { elements: Pm.elements } : {}) };
 });

@@ -8,6 +8,13 @@
    Facts only from dpgoutdoorliving.com; captions name projects, never a service DPG doesn't list. */
 STUDIO_REG['n2'] = (() => {
   const V = QS.get('v') || 'chat';
+  // Per-element model: tpl_free sets window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // factory; positions below fall back to the original hardcoded values when EL is null, so rendering
+  // is byte-for-byte the old path. (Same pattern as tpl_trade.js.)
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const lmod = K3.lmod, G = K3.G, D = K3.D;
   const whole = (c, r) => K3.wholeIn(c, r);
   const play = (c, inn, lt, r, o) => K3.clip(c, inn, lt, whole(c, r), o);
@@ -26,6 +33,7 @@ STUDIO_REG['n2'] = (() => {
     const TOP = 404, BOT = 1226, BX0 = 140, BX1 = 1012, MAXT = 650, PADX = 30, PADY = 20;
     const AV = { S: '#3B3B3B', J: '#5A5A5A' };
     const TITLE = TX('chatTitle', 'saturday plans', { label: 'Chat name', group: 'The chat', max: 24 });
+    const HINT = TX('inputHint', 'Message', { label: 'Input placeholder', group: 'The chat', max: 20 });
     const NAMES = { S: TX('name1', 'Sam', { label: 'Friend 1', group: 'The chat', max: 12 }), J: TX('name2', 'Jess', { label: 'Friend 2', group: 'The chat', max: 12 }) };
     const INI = { S: (NAMES.S[0] || 'S').toUpperCase(), J: (NAMES.J[0] || 'J').toUpperCase() };
     const MSG0 = [
@@ -43,9 +51,9 @@ STUDIO_REG['n2'] = (() => {
       { t: 14.2, who: 'J', txt: 'booking a consultation. bye', typing: 0.6 },
     ];
     let nm = 0, nv = 0; const WHO = { S: 'Friend 1', J: 'Friend 2', me: 'You' };
-    const MSG = MSG0.map(m => { if (m.link) return m;
-      if (m.vid) { nv++; const v = SHOT('vid' + nv, [m.vid[0], m.vid[1]], { label: 'Video you send (' + nv + ')', group: 'Messages', kind: 'land', d: m.vid[2] }); return Object.assign({}, m, { vid: [v[0], v[1], m.vid[2]] }); }
-      nm++; return Object.assign({}, m, { txt: TX('m' + nm, m.txt, { label: WHO[m.who] + (m.big ? ' (big)' : ''), group: 'Messages', max: m.big ? 10 : 40 }) }); });
+    const MSG = MSG0.map(m => { if (m.link) return Object.assign({}, m, { id: 'link' });
+      if (m.vid) { nv++; const v = SHOT('vid' + nv, [m.vid[0], m.vid[1]], { label: 'Video you send (' + nv + ')', group: 'Messages', kind: 'land', d: m.vid[2] }); return Object.assign({}, m, { id: 'vid' + nv, vid: [v[0], v[1], m.vid[2]] }); }
+      nm++; return Object.assign({}, m, { id: 'm' + nm, txt: TX('m' + nm, m.txt, { label: WHO[m.who] + (m.big ? ' (big)' : ''), group: 'Messages', max: m.big ? 10 : 40 }) }); });
     const O1 = TX('outro1', 'BE THE BACKYARD', { label: 'Ending, line 1', group: 'Ending', upper: true, max: 18 });
     const O2 = TX('outro2', 'EVERYONE TEXTS ABOUT.', { label: 'Ending, line 2 (2nd word highlighted)', group: 'Ending', upper: true, max: 22 });
     const HEART = 13.35, OUT = 15.4, DUR = 20;
@@ -59,7 +67,7 @@ STUDIO_REG['n2'] = (() => {
     function layout(t) {
       const items = []; let y = 0, prev = null;
       for (const m of MSG) { const t0 = m.t - (m.typing || 0); if (t < t0) break;
-        const typing = !!m.typing && t < m.t, e = typing ? E.outC(clamp((t - t0) / 0.2)) : E.outC(clamp((t - m.t) / 0.28));
+        const typing = !!m.typing && t < m.t, e = typing ? E.outC(clamp((t - t0) / 0.2, 0, 1)) : E.outC(clamp((t - m.t) / 0.28, 0, 1));
         const newRun = !prev || prev.who !== m.who, gap = prev ? (newRun ? 30 : 10) : 0, lab = newRun && m.who !== 'me' ? 36 : 0;
         const full = typing ? 84 : m.h, hh = typing ? full * e : (m.typing ? lerp(84, full, e) : full * e);
         y += gap + lab; items.push({ m, y, full, hh, typing, lab }); y += hh; prev = m; }
@@ -101,17 +109,18 @@ STUDIO_REG['n2'] = (() => {
       c.strokeStyle = OR; c.lineWidth = 5; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(94, 296); c.lineTo(72, 320); c.lineTo(94, 344); c.stroke();
       [['S', 152], ['J', 196]].forEach(([l, x]) => { c.fillStyle = AV[l]; c.beginPath(); c.arc(x, 320, 32, 0, 7); c.fill(); c.strokeStyle = '#121212'; c.lineWidth = 5; c.stroke();
         setF(F(700, 26, 'Mont'), 0); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(INI[l], x, 322); });
-      setF(F(700, Math.min(36, fitSize(TITLE, 700, 520, 36, 'Mont')), 'Mont'), 0); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillStyle = WHT; c.fillText(TITLE, 256, 314);
-      setF(F(500, Math.min(21, fitSize(NAMES.S + ', ' + NAMES.J + ', you', 500, 470, 21, 'Mono', 1)), 'Mono'), 1); c.fillStyle = 'rgba(255,255,255,0.5)'; c.fillText(NAMES.S + ', ' + NAMES.J + ', you', 256, 350);
-      setF(F(700, 18, 'Mono'), 3); c.textAlign = 'right'; c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillText('DRAMATIZATION', 1012, 350); D();
+      setF(F(700, Math.min(36, fitSize(TITLE, 700, 520, 36, 'Mont')), 'Mont'), 0); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillStyle = WHT; const [tix, tiy] = posOf(elP('title'), [256, 314]); c.fillText(TITLE, tix, tiy);
+      setF(F(500, Math.min(21, fitSize(NAMES.S + ', ' + NAMES.J + ', you', 500, 470, 21, 'Mono', 1)), 'Mono'), 1); c.fillStyle = 'rgba(255,255,255,0.5)'; const [mbx, mby] = posOf(elP('members'), [256, 350]); c.fillText(NAMES.S + ', ' + NAMES.J + ', you', mbx, mby);
+      setF(F(700, 18, 'Mono'), 3); c.textAlign = 'right'; c.fillStyle = 'rgba(255,255,255,0.6)'; const [drx, dry] = posOf(elP('dram'), [1012, 350]); c.fillText('DRAMATIZATION', drx, dry); D();
     }
     function inputBar(t) {
       if (VID.collecting) return; let txt = '', pulse = 0;
       for (const m of MSG) { if (!m.compose) continue; const t0 = m.t - m.compose; if (t >= t0 && t < m.t) txt = m.txt.slice(0, Math.ceil(m.txt.length * clamp((t - t0) / (m.compose - 0.1)))); if (t >= m.t && t < m.t + 0.25) pulse = Math.sin(Math.PI * (t - m.t) / 0.25); }
       for (const m of MSG) if (m.vid && t >= m.t - 0.1 && t < m.t + 0.15) pulse = Math.sin(Math.PI * (t - m.t + 0.1) / 0.25);
       const c = G(); c.strokeStyle = 'rgba(255,255,255,0.2)'; c.lineWidth = 2; rrect(72, 1262, 840, 76, 38); c.stroke();
-      setF(F(500, 30, 'Mont'), 0); c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = txt ? WHT : 'rgba(255,255,255,0.35)'; c.fillText(txt || 'Message', 104, 1301);
-      if (txt && Math.floor(t * 4) % 2 === 0) { c.fillStyle = OR; c.fillRect(106 + textW(txt, F(500, 30, 'Mont'), 0), 1282, 3, 38); }
+      const [ipx, ipy] = posOf(elP('input'), [104, 1301]);
+      setF(F(500, 30, 'Mont'), 0); c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = txt ? WHT : 'rgba(255,255,255,0.35)'; c.fillText(txt || HINT, ipx, ipy);
+      if (txt && Math.floor(t * 4) % 2 === 0) { c.fillStyle = OR; c.fillRect(ipx + 2 + textW(txt, F(500, 30, 'Mont'), 0), ipy - 19, 3, 38); }
       c.translate(968, 1300); c.scale(1 + 0.18 * pulse, 1 + 0.18 * pulse); c.fillStyle = txt || pulse > 0 ? OR : '#333'; c.beginPath(); c.arc(0, 0, 36, 0, 7); c.fill();
       c.strokeStyle = BLK; c.lineWidth = 5; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(0, 14); c.lineTo(0, -14); c.moveTo(-11, -3); c.lineTo(0, -14); c.lineTo(11, -3); c.stroke(); D();
     }
@@ -120,11 +129,13 @@ STUDIO_REG['n2'] = (() => {
       const L = layout(t), off = Math.min(0, BOT - (TOP + L.total));
       ctx.save(); ctx.setTransform(1, 0, 0, 1, SH.x, SH.y); ctx.beginPath(); ctx.rect(0, 392, W, BOT + 26 - 392); ctx.clip();
       for (const it of L.items) {
-        const m = it.m, y = TOP + off + it.y, me = m.who === 'me';
+        const m = it.m, me = m.who === 'me';
+        let y = TOP + off + it.y;
+        const [bx, by] = posOf(elP(m.id), [me ? BX1 - m.w : BX0, y]); y = by;
         if (y > BOT + 40 || y + it.full < 380) continue;
         if (it.lab && !VID.collecting) { const c = G(); setF(F(500, 21, 'Mono'), 1); c.fillStyle = 'rgba(255,255,255,0.5)'; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(NAMES[m.who], BX0 + 6, y - 12); D(); }
         if (it.typing) typingBubble(BX0, y, t, E.outC(clamp((t - (m.t - m.typing)) / 0.2)));
-        else { const p = clamp((t - m.t) / 0.3); bubbleAt(m, me ? BX1 - m.w : BX0, y, t, lerp(0.62, 1, E.outBack(p)), clamp(p * 3)); }
+        else { const p = clamp((t - m.t) / 0.3); bubbleAt(m, bx, y, t, lerp(0.62, 1, E.outBack(p)), clamp(p * 3)); }
         if (!me && it.lastRun && !VID.collecting) { const c = G(), ay = y + (it.typing ? 84 : m.h) - 26; c.fillStyle = AV[m.who]; c.beginPath(); c.arc(100, ay, 26, 0, 7); c.fill();
           setF(F(700, 21, 'Mont'), 0); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(INI[m.who], 100, ay + 1); D(); }
         if (m.link && t >= HEART && !VID.collecting) {   // Jess hearts the link card
@@ -135,18 +146,48 @@ STUDIO_REG['n2'] = (() => {
       ctx.restore();
       header(); inputBar(t);
     }
+    function elements() {
+      prep();
+      const tiP = posOf(elP('title'), [256, 314]), mbP = posOf(elP('members'), [256, 350]), drP = posOf(elP('dram'), [1012, 350]);
+      const inP = posOf(elP('input'), [104, 1301]);
+      const z = Math.min(fit(O2, 900, 950, 96, 'Mont', -3), fit(O1, 900, 950, 96, 'Mont', -3));
+      const o1P = posOf(elP('outro1'), [W / 2, 560]), o2P = posOf(elP('outro2'), [W / 2, 560 + z * 1.12]);
+      const lgP = posOf(elP('outroLogo'), [W / 2, 830]), ctP = posOf(elP('cta'), [W / 2, 1000]);
+      const msgs = MSG.map(m => { const L2 = layout(m.t), it = L2.items.find(x => x.m === m);
+        const off = Math.min(0, BOT - (TOP + L2.total)), y = TOP + off + (it ? it.y : 0);
+        const [mx, my] = posOf(elP(m.id), [m.who === 'me' ? BX1 - m.w : BX0, y]);
+        const kind = m.link ? 'card' : m.vid ? 'box' : 'pos';
+        const label = m.link ? 'Link card' : m.vid ? 'Video you send' : m.txt;
+        const e = { id: m.id, kind, label, x: mx, y: my, t0: m.t, d: OUT - m.t, box: [mx - 10, my - 10, m.w + 20, m.h + 20], dup: false, del: false };
+        if (kind !== 'pos') { e.w = m.w; e.h = m.h; }
+        return e; });
+      return [
+        { id: 'title', kind: 'pos', label: TITLE, x: tiP[0], y: tiP[1], t0: 0, d: OUT, box: [tiP[0], tiP[1] - 40, 520, 60], dup: false, del: false },
+        { id: 'members', kind: 'pos', label: NAMES.S + ', ' + NAMES.J + ', you', x: mbP[0], y: mbP[1], t0: 0, d: OUT, box: [mbP[0], mbP[1] - 30, 470, 50], dup: false, del: false },
+        { id: 'dram', kind: 'pos', label: 'DRAMATIZATION', x: drP[0], y: drP[1], t0: 0, d: OUT, box: [drP[0] - 200, drP[1] - 30, 200, 50], dup: false, del: false },
+        { id: 'input', kind: 'pos', label: HINT, x: inP[0], y: inP[1], t0: 0, d: DUR, box: [inP[0] - 32, inP[1] - 39, 840, 76], dup: false, del: false },
+        ...msgs,
+        { id: 'outro1', kind: 'pos', label: O1, x: o1P[0], y: o1P[1], t0: OUT + 0.25, d: DUR - (OUT + 0.25), box: [o1P[0] - 470, o1P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'outro2', kind: 'pos', label: O2, x: o2P[0], y: o2P[1], t0: OUT + 0.65, d: DUR - (OUT + 0.65), box: [o2P[0] - 470, o2P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'outroLogo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: OUT + 0.2, d: DUR - (OUT + 0.2), box: [lgP[0] - 300, lgP[1] - 60, 600, 120], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: OUT + 1.65, d: DUR - (OUT + 1.65), box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+      ];
+    }
     let SZ = null;
     return {
-      dur: DUR, shakes: [[7.0, 12]],
+      dur: DUR, shakes: [[7.0, 12]], elements,
       render(t) {
         fillScreen(BLK);
         if (t < OUT) chatUI(t);
         else if (t < OUT + 0.5) { const u = (t - OUT) / 0.5; if (VID.collecting) chatUI(t); else { const cv = K4.into('n2chat', () => chatUI(t)); const c = K4.GI(); c.globalAlpha = 1 - E.inC(u); c.drawImage(cv, 0, -E.inC(u) * 420); D(); } }
         if (t >= OUT + 0.2) { const o = t - OUT - 0.2, z = SZ || (SZ = Math.min(fit(O2, 900, 950, 96, 'Mont', -3), fit(O1, 900, 950, 96, 'Mont', -3))), w2 = O2.split(' ');
-          K3.words(O1.split(' '), W / 2, 560, z, o, 0.05, { step: 0.12 });
-          K3.words(w2, W / 2, 560 + z * 1.12, z, o, 0.45, { step: 0.12, hl: Math.min(1, w2.length - 1) });
-          K3.logoBuild(W / 2, 830, 600, 1.0, o, { speed: 1.4 });
-          outroCTA(o, 1000, 1.45); }
+          const [o1x, o1y] = posOf(elP('outro1'), [W / 2, 560]);
+          K3.words(O1.split(' '), o1x, o1y, z, o, 0.05, { step: 0.12 });
+          const [o2x, o2y] = posOf(elP('outro2'), [W / 2, 560 + z * 1.12]);
+          K3.words(w2, o2x, o2y, z, o, 0.45, { step: 0.12, hl: Math.min(1, w2.length - 1) });
+          const [lgx, lgy] = posOf(elP('outroLogo'), [W / 2, 830]);
+          K3.logoBuild(lgx, lgy, 600, 1.0, o, { speed: 1.4 });
+          outroCTA(o, posOf(elP('cta'), [W / 2, 1000])[1], 1.45); }
       },
       cues() {
         const ev = [];
@@ -180,36 +221,45 @@ STUDIO_REG['n2'] = (() => {
       out: Math.min(fit(OL1.split(' ').slice(-1)[0] + ' ' + OL2, 900, 950, 110, 'Mont', -3), fit(OL1, 900, 950, 110, 'Mont', -3)) });
     function card(k, t, dy) {
       const l = L[k], lt = t - ST[k], y = v => v + dy, z = sizes();
-      if (!VID.collecting) { const c = G(); c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 50; c.shadowOffsetY = 18; c.fillStyle = WHT; rrect(CX0, y(CY0), CW, CH, 30); c.fill(); D(); }
+      const [ccx, ccy] = posOf(elP('card' + (k + 1)), [CX0, y(CY0)]), ox = ccx - CX0, oy = ccy - y(CY0);
+      if (!VID.collecting) { const c = G(); c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 50; c.shadowOffsetY = 18; c.fillStyle = WHT; rrect(CX0 + ox, y(CY0) + oy, CW, CH, 30); c.fill(); D(); }
       // listing photo carousel: auto-advances with a slide, dots under the photo
-      const vis = Math.max(0, t - (k ? ST[k] - SW : ST[0])), pr = [PH[0], y(PH[1]), PH[2], PH[3]]; let acc = 0, pi = 0;
+      const vis = Math.max(0, t - (k ? ST[k] - SW : ST[0])), pr0 = [PH[0] + ox, y(PH[1]) + oy, PH[2], PH[3]];
+      const [prx, pry] = posOf(elP('photo' + (k + 1)), [pr0[0], pr0[1]]), pr = [prx, pry, pr0[2], pr0[3]];
+      let acc = 0, pi = 0;
       for (let i = 0; i < l.ph.length; i++) { pi = i; if (vis < acc + l.ph[i][2] || i === l.ph.length - 1) break; acc += l.ph[i][2]; }
       const plt = vis - acc, cur = l.ph[pi], clipR = () => ctx.rect(pr[0], pr[1], pr[2], pr[3]);
       if (pi > 0 && plt < 0.32) { const u = E.inOutC(plt / 0.32), pv = l.ph[pi - 1];
         play(pv[0], pv[1], pv[2] + plt, pr, { clip: clipR, dx: -u * PH[2] }); play(cur[0], cur[1], plt, pr, { clip: clipR, dx: (1 - u) * PH[2] }); }
       else play(cur[0], cur[1], plt, pr);
       if (VID.collecting) return;
-      if (l.ph.length > 1) { const c0 = G(); l.ph.forEach((_, i) => { c0.fillStyle = i === pi ? WHT : 'rgba(255,255,255,0.5)'; c0.beginPath(); c0.arc(W / 2 + (i - (l.ph.length - 1) / 2) * 26, y(PH[1] + PH[3] - 26), i === pi ? 7 : 6, 0, 7); c0.fill(); }); D(); }
+      if (l.ph.length > 1) { const c0 = G(); l.ph.forEach((_, i) => { c0.fillStyle = i === pi ? WHT : 'rgba(255,255,255,0.5)'; c0.beginPath(); c0.arc(W / 2 + ox + (i - (l.ph.length - 1) / 2) * 26, pr[1] + pr[3] - 26, i === pi ? 7 : 6, 0, 7); c0.fill(); }); D(); }
       const bp = k === 0 ? clamp((lt - 0.55) / 0.3) : 1, tp = k === 0 ? clamp((lt - 0.75) / 0.4) : 1;
-      pill('JUST LISTED', PH[0] + 30 + textW('JUST LISTED', F(800, 22, 'Mont'), 2.5) / 2 + 26, y(PH[1] + 44), { size: 22, p: bp, bg: OR, col: BLK, padx: 52 });
+      const [bgx, bgy] = posOf(elP('badge' + (k + 1)), [pr[0] + 30 + textW('JUST LISTED', F(800, 22, 'Mont'), 2.5) / 2 + 26, pr[1] + 44]);
+      pill('JUST LISTED', bgx, bgy, { size: 22, p: bp, bg: OR, col: BLK, padx: 52 });
       // save button
       const liked = t >= HEARTS[k] + 0.12, hp = clamp((t - HEARTS[k] - 0.12) / 0.3), c = G(), hs = t >= HEARTS[k] && t < HEARTS[k] + 0.12 ? 0.88 : 1 + 0.25 * Math.sin(Math.PI * hp) * (hp < 1 ? 1 : 0);
-      c.translate(HX, y(HY)); c.scale(hs, hs); c.fillStyle = WHT; c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 12; c.beginPath(); c.arc(0, 0, 34, 0, 7); c.fill(); c.shadowBlur = 0;
+      const [hvx, hvy] = posOf(elP('save' + (k + 1)), [pr[0] + pr[2] - 52, pr[1] + 52]);
+      c.translate(hvx, hvy); c.scale(hs, hs); c.fillStyle = WHT; c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 12; c.beginPath(); c.arc(0, 0, 34, 0, 7); c.fill(); c.shadowBlur = 0;
       heart(c, 0, 2, 15); if (liked) { c.fillStyle = OR; c.fill(); } else { c.strokeStyle = BLK; c.lineWidth = 3.5; c.stroke(); } D();
       // text block
       const c2 = G(); c2.globalAlpha = tp; c2.textAlign = 'left'; c2.textBaseline = 'alphabetic';
-      setF(F(800, Math.min(46, fitSize(l.title, 800, 860, 46, 'Mont', -0.5)), 'Mont'), -0.5); c2.fillStyle = BLK; c2.fillText(l.title, PH[0] + 20, y(992) + (1 - E.outC(tp)) * 16);
-      setF(F(500, Math.min(19, fitSize(l.addr, 500, 860, 19, 'Mono', 2)), 'Mono'), 2); c2.fillStyle = '#8A8A8A'; c2.fillText(l.addr, PH[0] + 22, y(1034));
-      setF(F(700, z.st[k], 'Mono'), 1); c2.fillStyle = BLK; c2.fillText(l.stats, PH[0] + 22, y(1082));
-      c2.fillStyle = '#E6E6E6'; c2.fillRect(PH[0] + 20, y(1108), PH[2] - 40, 2); D();
+      const [tix, tiy] = posOf(elP('title' + (k + 1)), [PH[0] + ox + 20, y(992) + oy]);
+      setF(F(800, Math.min(46, fitSize(l.title, 800, 860, 46, 'Mont', -0.5)), 'Mont'), -0.5); c2.fillStyle = BLK; c2.fillText(l.title, tix, tiy + (1 - E.outC(tp)) * 16);
+      const [adx, ady] = posOf(elP('addr' + (k + 1)), [PH[0] + ox + 22, y(1034) + oy]);
+      setF(F(500, Math.min(19, fitSize(l.addr, 500, 860, 19, 'Mono', 2)), 'Mono'), 2); c2.fillStyle = '#8A8A8A'; c2.fillText(l.addr, adx, ady);
+      const [stx, sty] = posOf(elP('stats' + (k + 1)), [PH[0] + ox + 22, y(1082) + oy]);
+      setF(F(700, z.st[k], 'Mono'), 1); c2.fillStyle = BLK; c2.fillText(l.stats, stx, sty);
+      c2.fillStyle = '#E6E6E6'; c2.fillRect(PH[0] + ox + 20, y(1108) + oy, PH[2] - 40, 2); D();
       // the button: SCHEDULE A SHOWING -> tap -> BOOK A DESIGN CONSULTATION
       const mp = k === 2 ? E.inOutC(clamp((t - BTN - 0.18) / 0.4)) : 0, press = k === 2 && t >= BTN && t < BTN + 0.16 ? 0.96 : 1, c3 = G();
-      c3.globalAlpha = tp; c3.translate(W / 2, y(BY)); c3.scale(press, press); c3.translate(-W / 2, -y(BY));
-      c3.fillStyle = mp > 0.5 ? OR : BLK; rrect(PH[0], y(BY) - 38, PH[2], 76, 38); c3.fill();
+      const [btx, bty] = posOf(elP('button' + (k + 1)), [W / 2 + ox, y(BY) + oy]);
+      c3.globalAlpha = tp; c3.translate(btx, bty); c3.scale(press, press); c3.translate(-btx, -bty);
+      c3.fillStyle = mp > 0.5 ? OR : BLK; rrect(PH[0] + ox, bty - 38, PH[2], 76, 38); c3.fill();
       setF(F(800, Math.min(27, fitSize(BTNT, 800, 840, 27, 'Mont', 2.5)), 'Mont'), 2.5); c3.textAlign = 'center'; c3.textBaseline = 'middle';
-      if (mp < 1) { c3.globalAlpha = tp * clamp(1 - mp * 2); c3.fillStyle = WHT; c3.fillText(BTNT, W / 2, y(BY) + 2); }
+      if (mp < 1) { c3.globalAlpha = tp * clamp(1 - mp * 2); c3.fillStyle = WHT; c3.fillText(BTNT, btx, bty + 2); }
       setF(F(800, 27, 'Mont'), 2.5);
-      if (mp > 0) { setF(F(800, Math.min(27, fitSize(CONTACT.cta, 800, 840, 27, 'Mont', 2.5)), 'Mont'), 2.5); c3.globalAlpha = tp * clamp(mp * 2 - 1); c3.fillStyle = BLK; c3.fillText(CONTACT.cta, W / 2, y(BY) + 2); }
+      if (mp > 0) { setF(F(800, Math.min(27, fitSize(CONTACT.cta, 800, 840, 27, 'Mont', 2.5)), 'Mont'), 2.5); c3.globalAlpha = tp * clamp(mp * 2 - 1); c3.fillStyle = BLK; c3.fillText(CONTACT.cta, btx, bty + 2); }
       D();
     }
     function cardsAt(t) {   // which card(s), with the slide-up intro and swipe transitions
@@ -219,23 +269,59 @@ STUDIO_REG['n2'] = (() => {
       const k = t >= ST[2] ? 2 : t >= ST[1] ? 1 : 0;
       if (t >= OUT) card(k, t, -E.inC(clamp((t - OUT) / 0.45)) * 1700); else card(k, t, 0);
     }
+    function elements() {
+      const hdP = posOf(elP('headline'), [CX0, 362]), cnP = posOf(elP('counter'), [W - 74, 352]);
+      const o1P = posOf(elP('outro1'), [W / 2, 560]), o2P = posOf(elP('outro2'), [W / 2, 560 + sizes().out * 1.12]);
+      const lgP = posOf(elP('outroLogo'), [W / 2, 830]), ctP = posOf(elP('cta'), [W / 2, 1000]);
+      const per = L.map((l, k) => {
+        const cdP = posOf(elP('card' + (k + 1)), [CX0, CY0]), phP = posOf(elP('photo' + (k + 1)), [PH[0], PH[1]]);
+        const bdP = posOf(elP('badge' + (k + 1)), [PH[0] + 30 + textW('JUST LISTED', F(800, 22, 'Mont'), 2.5) / 2 + 26, PH[1] + 44]);
+        const svP = posOf(elP('save' + (k + 1)), [PH[0] + PH[2] - 52, PH[1] + 52]);
+        const tiP = posOf(elP('title' + (k + 1)), [PH[0] + 20, 992]), adP = posOf(elP('addr' + (k + 1)), [PH[0] + 22, 1034]);
+        const stP = posOf(elP('stats' + (k + 1)), [PH[0] + 22, 1082]), btP = posOf(elP('button' + (k + 1)), [W / 2, BY]);
+        const end = k < 2 ? ST[k + 1] : OUT;
+        return [
+          { id: 'card' + (k + 1), kind: 'card', label: l.title, x: cdP[0], y: cdP[1], w: CW, h: CH, t0: ST[k], d: end - ST[k], box: [cdP[0], cdP[1], CW, CH], dup: false, del: false },
+          { id: 'photo' + (k + 1), kind: 'box', label: 'Photo ' + (k + 1), x: phP[0], y: phP[1], w: PH[2], h: PH[3], t0: ST[k], d: end - ST[k], box: [phP[0], phP[1], PH[2], PH[3]], dup: false, del: false },
+          { id: 'badge' + (k + 1), kind: 'pos', label: 'JUST LISTED', x: bdP[0], y: bdP[1], t0: ST[k] + 0.55, d: end - (ST[k] + 0.55), box: [bdP[0] - 130, bdP[1] - 30, 260, 60], dup: false, del: false },
+          { id: 'save' + (k + 1), kind: 'pos', label: 'Save', x: svP[0], y: svP[1], t0: ST[k], d: end - ST[k], box: [svP[0] - 40, svP[1] - 40, 80, 80], dup: false, del: false },
+          { id: 'title' + (k + 1), kind: 'pos', label: l.title, x: tiP[0], y: tiP[1], t0: ST[k] + 0.75, d: end - (ST[k] + 0.75), box: [tiP[0], tiP[1] - 50, 860, 80], dup: false, del: false },
+          { id: 'addr' + (k + 1), kind: 'pos', label: l.addr, x: adP[0], y: adP[1], t0: ST[k] + 0.75, d: end - (ST[k] + 0.75), box: [adP[0], adP[1] - 30, 860, 50], dup: false, del: false },
+          { id: 'stats' + (k + 1), kind: 'pos', label: l.stats, x: stP[0], y: stP[1], t0: ST[k] + 0.75, d: end - (ST[k] + 0.75), box: [stP[0], stP[1] - 30, 860, 50], dup: false, del: false },
+          { id: 'button' + (k + 1), kind: 'pos', label: BTNT, x: btP[0], y: btP[1], t0: ST[k], d: end - ST[k], box: [btP[0] - 470, btP[1] - 40, 940, 80], dup: false, del: false },
+        ];
+      }).flat();
+      return [
+        { id: 'headline', kind: 'pos', label: HD1 + ' ' + HD2, x: hdP[0], y: hdP[1], t0: 0.05, d: OUT + 0.3 - 0.05, box: [hdP[0], hdP[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'counter', kind: 'pos', label: 'Listing counter', x: cnP[0], y: cnP[1], t0: 0.5, d: OUT + 0.3 - 0.5, box: [cnP[0] - 120, cnP[1] - 40, 120, 60], dup: false, del: false },
+        ...per,
+        { id: 'outro1', kind: 'pos', label: OL1, x: o1P[0], y: o1P[1], t0: OUT + 0.3, d: DUR - (OUT + 0.3), box: [o1P[0] - 470, o1P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'outro2', kind: 'pos', label: OL2, x: o2P[0], y: o2P[1], t0: OUT + 0.65, d: DUR - (OUT + 0.65), box: [o2P[0] - 470, o2P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'outroLogo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: OUT + 0.25, d: DUR - (OUT + 0.25), box: [lgP[0] - 300, lgP[1] - 60, 600, 120], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: OUT + 1.4, d: DUR - (OUT + 1.4), box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [[0.42, 6]],
+      dur: DUR, shakes: [[0.42, 6]], elements,
       render(t) {
         K3.bgKinetic(t, 820, 60 / 104 * 2);
         cardsAt(t);
         const z = sizes(), hq = clamp((t - OUT) / 0.3);
-        if (t < OUT + 0.3) { K3.words([HD1, HD2], CX0, 362, z.hd, t, 0.05, { align: 'left', hl: 1, step: 0.16, q: hq });
-          const k = t >= ST[2] - SW / 2 ? 2 : t >= ST[1] - SW / 2 ? 1 : 0; caps((k + 1) + ' / 3', W - 74, 352, 22, clamp((t - 0.5) / 0.3), hq, { w: 700, fam: 'Mono', ls: 3, align: 'right', col: 'rgba(255,255,255,0.7)' }); }
+        if (t < OUT + 0.3) { const [hdx, hdy] = posOf(elP('headline'), [CX0, 362]); K3.words([HD1, HD2], hdx, hdy, z.hd, t, 0.05, { align: 'left', hl: 1, step: 0.16, q: hq });
+          const k = t >= ST[2] - SW / 2 ? 2 : t >= ST[1] - SW / 2 ? 1 : 0; const [cnx, cny] = posOf(elP('counter'), [W - 74, 352]); caps((k + 1) + ' / 3', cnx, cny, 22, clamp((t - 0.5) / 0.3), hq, { w: 700, fam: 'Mono', ls: 3, align: 'right', col: 'rgba(255,255,255,0.7)' }); }
         // finger taps
-        HEARTS.forEach(h => { if (t >= h - 0.15 && t < h + 0.25 && !VID.collecting) { const c = G(); c.globalAlpha = 0.55 * (1 - clamp((t - h) / 0.25)); c.fillStyle = WHT; c.beginPath(); c.arc(HX + 6, HY + 6, 38, 0, 7); c.fill(); D(); } K3.ripple(HX, HY, t, h); });
-        if (t >= BTN - 0.15 && t < BTN + 0.25 && !VID.collecting) { const c = G(); c.globalAlpha = 0.5 * (1 - clamp((t - BTN) / 0.25)); c.fillStyle = WHT; c.beginPath(); c.arc(W / 2 + 160, BY + 8, 40, 0, 7); c.fill(); D(); }
-        K3.ripple(W / 2 + 160, BY, t, BTN);
+        HEARTS.forEach((h, hi) => { const [hcx, hcy] = posOf(elP('card' + (hi + 1)), [CX0, CY0]), hox = hcx - CX0, hoy = hcy - CY0;
+          if (t >= h - 0.15 && t < h + 0.25 && !VID.collecting) { const c = G(); c.globalAlpha = 0.55 * (1 - clamp((t - h) / 0.25)); c.fillStyle = WHT; c.beginPath(); c.arc(HX + hox + 6, HY + hoy + 6, 38, 0, 7); c.fill(); D(); } K3.ripple(HX + hox, HY + hoy, t, h); });
+        const [b3x, b3y] = posOf(elP('card3'), [CX0, CY0]), b3ox = b3x - CX0, b3oy = b3y - CY0;
+        if (t >= BTN - 0.15 && t < BTN + 0.25 && !VID.collecting) { const c = G(); c.globalAlpha = 0.5 * (1 - clamp((t - BTN) / 0.25)); c.fillStyle = WHT; c.beginPath(); c.arc(W / 2 + b3ox + 160, BY + b3oy + 8, 40, 0, 7); c.fill(); D(); }
+        K3.ripple(W / 2 + b3ox + 160, BY + b3oy, t, BTN);
         if (t >= OUT + 0.25) { const o = t - OUT - 0.25;
-          K3.words(OL1.split(' '), W / 2, 560, z.out, o, 0.05, { step: 0.14 });
-          const o2 = OL2.split(' '); K3.words(o2, W / 2, 560 + z.out * 1.12, z.out, o, 0.4, { hl: o2.map((_, i) => i) });
-          K3.logoBuild(W / 2, 830, 600, 0.75, o, { speed: 1.5 });
-          outroCTA(o, 1000, 1.15); }
+          const [o1x, o1y] = posOf(elP('outro1'), [W / 2, 560]);
+          K3.words(OL1.split(' '), o1x, o1y, z.out, o, 0.05, { step: 0.14 });
+          const o2 = OL2.split(' '); const [o2x, o2y] = posOf(elP('outro2'), [W / 2, 560 + z.out * 1.12]); K3.words(o2, o2x, o2y, z.out, o, 0.4, { hl: o2.map((_, i) => i) });
+          const [lgx, lgy] = posOf(elP('outroLogo'), [W / 2, 830]);
+          K3.logoBuild(lgx, lgy, 600, 0.75, o, { speed: 1.5 });
+          outroCTA(o, posOf(elP('cta'), [W / 2, 1000])[1], 1.15); }
       },
       cues() {
         const ev = [['impact', 0.42, 0.3, 0], ['whoosh', 0.45, 0.3, 0], ['pop', 0.78, 0.25, -0.3]];
@@ -258,6 +344,7 @@ STUDIO_REG['n2'] = (() => {
       { bg: OR, fg: BLK, num: BLK, txt: 'Your yard is just… grass.', fix: 'A full landscape design.', hl: 'DESIGN.', shots: [['c12', 0.1, 2.9]], tr: 'whip' },
       { bg: BLK, fg: WHT, num: OR, txt: 'You’ve said “next summer” three summers in a row.', fix: 'This is the summer.', hl: 'SUMMER.', shots: [['c05', 4.1, 0.95], ['c09', 10.55, 0.95], ['c07', 24.0, 1.0]], tr: 'glitch', pj: BRAND.short.toUpperCase() + ' PORTFOLIO' },
     ];
+    const IN0 = TX('introNum', '5 SIGNS', { label: 'Opening number', group: 'Opening', upper: true, max: 10 });
     const IN1 = TX('intro1', 'YOU NEED A', { label: 'Opening, line 1', group: 'Opening', upper: true, max: 16, hint: 'After “5 SIGNS”' });
     const IN2 = TX('intro2', 'BACKYARD UPGRADE.', { label: 'Opening, line 2 (highlighted)', group: 'Opening', upper: true, max: 18 });
     const SG = SG0.map((s0, k) => { const g = 'Sign ' + (k + 1), n = k + 1;
@@ -278,10 +365,12 @@ STUDIO_REG['n2'] = (() => {
       const s = SG[k]; if (!VID.collecting) fillScreen(s.bg);
       if (VID.collecting) return;
       const c = G(); for (let i = 0; i < N; i++) { c.fillStyle = s.fg === WHT ? 'rgba(255,255,255,0.25)' : 'rgba(11,11,11,0.2)'; c.fillRect(64 + i * 194, 292, 180, 6); if (i <= k) { c.fillStyle = s.fg === WHT ? OR : BLK; c.fillRect(64 + i * 194, 292, i < k ? 180 : 180 * clamp((lt - 0.2) / 0.5), 6); } } D();
-      caps('SIGN 0' + (k + 1) + ' OF 05', 64, 360, 22, clamp((lt - 0.2) / 0.3), 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: s.fg, ls0: 0 });
+      const [snx, sny] = posOf(elP('signnum' + (k + 1)), [64, 360]);
+      caps('SIGN 0' + (k + 1) + ' OF 05', snx, sny, 22, clamp((lt - 0.2) / 0.3), 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: s.fg, ls0: 0 });
       const p = clamp((lt - PUSH - 0.02) / 0.3), e = E.outBack(p), sc = lerp(1.6, 1, e);
-      if (p > 0) { const c2 = G(); c2.globalAlpha = clamp(p * 3); c2.translate(56, 880); c2.scale(sc, sc); setF(F(400, 660, 'Bebas'), 0); c2.fillStyle = s.num; c2.textAlign = 'left'; c2.textBaseline = 'alphabetic'; c2.fillText(String(k + 1), 0, 0); D(); }
-      slam(s.lines, 64, 1010, s.size, s.size * 1.04, lt, PUSH + 0.3, { align: 'left', col: s.fg, ls: -2, step: 0.075, s0: 1.12 });
+      if (p > 0) { const c2 = G(); c2.globalAlpha = clamp(p * 3); const [bnx, bny] = posOf(elP('bignum' + (k + 1)), [56, 880]); c2.translate(bnx, bny); c2.scale(sc, sc); setF(F(400, 660, 'Bebas'), 0); c2.fillStyle = s.num; c2.textAlign = 'left'; c2.textBaseline = 'alphabetic'; c2.fillText(String(k + 1), 0, 0); D(); }
+      const [sgx, sgy] = posOf(elP('sign' + (k + 1)), [64, 1010]);
+      slam(s.lines, sgx, sgy, s.size, s.size * 1.04, lt, PUSH + 0.3, { align: 'left', col: s.fg, ls: -2, step: 0.075, s0: 1.12 });
     }
     function fixShot(k, lt, rect) {
       const s = SG[k]; let acc = 0;
@@ -291,30 +380,70 @@ STUDIO_REG['n2'] = (() => {
       const s = SG[k]; if (!VID.collecting) fillScreen(BLK);
       const r = fixShot(k, lt);
       if (VID.collecting) return;
-      caps('SIGN 0' + (k + 1) + '  ·  THE FIX', 64, 330, 21, 1, 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: 'rgba(255,255,255,0.6)', ls0: 0 });
+      const [flx, fly] = posOf(elP('fixlabel' + (k + 1)), [64, 330]);
+      caps('SIGN 0' + (k + 1) + '  ·  THE FIX', flx, fly, 21, 1, 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: 'rgba(255,255,255,0.6)', ls0: 0 });
       let hli = s.flines.findIndex(l => l.split(' ').includes(s.hl)), hlw = hli >= 0 ? s.flines[hli].split(' ').indexOf(s.hl) : -1;
       if (hli < 0) { hli = s.flines.findIndex(l => l.split(' ').some(w => w.replace(/[^A-Z0-9’']/g, '') === s.hl.replace(/[^A-Z0-9’']/g, '')));
         hlw = hli >= 0 ? s.flines[hli].split(' ').findIndex(w => w.replace(/[^A-Z0-9’']/g, '') === s.hl.replace(/[^A-Z0-9’']/g, '')) : -1; }
       if (hli < 0) { hli = s.flines.length - 1; hlw = s.flines[hli].split(' ').length - 1; }
-      slam(s.flines, 64, 450, s.fsize, s.fsize * 1.04, lt, 0.05, { align: 'left', col: WHT, ls: -2, step: 0.06, s0: 1.1, hlLine: hli, hlWord: hlw });
-      caps(s.pj, W / 2, r[1] + r[3] + 56, 21, clamp((lt - 0.3) / 0.4), 0, { w: 700, fam: 'Mono', ls: 5, col: 'rgba(255,255,255,0.75)', maxW: 960 });
+      const [fxx, fxy] = posOf(elP('fix' + (k + 1)), [64, 450]);
+      slam(s.flines, fxx, fxy, s.fsize, s.fsize * 1.04, lt, 0.05, { align: 'left', col: WHT, ls: -2, step: 0.06, s0: 1.1, hlLine: hli, hlWord: hlw });
+      const [cpx, cpy] = posOf(elP('cap' + (k + 1)), [W / 2, r[1] + r[3] + 56]);
+      caps(s.pj, cpx, cpy, 21, clamp((lt - 0.3) / 0.4), 0, { w: 700, fam: 'Mono', ls: 5, col: 'rgba(255,255,255,0.75)', maxW: 960 });
     }
     function intro(t) {
       if (!VID.collecting) fillScreen(OR);
-      K3.words(['5', 'SIGNS'], W / 2, 720, 330, t, 0.1, { fam: 'Bebas', w: 400, col: BLK, step: 0.2, ls: 6, s0: 1.3 });
+      const [i0x, i0y] = posOf(elP('introNum'), [W / 2, 720]);
+      K3.words(IN0.split(' '), i0x, i0y, 330, t, 0.1, { fam: 'Bebas', w: 400, col: BLK, step: 0.2, ls: 6, s0: 1.3 });
       const z = Math.min(fit(IN2, 900, 960, 100, 'Mont', -3), fit(IN1, 900, 960, 100, 'Mont', -3)), w2 = IN2.split(' ');
-      K3.words(IN1.split(' '), W / 2, 850, z, t, 0.55, { col: BLK, step: 0.1 });
-      K3.words(w2, W / 2, 850 + z * 1.1, z, t, 0.85, { col: BLK, hl: w2.map((_, i) => i), hlCol: BLK, hlText: OR, step: 0.12 });
+      const [i1x, i1y] = posOf(elP('intro1'), [W / 2, 850]);
+      K3.words(IN1.split(' '), i1x, i1y, z, t, 0.55, { col: BLK, step: 0.1 });
+      const [i2x, i2y] = posOf(elP('intro2'), [W / 2, 850 + z * 1.1]);
+      K3.words(w2, i2x, i2y, z, t, 0.85, { col: BLK, hl: w2.map((_, i) => i), hlCol: BLK, hlText: OR, step: 0.12 });
     }
     function outro(o) {
       const z = Math.min(fit(OU2, 900, 950, 100, 'Mont', -3), fit(OU1, 900, 950, 100, 'Mont', -3)), w2 = OU2.split(' ');
-      K3.words(OU1.split(' '), W / 2, 560, z, o, 0.1, { step: 0.12 });
-      K3.words(w2, W / 2, 560 + z * 1.12, z, o, 0.5, { step: 0.12, hl: w2.length - 1 });
-      K3.logoBuild(W / 2, 830, 600, 1.0, o, { speed: 1.4 });
-      outroCTA(o, 1000, 1.4);
+      const [o1x, o1y] = posOf(elP('outro1'), [W / 2, 560]);
+      K3.words(OU1.split(' '), o1x, o1y, z, o, 0.1, { step: 0.12 });
+      const [o2x, o2y] = posOf(elP('outro2'), [W / 2, 560 + z * 1.12]);
+      K3.words(w2, o2x, o2y, z, o, 0.5, { step: 0.12, hl: w2.length - 1 });
+      const [lgx, lgy] = posOf(elP('outroLogo'), [W / 2, 830]);
+      K3.logoBuild(lgx, lgy, 600, 1.0, o, { speed: 1.4 });
+      outroCTA(o, posOf(elP('cta'), [W / 2, 1000])[1], 1.4);
+    }
+    function elements() {
+      const zI = Math.min(fit(IN2, 900, 960, 100, 'Mont', -3), fit(IN1, 900, 960, 100, 'Mont', -3));
+      const zO = Math.min(fit(OU2, 900, 950, 100, 'Mont', -3), fit(OU1, 900, 950, 100, 'Mont', -3));
+      const i0P = posOf(elP('introNum'), [W / 2, 720]), i1P = posOf(elP('intro1'), [W / 2, 850]), i2P = posOf(elP('intro2'), [W / 2, 850 + zI * 1.1]);
+      const o1P = posOf(elP('outro1'), [W / 2, 560]), o2P = posOf(elP('outro2'), [W / 2, 560 + zO * 1.12]);
+      const lgP = posOf(elP('outroLogo'), [W / 2, 830]), ctP = posOf(elP('cta'), [W / 2, 1000]);
+      const per = SG.map((s, k) => {
+        const snP = posOf(elP('signnum' + (k + 1)), [64, 360]), bnP = posOf(elP('bignum' + (k + 1)), [56, 880]);
+        const sgP = posOf(elP('sign' + (k + 1)), [64, 1010]), flP = posOf(elP('fixlabel' + (k + 1)), [64, 330]);
+        const fxP = posOf(elP('fix' + (k + 1)), [64, 450]);
+        const r = bandR(s.shots[0][0], CY), cpP = posOf(elP('cap' + (k + 1)), [W / 2, r[1] + r[3] + 56]);
+        return [
+          { id: 'signnum' + (k + 1), kind: 'pos', label: 'SIGN 0' + (k + 1) + ' OF 05', x: snP[0], y: snP[1], t0: S0(k) + 0.2, d: CARD - 0.2, box: [snP[0], snP[1] - 40, 300, 60], dup: false, del: false },
+          { id: 'bignum' + (k + 1), kind: 'pos', label: String(k + 1), x: bnP[0], y: bnP[1], t0: S0(k) + PUSH + 0.02, d: CARD - PUSH - 0.02, box: [bnP[0] - 60, bnP[1] - 500, 400, 560], dup: false, del: false },
+          { id: 'sign' + (k + 1), kind: 'pos', label: s.txt, x: sgP[0], y: sgP[1], t0: S0(k) + PUSH + 0.3, d: CARD - PUSH - 0.3, box: [sgP[0], sgP[1] - 80, 950, 320], dup: false, del: false },
+          { id: 'fixlabel' + (k + 1), kind: 'pos', label: 'SIGN 0' + (k + 1) + ' · THE FIX', x: flP[0], y: flP[1], t0: S0(k) + CARD, d: SD - CARD, box: [flP[0], flP[1] - 40, 400, 60], dup: false, del: false },
+          { id: 'fix' + (k + 1), kind: 'pos', label: s.fix, x: fxP[0], y: fxP[1], t0: S0(k) + CARD + 0.05, d: SD - CARD - 0.05, box: [fxP[0], fxP[1] - 80, 950, 260], dup: false, del: false },
+          { id: 'cap' + (k + 1), kind: 'pos', label: s.pj || 'Caption under the footage', x: cpP[0], y: cpP[1], t0: S0(k) + CARD + 0.3, d: SD - CARD - 0.3, box: [cpP[0] - 470, cpP[1] - 40, 940, 70], dup: false, del: false },
+        ];
+      }).flat();
+      return [
+        { id: 'introNum', kind: 'pos', label: IN0, x: i0P[0], y: i0P[1], t0: 0.1, d: INTRO - 0.1, box: [i0P[0] - 470, i0P[1] - 200, 940, 400], dup: false, del: false },
+        { id: 'intro1', kind: 'pos', label: IN1, x: i1P[0], y: i1P[1], t0: 0.55, d: INTRO - 0.55, box: [i1P[0] - 470, i1P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'intro2', kind: 'pos', label: IN2, x: i2P[0], y: i2P[1], t0: 0.85, d: INTRO - 0.85, box: [i2P[0] - 470, i2P[1] - 80, 940, 160], dup: false, del: false },
+        ...per,
+        { id: 'outro1', kind: 'pos', label: OU1, x: o1P[0], y: o1P[1], t0: OUT + 0.1, d: DUR - (OUT + 0.1), box: [o1P[0] - 470, o1P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'outro2', kind: 'pos', label: OU2, x: o2P[0], y: o2P[1], t0: OUT + 0.5, d: DUR - (OUT + 0.5), box: [o2P[0] - 470, o2P[1] - 80, 940, 160], dup: false, del: false },
+        { id: 'outroLogo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: OUT, d: DUR - OUT, box: [lgP[0] - 300, lgP[1] - 60, 600, 120], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: OUT + 1.4, d: DUR - (OUT + 1.4), box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+      ];
     }
     return {
-      dur: DUR, shakes: [[0.1, 8], [0.3, 8]].concat(SG.map((s, k) => [S0(k) + PUSH + 0.32, 12])),
+      dur: DUR, shakes: [[0.1, 8], [0.3, 8]].concat(SG.map((s, k) => [S0(k) + PUSH + 0.32, 12])), elements,
       render(t) {
         prep();
         if (t < INTRO) { intro(t); return; }
@@ -456,8 +585,8 @@ STUDIO_REG['n2'] = (() => {
     }
     function checkbox(x, y, p, tick) { if (VID.collecting || p <= 0) return; const c = G(); c.globalAlpha = clamp(p * 2); c.strokeStyle = INK; c.lineWidth = 4; c.lineJoin = 'round'; c.beginPath(); c.moveTo(x, y + 2); c.lineTo(x + 50, y); c.lineTo(x + 52, y + 50); c.lineTo(x + 1, y + 51); c.closePath(); c.stroke(); D();
       if (tick > 0) handArrow([[x + 8, y + 24], [x + 22, y + 42], [x + 64, y - 18]], tick, { col: OR, lw: 8 }); }
-    function print(x, lt) {   // the taped photo
-      const r = PR, inn = x.in + Math.max(0, lt - 1.3);
+    function print(x, lt, k) {   // the taped photo
+      const [ppx, ppy] = posOf(elP('photo' + (k + 1)), [PR[0], PR[1]]), r = [ppx, ppy, PR[2], PR[3]], inn = x.in + Math.max(0, lt - 1.3);
       const drawB = () => play(x.c, inn, 0, r);
       if (lt < 1.3) return;
       if (lt < 1.9) { K4.run('toss', r, (lt - 1.3) / 0.6, () => {}, drawB, { border: '#FCFBF7', bw: 18, rot0: 0.28, dx0: 700, dy0: 260 }); return; }
@@ -467,22 +596,30 @@ STUDIO_REG['n2'] = (() => {
     }
     function qpage(k, lt) {
       prep(); page(); const x = QL[k];
-      caps('QUESTION 0' + (k + 1), 150, 330, 22, clamp((lt - 0.3) / 0.3), 0, { w: 700, fam: 'Mono', ls: 5, align: 'left', col: OR, ls0: 0 });
+      const [qnx, qny] = posOf(elP('qnum' + (k + 1)), [150, 330]);
+      caps('QUESTION 0' + (k + 1), qnx, qny, 22, clamp((lt - 0.3) / 0.3), 0, { w: 700, fam: 'Mono', ls: 5, align: 'left', col: OR, ls0: 0 });
       const aT = 2.1, cps = 40, aEnd = aT + x.alen / cps, tick = clamp((lt - aEnd - 0.3) / 0.35);
-      checkbox(150, 392, clamp((lt - 0.45) / 0.2), tick);
-      x.ql.forEach((l, i) => hand(l, 226, 440 + i * 72, 66, clamp((lt - 0.6 - i * 0.55) / 0.55), { col: INK, shadow: false }));
-      print(x, lt);
+      const [ckx, cky] = posOf(elP('check' + (k + 1)), [150, 392]);
+      checkbox(ckx, cky, clamp((lt - 0.45) / 0.2), tick);
+      const [qqx, qqy] = posOf(elP('q' + (k + 1)), [226, 440]);
+      x.ql.forEach((l, i) => hand(l, qqx, qqy + i * 72, 66, clamp((lt - 0.6 - i * 0.55) / 0.55), { col: INK, shadow: false }));
+      print(x, lt, k);
       if (!VID.collecting && lt > aT) { let n = Math.floor((lt - aT) * cps); const c = G(); setF(AF, 0); c.fillStyle = INK; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-        x.al.forEach((l, i) => { if (n <= 0) return; const s = l.slice(0, n); c.fillText(s, 140, 1124 + i * 50); if (n < l.length + 1 && n <= l.length) { c.fillStyle = OR; c.fillRect(142 + textW(s, AF, 0), 1097 + i * 50, 4, 34); c.fillStyle = INK; } n -= l.length + 1; }); D();
-        if (tick > 0) { const li = x.al.length - 1, w = textW(x.al[li], AF, 0); handArrow([[140, 1138 + li * 50], [140 + w * 0.5, 1142 + li * 50], [140 + w + 8, 1136 + li * 50]], clamp((lt - aEnd - 0.5) / 0.4), { col: OR, lw: 5 }); } }
+        const [anx, any] = posOf(elP('a' + (k + 1)), [140, 1124]);
+        x.al.forEach((l, i) => { if (n <= 0) return; const s = l.slice(0, n); c.fillText(s, anx, any + i * 50); if (n < l.length + 1 && n <= l.length) { c.fillStyle = OR; c.fillRect(anx + 2 + textW(s, AF, 0), any - 27 + i * 50, 4, 34); c.fillStyle = INK; } n -= l.length + 1; }); D();
+        if (tick > 0) { const li = x.al.length - 1, w = textW(x.al[li], AF, 0); handArrow([[anx, any + 14 + li * 50], [anx + w * 0.5, any + 18 + li * 50], [anx + w + 8, any + 12 + li * 50]], clamp((lt - aEnd - 0.5) / 0.4), { col: OR, lw: 5 }); } }
     }
     function titlePage(t) {
       page(); const z1 = fit(H1, 900, 820, 130, 'Mont', -3), z2 = Math.min(fit(H3, 800, 820, 60, 'Mont', -1), fit(H2, 800, 820, 60, 'Mont', -1)), w3 = H3.split(' ');
-      K3.words(H1.split(' '), 150, 480, z1, t, 0.1, { align: 'left', col: INK, step: 0.16 });
-      const uw = textW(H1, F(900, z1, 'Mont'), -3); handArrow([[152, 508], [150 + uw * 0.35, 514], [150 + uw * 0.7, 506], [150 + uw, 512]], clamp((t - 0.6) / 0.4), { col: OR, lw: 7 });
-      K3.words(H2.split(' '), 150, 600, z2, t, 0.5, { align: 'left', col: INK, w: 800, step: 0.08, ls: -1 });
-      K3.words(w3, 150, 600 + z2 * 1.3, z2, t, 0.95, { align: 'left', col: INK, w: 800, step: 0.08, ls: -1, hl: w3.map((x, i) => i).filter(i => w3.length < 2 || i > 0), hlText: K5 ? K5.onAcc() : WHT });
-      hand(NOTE, 160, 900, 56, clamp((t - 1.5) / 0.6), { col: INK, rot: -0.04, shadow: false });
+      const [h1x, h1y] = posOf(elP('h1'), [150, 480]);
+      K3.words(H1.split(' '), h1x, h1y, z1, t, 0.1, { align: 'left', col: INK, step: 0.16 });
+      const uw = textW(H1, F(900, z1, 'Mont'), -3); handArrow([[h1x + 2, 508], [h1x + uw * 0.35, 514], [h1x + uw * 0.7, 506], [h1x + uw, 512]], clamp((t - 0.6) / 0.4), { col: OR, lw: 7 });
+      const [h2x, h2y] = posOf(elP('h2'), [150, 600]);
+      K3.words(H2.split(' '), h2x, h2y, z2, t, 0.5, { align: 'left', col: INK, w: 800, step: 0.08, ls: -1 });
+      const [h3x, h3y] = posOf(elP('h3'), [150, 600 + z2 * 1.3]);
+      K3.words(w3, h3x, h3y, z2, t, 0.95, { align: 'left', col: INK, w: 800, step: 0.08, ls: -1, hl: w3.map((x, i) => i).filter(i => w3.length < 2 || i > 0), hlText: K5 ? K5.onAcc() : WHT });
+      const [ntx, nty] = posOf(elP('note'), [160, 900]);
+      hand(NOTE, ntx, nty, 56, clamp((t - 1.5) / 0.6), { col: INK, rot: -0.04, shadow: false });
       handArrow([[590, 884], [700, 868], [800, 920], [870, 1040], [930, 1180]], clamp((t - 2.0) / 0.5), { col: OR, lw: 5, head: 18 });
     }
     function tear(u, drawOld) {   // the old page rips off the binding and falls away
@@ -493,14 +630,48 @@ STUDIO_REG['n2'] = (() => {
     }
     function outroPage(o) {
       page(); const z = Math.min(fit(O2, 900, 820, 140, 'Mont', -3), fit(O1, 900, 820, 140, 'Mont', -3)), w2 = O2.split(' ');
-      K3.words(O1.split(' '), W / 2, 520, z, o, 0.1, { col: INK, step: 0.14 });
-      K3.words(w2, W / 2, 520 + z * 1.08, z, o, 0.4, { col: INK, step: 0.14, hl: w2.map((x, i) => i), hlText: K5 ? K5.onAcc() : WHT });
-      K3.logoBuild(W / 2, 800, 640, 0.75, o, { img: IMG.logoB, soft: true, speed: 1.3 });
-      K3.ctaBlock(o, 980, 1.25, 'editorial');
+      const [o1x, o1y] = posOf(elP('outro1'), [W / 2, 520]);
+      K3.words(O1.split(' '), o1x, o1y, z, o, 0.1, { col: INK, step: 0.14 });
+      const [o2x, o2y] = posOf(elP('outro2'), [W / 2, 520 + z * 1.08]);
+      K3.words(w2, o2x, o2y, z, o, 0.4, { col: INK, step: 0.14, hl: w2.map((x, i) => i), hlText: K5 ? K5.onAcc() : WHT });
+      const [lgx, lgy] = posOf(elP('outroLogo'), [W / 2, 800]);
+      K3.logoBuild(lgx, lgy, 640, 0.75, o, { img: IMG.logoB, soft: true, speed: 1.3 });
+      K3.ctaBlock(o, posOf(elP('cta'), [W / 2, 980])[1], 1.25, 'editorial');
+    }
+    function elements() {
+      const z2 = Math.min(fit(H3, 800, 820, 60, 'Mont', -1), fit(H2, 800, 820, 60, 'Mont', -1));
+      const h1P = posOf(elP('h1'), [150, 480]), h2P = posOf(elP('h2'), [150, 600]), h3P = posOf(elP('h3'), [150, 600 + z2 * 1.3]), ntP = posOf(elP('note'), [160, 900]);
+      const zO = Math.min(fit(O2, 900, 820, 140, 'Mont', -3), fit(O1, 900, 820, 140, 'Mont', -3));
+      const o1P = posOf(elP('outro1'), [W / 2, 520]), o2P = posOf(elP('outro2'), [W / 2, 520 + zO * 1.08]);
+      const lgP = posOf(elP('outroLogo'), [W / 2, 800]), ctP = posOf(elP('cta'), [W / 2, 980]);
+      const per = QL.map((x, k) => {
+        const t0 = TITLE + k * QD;
+        const qnP = posOf(elP('qnum' + (k + 1)), [150, 330]), ckP = posOf(elP('check' + (k + 1)), [150, 392]);
+        const qqP = posOf(elP('q' + (k + 1)), [226, 440]), phP = posOf(elP('photo' + (k + 1)), [PR[0], PR[1]]);
+        const anP = posOf(elP('a' + (k + 1)), [140, 1124]);
+        return [
+          { id: 'qnum' + (k + 1), kind: 'pos', label: 'QUESTION 0' + (k + 1), x: qnP[0], y: qnP[1], t0: t0 + 0.3, d: QD - 0.3, box: [qnP[0], qnP[1] - 40, 300, 60], dup: false, del: false },
+          { id: 'check' + (k + 1), kind: 'box', label: 'Checkbox ' + (k + 1), x: ckP[0], y: ckP[1], w: 52, h: 52, t0: t0 + 0.45, d: QD - 0.45, box: [ckP[0], ckP[1], 52, 52], dup: false, del: false },
+          { id: 'q' + (k + 1), kind: 'pos', label: x.q, x: qqP[0], y: qqP[1], t0: t0 + 0.6, d: QD - 0.6, box: [qqP[0], qqP[1] - 70, 780, 260], dup: false, del: false },
+          { id: 'photo' + (k + 1), kind: 'box', label: 'Photo ' + (k + 1), x: phP[0], y: phP[1], w: PR[2], h: PR[3], t0: t0 + 1.3, d: QD - 1.3, box: [phP[0], phP[1], PR[2], PR[3]], dup: false, del: false },
+          { id: 'a' + (k + 1), kind: 'pos', label: x.a, x: anP[0], y: anP[1], t0: t0 + 2.1, d: QD - 2.1, box: [anP[0], anP[1] - 40, 800, 160], dup: false, del: false },
+        ];
+      }).flat();
+      return [
+        { id: 'h1', kind: 'pos', label: H1, x: h1P[0], y: h1P[1], t0: 0.1, d: TITLE - 0.1, box: [h1P[0], h1P[1] - 100, 820, 200], dup: false, del: false },
+        { id: 'h2', kind: 'pos', label: H2, x: h2P[0], y: h2P[1], t0: 0.5, d: TITLE - 0.5, box: [h2P[0], h2P[1] - 60, 820, 120], dup: false, del: false },
+        { id: 'h3', kind: 'pos', label: H3, x: h3P[0], y: h3P[1], t0: 0.95, d: TITLE - 0.95, box: [h3P[0], h3P[1] - 60, 820, 120], dup: false, del: false },
+        { id: 'note', kind: 'pos', label: NOTE, x: ntP[0], y: ntP[1], t0: 1.5, d: TITLE - 1.5, box: [ntP[0], ntP[1] - 60, 500, 120], dup: false, del: false },
+        ...per,
+        { id: 'outro1', kind: 'pos', label: O1, x: o1P[0], y: o1P[1], t0: OUT + 0.1, d: DUR - (OUT + 0.1), box: [o1P[0] - 470, o1P[1] - 100, 940, 200], dup: false, del: false },
+        { id: 'outro2', kind: 'pos', label: O2, x: o2P[0], y: o2P[1], t0: OUT + 0.4, d: DUR - (OUT + 0.4), box: [o2P[0] - 470, o2P[1] - 100, 940, 200], dup: false, del: false },
+        { id: 'outroLogo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: OUT, d: DUR - OUT, box: [lgP[0] - 320, lgP[1] - 60, 640, 120], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: OUT + 1.25, d: DUR - (OUT + 1.25), box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+      ];
     }
     const pageAt = (t) => t < TITLE ? (() => titlePage(t)) : t < OUT ? (() => { const k = Math.floor((t - TITLE) / QD); qpage(k, t - TITLE - k * QD); }) : (() => outroPage(t - OUT));
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         const starts = [TITLE, TITLE + QD, TITLE + 2 * QD, OUT];
         const s = starts.find(x => t >= x && t < x + TEAR);
@@ -522,5 +693,5 @@ STUDIO_REG['n2'] = (() => {
 
   const P = V === 'listed' ? listed() : V === 'signs' ? signs() : V === 'sound' ? sound() : V === 'questions' ? questions() : chat();
   const fin = V === 'questions' ? { vig: 0.05, grain: 0.1 } : { vig: 0.22, grain: 0.18 };
-  DIR = { dur: P.dur, bg: V === 'questions' ? PAPER : BLK, finish: fin, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: V === 'questions' ? PAPER : BLK, finish: fin, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

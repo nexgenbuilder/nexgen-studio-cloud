@@ -35,6 +35,17 @@ STUDIO_REG['estate'] = (() => {
   const vert = s => K7.isVert(s.c);
   const topIn = (c, box) => { const r = K3.wholeIn(c, box); return [r[0], box[1], r[2], r[3]]; };   // whole, top-aligned in box
   const musicBed = (dur, o) => ['music', 0, dur, 0.95, Object.assign({ style: FM.music, bpm: FM.bpm, key: 0, end: dur - 0.6 }, o || {})];
+  // Per-element model — same contract as tpl_food.js: when this template runs as a
+  // nested block inside a free edit, tpl_free sets window.__NX_BLOCK_EL to the
+  // block's `el` data before calling this function and clears it after. The
+  // template captures that (live) object at build time; render() reads positions
+  // from it. No `el` -> EL is null and every position falls back to the original
+  // hardcoded value, so rendering is byte-for-byte the old path.
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
+  const mkEl = (id, label, dx, dy, t0, d, boxFn) => { const p = posOf(elP(id), [dx, dy]); return { id, kind: 'pos', label, x: p[0], y: p[1], t0, d, box: boxFn(p), dup: false, del: false }; };
   function shade(y0, y1, a0, a1, col) { if (VID.collecting) return; const c = G(), g = c.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, rgbaOf(col || BLK, a0)); g.addColorStop(1, rgbaOf(col || BLK, a1)); c.fillStyle = g; c.fillRect(-20, y0, W + 40, y1 - y0); D(); }
   const fill = (r, col, a) => { if (VID.collecting) return; const c = G(); if (a !== undefined) c.globalAlpha = a; c.fillStyle = col; c.fillRect(r[0], r[1], r[2], r[3]); D(); };
   const fade = (str, x, y, f, col, p, o) => { if (p <= 0 || !str) return; o = o || {}; K7.txt(str, x, y + (1 - E.outC(clamp(p))) * (o.rise === undefined ? 20 : o.rise), f, col, Object.assign({}, o, { a: E.outC(clamp(p)) * (o.a === undefined ? 1 : o.a) })); };
@@ -69,28 +80,56 @@ STUDIO_REG['estate'] = (() => {
     const TA = 4.2, TB = 8.2, TC = 12.2, TD = 0.7, DUR = 16.8;
     S[0].start = 0; S[1].start = S[2].start = TA - 0.1; S[3].start = S[4].start = TB - 0.1;
     let MM = null; const m = () => MM || (MM = { ms: Math.min(200, fitSize(MAST, 700, 936, 200, SER, 14)), al: K7.fitLines(ADDR, 500, SER, 520, 70, 3, { style: 'italic' }) });
+    // cover geometry, shared by render() and elements() so they cannot drift
+    function coverGeom() {
+      const s = S[0], v = vert(s), r0 = v ? topIn(s.c, [72, 420, 520, 880]) : topIn(s.c, [72, 420, 936, 527]);
+      const [crx, cry] = posOf(elP('cover'), [r0[0], r0[1]]);
+      const r = [crx, cry, r0[2], r0[3]];
+      const cx0 = v ? r[0] + r[2] + 40 : 72, y00 = v ? 470 : r[1] + r[3] + 110;
+      const [cx, y0] = posOf(elP('facts'), [cx0, y00]);
+      const ax0 = v ? cx : 960, ay0 = v ? y0 + FT.length * 112 + 60 : y0;
+      const [ax, ay] = posOf(elP('addr'), [ax0, ay0]);
+      return { v, r, cx, y0, ax, ay };
+    }
+    // back-page geometry, shared by render() and elements()
+    function backGeom() {
+      let y = 520;
+      const offerY = y, priceY = y + 150;
+      if (PRICE) y += 230;
+      const factsY = y; if (FT.length) y += 60;
+      const addrY = y; if (ADDR) y += 40;
+      y += 150;
+      const agentY = y; if (!AG) y -= 60;
+      return { offerY, priceY, factsY, addrY, agentY, titleY: y + 50, contactY: y + (AGT ? 110 : 70), ctaY: y + (AGT ? 200 : 160), logoY: Math.min(H - 330, y + 330) };
+    }
+    // spread geometry, shared by render() and elements()
+    function spreadGeom(k) {
+      const A = S[1 + 2 * k], B = S[2 + 2 * k], t0 = k ? TB : TA;
+      const side = k ? 72 : W - 72 - 600, ra0 = vert(A) ? topIn(A.c, [k ? W - 72 - 560 : 72, 260, 560, 996]) : topIn(A.c, [72, 260, 936, 700]);
+      const [rax, ray] = posOf(elP('spread' + (k + 1)), [ra0[0], ra0[1]]);
+      const ra = [rax, ray, ra0[2], ra0[3]];
+      const capY = ra[1] + ra[3] + 150, rb = vert(B) ? topIn(B.c, [side + 160, Math.max(capY + 170, 1000), 440, 600]) : topIn(B.c, [side, Math.max(capY + 190, 1040), 600, 400]);
+      return { A, B, t0, side, ra, capY, rb };
+    }
     function paper() { if (BACKDROP() || VID.collecting) return; const c = G(), g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, DEEP2); g.addColorStop(1, DEEP1); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); }
     function aperture(s, t, r, t0) { const u = E.inOutC(seg(t, t0, 1.2)); if (u <= 0 && !VID.collecting) return; ctx.save(); if (!VID.collecting) { ctx.beginPath(); ctx.rect(r[0], r[1] + r[3] / 2 * (1 - u), r[2], r[3] * u); ctx.clip(); } K7.photo(s, t, r); ctx.restore(); if (!VID.collecting && u > 0 && u < 1) { const c = G(); c.fillStyle = OR; c.fillRect(r[0], r[1] + r[3] / 2 * (1 - u) - 1, r[2], 2); c.fillRect(r[0], r[1] + r[3] / 2 * (1 + u) - 1, r[2], 2); D(); } }
     function cover(t) {
       paper(); const { ms, al } = m();
-      if (!VID.collecting) { const p = E.inOutC(seg(t, 0.15, 0.9)), c = G(); c.beginPath(); c.rect(0, 0, 72 + 936 * p, 360); c.clip(); setF(F(700, ms, SER), 14); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(MAST, W / 2 + 7, 300); D();
+      if (!VID.collecting) { const p = E.inOutC(seg(t, 0.15, 0.9)), c = G(); c.beginPath(); c.rect(0, 0, 72 + 936 * p, 360); c.clip(); setF(F(700, ms, SER), 14); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; const [mx, my] = posOf(elP('mast'), [W / 2 + 7, 300]); c.fillText(MAST, mx, my); D();
         rule(72, 330, 936, seg(t, 0.6, 0.8), { col: WHT, from: 'l', h: 2 }); rule(72, 338, 936, seg(t, 0.7, 0.8), { col: WHT, from: 'l', h: 1 });
-        fade(KICK, 72, 386, F(600, 22, SANS), WHT, seg(t, 0.9, 0.6), { ls: 5 }); if (AREA) fade(up(AREA), 1008, 386, F(600, 22, SANS), WA(0.6), seg(t, 1.0, 0.6), { ls: 5, align: 'right' }); }
-      const s = S[0], v = vert(s), r = v ? topIn(s.c, [72, 420, 520, 880]) : topIn(s.c, [72, 420, 936, 527]);
+        const [kx, ky] = posOf(elP('kick'), [72, 386]); fade(KICK, kx, ky, F(600, 22, SANS), WHT, seg(t, 0.9, 0.6), { ls: 5 }); if (AREA) fade(up(AREA), 1008, 386, F(600, 22, SANS), WA(0.6), seg(t, 1.0, 0.6), { ls: 5, align: 'right' }); }
+      const { v, r, cx, y0, ax, ay } = coverGeom(), s = S[0];
       aperture(s, t, r, 0.6);
       if (VID.collecting) return;
-      const cx = v ? r[0] + r[2] + 40 : 72, y0 = v ? 470 : r[1] + r[3] + 110;
       FT.forEach((f, i) => { const y = y0 + i * 112, p = seg(t, 1.6 + i * 0.25, 0.7); fade(f.n, cx, y, F(500, 76, SER), WHT, p); fade(f.u === 'BED' || f.u === 'BEDS' ? 'BEDROOMS' : f.u === 'BATH' || f.u === 'BATHS' ? 'BATHROOMS' : f.u, cx + textW(f.n, F(500, 76, SER), 0) + 16, y - 6, F(600, 20, SANS), WA(0.6), p, { ls: 4 }); rule(cx, y + 30, v ? 300 : 360, p, { col: WA(0.25), from: 'l', h: 1 }); });
-      const ax = v ? cx : 960, aal = v ? 'left' : 'right', ay = v ? y0 + FT.length * 112 + 60 : y0;
+      const aal = v ? 'left' : 'right';
       if (ADDR) al.lines.forEach((ln, i) => fade(ln, ax, ay + i * al.size * 1.05, F(500, al.size, SER, 'italic'), WHT, seg(t, 1.9 + i * 0.15, 0.8), { align: aal }));
       else K7.need('address', ax, ay, 26, { align: aal, col: WHT });
       const foot = BLURB || (FEAT.length ? 'Inside: ' + FEAT.slice(0, 2).join(' · ') : '');
       if (foot) { rule(72, 1330, 936, seg(t, 2.4, 0.8), { col: WA(0.3), from: 'l', h: 1 }); const L = K7.fitLines(foot, 500, SER, 880, 42, 2, { style: 'italic' }); L.lines.forEach((ln, i) => fade(ln, 72, 1380 + i * L.size * 1.1, F(500, L.size, SER, 'italic'), WA(0.8), seg(t, 2.5 + i * 0.12, 0.8))); }
     }
     function spread(k, t) {
-      paper(); const A = S[1 + 2 * k], B = S[2 + 2 * k], t0 = k ? TB : TA;
-      const side = k ? 72 : W - 72 - 600, ra = vert(A) ? topIn(A.c, [k ? W - 72 - 560 : 72, 260, 560, 996]) : topIn(A.c, [72, 260, 936, 700]);
-      const capY = ra[1] + ra[3] + 150, rb = vert(B) ? topIn(B.c, [side + 160, Math.max(capY + 170, 1000), 440, 600]) : topIn(B.c, [side, Math.max(capY + 190, 1040), 600, 400]);
+      paper(); const { A, B, t0, ra, capY, rb } = spreadGeom(k);
       aperture(A, t, ra, t0 + 0.35);
       if (!VID.collecting) { const p = seg(t, t0 + 0.9, 0.6), c = G(); c.globalAlpha = E.outC(p); c.shadowColor = 'rgba(0,0,0,0.25)'; c.shadowBlur = 30; c.shadowOffsetY = 12; c.fillStyle = DEEP2; c.fillRect(rb[0] - 14, rb[1] - 14 + (1 - E.outC(p)) * 40, rb[2] + 28, rb[3] + 28); D(); }
       ctx.save(); ctx.globalAlpha = E.outC(seg(t, t0 + 1.0, 0.6)); K7.photo(B, t, [rb[0], rb[1] + (1 - E.outC(seg(t, t0 + 0.9, 0.6))) * 40, rb[2], rb[3]]); ctx.restore();
@@ -102,16 +141,16 @@ STUDIO_REG['estate'] = (() => {
       fade(MAST + '   ·   ' + (k + 2), W / 2, H - 140, F(600, 18, SANS), WA(0.45), seg(t, t0 + 1.0, 0.6), { ls: 6, align: 'center' });
     }
     function back(t) {
-      paper(); if (VID.collecting) return; const t0 = TC; let y = 520;
-      if (PRICE) { fade(OFFER, W / 2, y, F(500, 50, SER, 'italic'), WA(0.75), seg(t, t0 + 0.4, 0.8), { align: 'center' }); const ps = priceOr(PRICE, DEAL); fade(ps, W / 2, y + 150, F(700, Math.min(150, fitSize(ps, 700, 936, 150, SER, 0)), SER), WHT, seg(t, t0 + 0.6, 0.9), { align: 'center' }); y += 230; }
-      if (FT.length) { fade(K7.factStr(FT, '   ·   '), W / 2, y, F(600, 24, SANS), WA(0.7), seg(t, t0 + 0.9, 0.7), { align: 'center', ls: 4 }); y += 60; }
-      if (ADDR) { fade(ADDR + (AREA ? ', ' + AREA : ''), W / 2, y, F(500, Math.min(40, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 500, 936, 40, SER, 0, 'italic')), SER, 'italic'), WHT, seg(t, t0 + 1.0, 0.7), { align: 'center' }); y += 40; }
-      rule(W / 2, y + 40, 160, seg(t, t0 + 1.2, 0.8), { col: OR }); y += 150;
-      if (AG) fade(AG, W / 2, y, F(500, 60, SER, 'italic'), WHT, seg(t, t0 + 1.4, 0.8), { align: 'center' }); else y -= 60;
-      if (AGT) fade(up(AGT), W / 2, y + 50, F(600, 20, SANS), OR, seg(t, t0 + 1.5, 0.7), { align: 'center', ls: 5 });
-      const ph = K7.agentPhone({ agent_phone: AGP }), web = URL || CONTACT.web; fade([ph, web].filter(Boolean).join('   ·   '), W / 2, y + (AGT ? 110 : 70), F(600, 26, SANS), WA(0.75), seg(t, t0 + 1.6, 0.7), { align: 'center', ls: 2 });
-      const cp = seg(t, t0 + 1.9, 0.8); if (cp > 0) { const cy = y + (AGT ? 200 : 160), c = G(), f = F(600, ctaSize(END, 600, 24, SANS, 6), SANS), bw = textW(END, f, 6) + 100; c.globalAlpha = E.outC(cp); c.strokeStyle = WHT; c.lineWidth = 1.5; c.strokeRect(W / 2 - bw / 2, cy - 36, bw, 72); setF(f, 6); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(END, W / 2 + 3, cy + 1); D(); }
-      K7.logo(W / 2, Math.min(H - 330, y + 330), 380, E.outC(seg(t, t0 + 2.1, 0.8)));
+      paper(); if (VID.collecting) return; const t0 = TC, G = backGeom();
+      if (PRICE) { fade(OFFER, W / 2, G.offerY, F(500, 50, SER, 'italic'), WA(0.75), seg(t, t0 + 0.4, 0.8), { align: 'center' }); const ps = priceOr(PRICE, DEAL); const [px, py] = posOf(elP('price'), [W / 2, G.priceY]); fade(ps, px, py, F(700, Math.min(150, fitSize(ps, 700, 936, 150, SER, 0)), SER), WHT, seg(t, t0 + 0.6, 0.9), { align: 'center' }); }
+      if (FT.length) fade(K7.factStr(FT, '   ·   '), W / 2, G.factsY, F(600, 24, SANS), WA(0.7), seg(t, t0 + 0.9, 0.7), { align: 'center', ls: 4 });
+      if (ADDR) fade(ADDR + (AREA ? ', ' + AREA : ''), W / 2, G.addrY, F(500, Math.min(40, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 500, 936, 40, SER, 0, 'italic')), SER, 'italic'), WHT, seg(t, t0 + 1.0, 0.7), { align: 'center' });
+      rule(W / 2, G.agentY - 110, 160, seg(t, t0 + 1.2, 0.8), { col: OR });
+      if (AG) fade(AG, W / 2, G.agentY, F(500, 60, SER, 'italic'), WHT, seg(t, t0 + 1.4, 0.8), { align: 'center' });
+      if (AGT) fade(up(AGT), W / 2, G.titleY, F(600, 20, SANS), OR, seg(t, t0 + 1.5, 0.7), { align: 'center', ls: 5 });
+      const ph = K7.agentPhone({ agent_phone: AGP }), web = URL || CONTACT.web; fade([ph, web].filter(Boolean).join('   ·   '), W / 2, G.contactY, F(600, 26, SANS), WA(0.75), seg(t, t0 + 1.6, 0.7), { align: 'center', ls: 2 });
+      const cp = seg(t, t0 + 1.9, 0.8); if (cp > 0) { const [ex, ey] = posOf(elP('cta'), [W / 2, G.ctaY]), c = G(), f = F(600, ctaSize(END, 600, 24, SANS, 6), SANS), bw = textW(END, f, 6) + 100; c.globalAlpha = E.outC(cp); c.strokeStyle = WHT; c.lineWidth = 1.5; c.strokeRect(ex - bw / 2, ey - 36, bw, 72); setF(f, 6); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(END, ex + 3, ey + 1); D(); }
+      K7.logo(W / 2, G.logoY, 380, E.outC(seg(t, t0 + 2.1, 0.8)));
     }
     function turn(t, tc, A, B) {   // page turn right to left: B is revealed under the lifting page, the page's back passes over A
       const u = seg(t, tc, TD); if (u <= 0) { A(t); return; } if (u >= 1) { B(t); return; }
@@ -120,6 +159,24 @@ STUDIO_REG['estate'] = (() => {
       if (VID.collecting) return; const c = G(); let g = c.createLinearGradient(fx, 0, fx + 160, 0); g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(fx, 0, 160, H);
       g = c.createLinearGradient(fx - bw, 0, fx, 0); g.addColorStop(0, DEEP1); g.addColorStop(0.7, mix(DEEP1, '#000000', 0.06)); g.addColorStop(1, mix(DEEP1, '#000000', 0.18)); c.fillStyle = g; c.fillRect(fx - bw, 0, bw, H); D();
     }
+    function elements() {
+      const { ms } = m(), G = coverGeom(), B = backGeom();
+      const els = [
+        mkEl('mast', MAST, W / 2 + 7, 300, 0.15, TA - 0.15, p => [p[0] - 468, p[1] - ms, 936, ms]),
+        mkEl('kick', KICK, 72, 386, 0.9, TA - 0.9, p => [p[0], p[1] - 22, 500, 44]),
+        { id: 'cover', kind: 'pos', label: 'Cover photo', x: G.r[0], y: G.r[1], t0: 0.6, d: TA - 0.6, box: [G.r[0], G.r[1], G.r[2], G.r[3]], dup: false, del: false },
+        mkEl('facts', 'Beds · baths · size', G.cx, G.y0, 1.6, TA - 1.6, p => [p[0], p[1] - 76, 440, Math.max(112, FT.length * 112) + 76]),
+        mkEl('addr', ADDR || 'Address', G.ax, G.ay, 1.9, TA - 1.9, p => [p[0] - (G.v ? 0 : 520), p[1] - 70, 520, 210]),
+      ];
+      for (let k = 0; k < 2; k++) {
+        const g = spreadGeom(k), t0 = k ? TB : TA;
+        els.push({ id: 'spread' + (k + 1), kind: 'pos', label: 'Spread ' + (k + 1) + ' photo', x: g.ra[0], y: g.ra[1], t0: t0 + 0.35, d: 3.6, box: [g.ra[0], g.ra[1], g.ra[2], g.ra[3]], dup: false, del: false });
+      }
+      if (PRICE) els.push(mkEl('price', priceOr(PRICE, DEAL), W / 2, B.priceY, TC + 0.6, DUR - (TC + 0.6), p => [p[0] - 468, p[1] - 150, 936, 180]));
+      const ctaF = F(600, ctaSize(END, 600, 24, SANS, 6), SANS), ctaW = textW(END, ctaF, 6) + 100;
+      els.push(mkEl('cta', END, W / 2, B.ctaY, TC + 1.9, DUR - (TC + 1.9), p => [p[0] - ctaW / 2, p[1] - 36, ctaW, 72]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [],
       render(t) {
@@ -127,6 +184,7 @@ STUDIO_REG['estate'] = (() => {
         else if (t < TB + TD) turn(t, TB, t2 => spread(0, t2), t2 => spread(1, t2));
         else turn(t, TC, t2 => spread(1, t2), back);
       },
+      elements,
       cues() {
         const ev = [['air', 0.2, 0.2, -0.3], ['air', 0.65, 0.25, 0], ['tink', 1.7, 0.12, 0.3], ['tink', 1.95, 0.1, 0.3], ['tink', 2.2, 0.1, 0.3]];
         [TA, TB, TC].forEach(tc => { ev.push(['paper', tc + 0.05, 0.35, 0.4]); ev.push(['air', tc + 0.45, 0.16, 0]); });
@@ -149,6 +207,13 @@ STUDIO_REG['estate'] = (() => {
     S[0].start = T1; S.slice(1).forEach((s, k) => (s.start = C0 + k * CD));
     const PS = priceOr(PRICE, DEAL);
     let MM = null; const m = () => MM || (MM = { hs: Math.min(330, fitSize(H1, 700, 980, 330, DSP, 2), fitSize(H2, 700, 980, 330, DSP, 2)), psz: Math.min(230, fitSize(PS || '$0', 700, 936, 230, DSP, 2)), al: K7.fitLines(ADDR, 600, SANS, 936, 56, 2) });
+    // hero geometry, shared by render() and elements() so they cannot drift
+    function heroGeom() {
+      const sh = S[0], v = vert(sh);
+      const r0 = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : (() => { const h = W / K3.ar(sh.c); return [0, 330, W, h]; })();
+      const [hx, hy] = posOf(elP('hero'), [r0[0], r0[1]]);
+      return { v, r: [hx, hy, r0[2], r0[3]], y0: v ? 1150 : 330 + W / K3.ar(sh.c) + 210, tagY: v ? 290 : 360 };
+    }
     function odo(str, cx, y, size, p, col) {   // digits roll up to the price; other characters slide in
       if (VID.collecting || !str) return; const f = F(700, size, DSP), ls = 2, chars = [...str], ws = chars.map(ch => textW(ch, f, ls)), tot = ws.reduce((a, b) => a + b, 0); let x = cx - tot / 2; const c = G(); setF(f, ls); c.fillStyle = col; c.textBaseline = 'alphabetic'; c.textAlign = 'left';
       c.beginPath(); c.rect(cx - tot / 2 - 20, y - size * 0.95, tot + 40, size * 1.15); c.clip();
@@ -160,11 +225,25 @@ STUDIO_REG['estate'] = (() => {
       });
       D();
     }
+    function elements() {
+      const { r, y0, tagY } = heroGeom(), { al, psz } = m();
+      const els = [
+        mkEl('headline', H1 + ' ' + H2, 72, tagY, T1, OUT - T1, p => { const f = F(700, 34, DSP), w = textW(H1 + ' ' + H2, f, 4) + 44; return [p[0], p[1], w, 60]; }),
+        { id: 'hero', kind: 'pos', label: 'Hero photo', x: r[0], y: r[1], t0: T1, d: C0 - T1, box: [r[0], r[1], r[2], r[3]], dup: false, del: false },
+        mkEl('addr', ADDR || 'Address', W / 2, y0 + 90, T1 + 1.0, OUT - (T1 + 1.0), p => [p[0] - 468, p[1] - 56, 936, 56 * Math.max(1, al.lines.length) + 40]),
+        mkEl('cta', CTA, W / 2, 760, OUT, DUR - OUT, p => { const f = F(700, ctaSize(CTA, 700, 64, DSP, 3), DSP), tw = textW(CTA, f, 3) + 100; return [p[0] - tw / 2, p[1] - 60, tw, 120]; }),
+      ];
+      if (PS) els.splice(2, 0, mkEl('price', PS, W / 2, y0, T1 + 0.4, OUT - (T1 + 0.4), p => [p[0] - 468, p[1] - psz, 936, psz * 1.15 + 20]));
+      if (FT.length) els.push(mkEl('facts', 'Beds · baths · size', W / 2, y0 + 90 + Math.max(1, al.lines.length) * al.size * 1.15 + 100, T1 + 1.4, OUT - (T1 + 1.4), p => [p[0] - 400, p[1] - 30, 800, 60]));
+      if (AG) els.push(mkEl('agent', AG, W / 2, 920, OUT + 0.6, DUR - (OUT + 0.6), p => [p[0] - 400, p[1] - 54, 800, 64]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [[0.3, 10], [0.6, 10]],
+      elements,
       render(t) {
         if (!BACKDROP() && !VID.collecting) { const c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, DEEP1); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); }
-        const sh0 = S[0], v = vert(sh0), band = v ? null : [0, 330, W, W / K3.ar(sh0.c)], q = seg(t, OUT - 0.3, 0.35);
+        const sh0 = S[0], v = vert(sh0), band = v ? null : [0, 330, W, W / K3.ar(sh0.c)], q = seg(t, OUT - 0.3, 0.35), HG = heroGeom();
         // photos: the hero, then the carousel pushes in from the right
         if (t >= T1 - 0.05 && t < OUT) {
           const k = t < C0 ? 0 : 1 + Math.min(2, Math.floor((t - C0) / CD)), sh = S[k], into = k === 0 ? 1 : E.inOutC(seg(t, sh.start - 0.05, 0.45));
@@ -172,7 +251,7 @@ STUDIO_REG['estate'] = (() => {
           const op = seg(t, T1 - 0.05, 0.3);
           ctx.save(); ctx.globalAlpha = op * (1 - q);
           if (k > 0 && into < 1) { const pv = S[k - 1], r = rectOf(pv); K7.photo(pv, t, [r[0] - into * W * 0.3, r[1], r[2], r[3]], { lt: 1 }); }
-          const r = rectOf(sh); K7.photo(sh, t, [r[0] + (1 - into) * W, r[1], r[2], r[3]], { lt: 1 }); ctx.restore();
+          const r = k === 0 ? HG.r : rectOf(sh); K7.photo(sh, t, [r[0] + (1 - into) * W, r[1], r[2], r[3]], { lt: 1 }); ctx.restore();
           if (!VID.collecting) { if (r[3] >= H - 2) shade(H * 0.42, H * 0.62, 0, 0.94, DEEP2); else fill([0, r[1] + r[3], W, 6], OR, op * (1 - q)); }
           if (k > 0 && FEAT[k - 1] && !VID.collecting) { const fp = seg(t, sh.start + 0.25, 0.4) * (1 - seg(t, sh.start + CD - 0.2, 0.2)) * (1 - q), f = F(700, 30, SANS), tw = textW(up(FEAT[k - 1]), f, 3), y = r[3] >= H - 2 ? 940 : r[1] + r[3] - 70, c = G(); c.globalAlpha = E.outC(fp); c.fillStyle = DEEP2; c.fillRect(72, y - 34, tw + 60, 64); c.strokeStyle = OR; c.lineWidth = 3; c.strokeRect(72, y - 34, tw + 60, 64); setF(f, 3); c.fillStyle = WHT; c.textBaseline = 'middle'; c.fillText(up(FEAT[k - 1]), 102, y); D(); }
         }
@@ -181,22 +260,25 @@ STUDIO_REG['estate'] = (() => {
         const { hs, psz, al } = m(), sh = seg(t, T1 - 0.2, 0.4);
         if (sh < 1) { const a = 1 - E.inC(sh), y1 = 860, y2 = y1 + hs * 0.95;
           for (const [str, t0, y] of [[H1, 0.25, y1], [H2, 0.55, y2]]) { const p = seg(t, t0, 0.18); if (p <= 0) continue; const c = G(), s = lerp(1.4, 1, E.outC(p)); c.globalAlpha = a * clamp(p * 3); c.translate(W / 2, y); c.scale(s, s); setF(F(700, hs, DSP), 2); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; if (str === H2) { const bp = E.inOutC(seg(t, 0.75, 0.35)), w = textW(str, F(700, hs, DSP), 2) + 60; c.fillStyle = OR; c.fillRect(-w / 2, -hs * 0.78, w * bp, hs * 0.86); c.fillStyle = bp > 0.5 ? K7.on(OR) : WHT; } else c.fillStyle = WHT; c.fillText(str, 0, 0); D(); } }
-        if (t >= T1 && t < OUT) { const p = seg(t, T1 + 0.1, 0.3), f = F(700, 34, DSP), str = H1 + ' ' + H2, w = textW(str, f, 4) + 44, y = v ? 290 : band[1] + 30, c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.fillRect(72, y, w * E.outC(p), 60); setF(f, 4); c.fillStyle = K7.on(OR); c.textBaseline = 'middle'; c.fillText(str, 94, y + 32); D(); }
+        if (t >= T1 && t < OUT) { const p = seg(t, T1 + 0.1, 0.3), f = F(700, 34, DSP), str = H1 + ' ' + H2, w = textW(str, f, 4) + 44, [hx, hy] = posOf(elP('headline'), [72, HG.tagY]), c = G(); c.globalAlpha = E.outC(p) * (1 - q); c.fillStyle = OR; c.fillRect(hx, hy, w * E.outC(p), 60); setF(f, 4); c.fillStyle = K7.on(OR); c.textBaseline = 'middle'; c.fillText(str, hx + 22, hy + 32); D(); }
         // the listing card: price, address, facts
         if (t >= T1 + 0.3 && t < OUT) {
-          const y0 = v ? 1150 : band[1] + band[3] + 210, a = 1 - q;
-          if (PS) odo(PS, W / 2, y0, psz, seg(t, T1 + 0.4, 1.5), OR); else fade('NEW TO THE MARKET', W / 2, y0 - 40, F(700, 70, DSP), OR, seg(t, T1 + 0.4, 0.5), { align: 'center', ls: 3, a });
-          if (ADDR) al.lines.forEach((ln, i) => fade(ln, W / 2, y0 + 90 + i * al.size * 1.15, F(600, al.size, SANS), WHT, seg(t, T1 + 1.0 + i * 0.1, 0.5), { align: 'center', a }));
-          else K7.need('address', W / 2, y0 + 100, 26, { align: 'center', col: WHT, a });
+          const y0 = HG.y0, a = 1 - q, [px, py] = posOf(elP('price'), [W / 2, y0]);
+          if (PS) odo(PS, px, py, psz, seg(t, T1 + 0.4, 1.5), OR); else fade('NEW TO THE MARKET', px, py - 40, F(700, 70, DSP), OR, seg(t, T1 + 0.4, 0.5), { align: 'center', ls: 3, a });
+          const [ax, ay0] = posOf(elP('addr'), [W / 2, y0 + 90]);
+          if (ADDR) al.lines.forEach((ln, i) => fade(ln, ax, ay0 + i * al.size * 1.15, F(600, al.size, SANS), WHT, seg(t, T1 + 1.0 + i * 0.1, 0.5), { align: 'center', a }));
+          else K7.need('address', ax, ay0 + 10, 26, { align: 'center', col: WHT, a });
           const ay = y0 + 90 + Math.max(1, al.lines.length) * al.size * 1.15;
           if (AREA) fade(up(AREA), W / 2, ay + 10, F(600, 26, SANS), ACC2, seg(t, T1 + 1.2, 0.5), { align: 'center', ls: 5, a });
-          factRow(FT, W / 2, ay + 100, 40, WHT, seg(t, T1 + 1.4, 0.8), { icol: OR, a });
+          const [fx, fy] = posOf(elP('facts'), [W / 2, ay + 100]);
+          factRow(FT, fx, fy, 40, WHT, seg(t, T1 + 1.4, 0.8), { icol: OR, a });
         }
         // close
         if (t >= OUT) {
           const o = t - OUT, f = F(700, ctaSize(CTA, 700, 64, DSP, 3), DSP), tw = textW(CTA, f, 3), p = seg(o, 0.2, 0.4);
-          const c = G(); c.fillStyle = OR; c.fillRect(W / 2 - (tw + 100) / 2, 700, (tw + 100) * E.outC(p), 120); setF(f, 3); c.fillStyle = K7.on(OR); c.globalAlpha = clamp(p * 2 - 0.6); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, W / 2, 764); D();
-          if (AG) fade(AG, W / 2, 920, F(700, 54, SANS), WHT, seg(o, 0.6, 0.5), { align: 'center' });
+          const [cx2, cy2] = posOf(elP('cta'), [W / 2, 760]), c = G(); c.fillStyle = OR; c.fillRect(cx2 - (tw + 100) / 2, cy2 - 60, (tw + 100) * E.outC(p), 120); setF(f, 3); c.fillStyle = K7.on(OR); c.globalAlpha = clamp(p * 2 - 0.6); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, cx2, cy2 + 4); D();
+          const [agx, agy] = posOf(elP('agent'), [W / 2, 920]);
+          if (AG) fade(AG, agx, agy, F(700, 54, SANS), WHT, seg(o, 0.6, 0.5), { align: 'center' });
           fade([K7.agentPhone({ agent_phone: AGP }), URL || CONTACT.web].filter(Boolean).join('   ·   '), W / 2, 990, F(600, 30, SANS), WA(0.8), seg(o, 0.75, 0.5), { align: 'center', ls: 2 });
           if (ADDR) fade(up(H1 + ' ' + H2) + '  ·  ' + up(ADDR), W / 2, 1060, F(600, 22, SANS), ACC2, seg(o, 0.9, 0.5), { align: 'center', ls: 3 });
           K7.logo(W / 2, 1250, 460, E.outC(seg(o, 1.0, 0.6)));
@@ -239,33 +321,53 @@ STUDIO_REG['estate'] = (() => {
       const fw = 620, gap = 34, u = t - F0, off = 140 - u * 120;
       S.slice(1).forEach((s, i) => { const x = off + i * (fw + gap), r = topIn(s.c, [x, y, fw, 620]); if (x > W || x + fw < 0) return; const a = seg(t, F0 + i * 0.15, 0.5); if (!VID.collecting && a > 0) fill([r[0] - 10, r[1] - 10, r[2] + 20, r[3] + 20], '#FFFFFF', a); ctx.save(); ctx.globalAlpha = a; K7.photo(s, t, r); ctx.restore(); });
     }
+    function elements() {
+      const sh = S[0], v = vert(sh);
+      const hr0 = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : topIn(sh.c, [72, 330, 936, 700]);
+      const [hrx, hry] = posOf(elP('hero'), [hr0[0], hr0[1]]);
+      const hr = [hrx, hry, hr0[2], hr0[3]];
+      const [tx, ty] = posOf(elP('date'), [72, v ? 1230 : hr[1] + hr[3] + 80]);
+      const els = [
+        mkEl('inv', INV, W / 2, 760, 0.15, DO - 0.15, p => [p[0] - 450, p[1] - 120, 900, 140]),
+        mkEl('head', HEAD, W / 2, 980, 0.35, DO - 0.35, p => [p[0] - 470, p[1] - 230, 940, 250]),
+        { id: 'hero', kind: 'pos', label: 'Hero photo', x: hr[0], y: hr[1], t0: H0, d: F0 - H0, box: [hr[0], hr[1], hr[2], hr[3]], dup: false, del: false },
+        mkEl('date', DATE || 'Date tile', tx, ty, DO + 1.0, F0 - (DO + 1.0), p => [p[0], p[1], 936, 380]),
+        mkEl('peek', PEEK, W / 2, 470, F0, OUT - F0, p => [p[0] - 468, p[1] - 66, 936, 80]),
+        mkEl('end', END, W / 2, 640, OUT, DUR - OUT, p => [p[0] - 460, p[1] - 160, 920, 180]),
+        mkEl('cta', CTA, W / 2, 945, OUT + 0.8, DUR - (OUT + 0.8), p => { const f = F(700, ctaSize(CTA, 700, 34, SANS, 4), SANS), bw = textW(CTA, f, 4) + 100; return [p[0] - bw / 2, p[1] - 45, bw, 90]; }),
+      ];
+      if (AG) els.push(mkEl('agent', AG, W / 2, 1080, OUT + 1.0, DUR - (OUT + 1.0), p => [p[0] - 400, p[1] - 30, 800, 60]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [],
+      elements,
       render(t) {
         if (!BACKDROP() && !VID.collecting) { const c = G(); c.fillStyle = BLK; c.fillRect(-20, -20, W + 40, H + 40); D(); }
-        const q = seg(t, OUT - 0.35, 0.35), sh = S[0], v = vert(sh), hr = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : topIn(sh.c, [72, 330, 936, 700]);
+        const q = seg(t, OUT - 0.35, 0.35), sh = S[0], v = vert(sh), hr0 = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : topIn(sh.c, [72, 330, 936, 700]);
+        const [hrx, hry] = posOf(elP('hero'), [hr0[0], hr0[1]]), hr = [hrx, hry, hr0[2], hr0[3]];
         // hero
         if (t >= H0 && t < F0 + 0.3) { const a = 1 - seg(t, F0 - 0.2, 0.4); ctx.save(); ctx.globalAlpha = a; K7.photo(sh, t, hr); ctx.restore(); if (v && !VID.collecting) { ctx.save(); ctx.globalAlpha = a; shade(H * 0.5, H * 0.62, 0, 1, BLK); fill([0, H * 0.62, W, H], BLK); ctx.restore(); } }
         // date tile, time, address
         if (t >= DO + 0.8 && t < F0 + 0.2 && !VID.collecting) {
-          const a = 1 - seg(t, F0 - 0.25, 0.4), y0 = v ? 1230 : hr[1] + hr[3] + 80, p = seg(t, DO + 1.0, 0.6), c = G(), tw = 330, th = 380;
-          c.globalAlpha = a * E.outC(p); c.translate(0, (1 - E.outC(p)) * 80); c.shadowColor = 'rgba(0,0,0,0.18)'; c.shadowBlur = 30; c.shadowOffsetY = 10; c.fillStyle = TBG; c.fillRect(72, y0, tw, th); c.shadowBlur = 0; c.shadowColor = 'transparent';
-          c.fillStyle = OR; c.fillRect(72, y0, tw, 90); D();
-          if (DATE) { K7.txt(DTOP, 72 + tw / 2, y0 + 58, F(700, Math.min(30, fitSize(DTOP || ' ', 700, tw - 30, 30, SANS, 3)), SANS), K7.on(OR), { align: 'center', ls: 3, a: a * E.outC(p) }); if (DAYN) K7.txt(DAYN, 72 + tw / 2, y0 + 300, F(700, 220, SER), K7.on(TBG), { align: 'center', a: a * E.outC(p) }); }
-          else K7.need('date', 72 + tw / 2, y0 + 240, 20, { align: 'center', col: K7.on(TBG), a: a * E.outC(p) });
-          const x = 72 + tw + 50, wcol = 1008 - x;
+          const a = 1 - seg(t, F0 - 0.25, 0.4), [tx, ty] = posOf(elP('date'), [72, v ? 1230 : hr[1] + hr[3] + 80]), y0 = ty, p = seg(t, DO + 1.0, 0.6), c = G(), tw = 330, th = 380;
+          c.globalAlpha = a * E.outC(p); c.translate(0, (1 - E.outC(p)) * 80); c.shadowColor = 'rgba(0,0,0,0.18)'; c.shadowBlur = 30; c.shadowOffsetY = 10; c.fillStyle = TBG; c.fillRect(tx, y0, tw, th); c.shadowBlur = 0; c.shadowColor = 'transparent';
+          c.fillStyle = OR; c.fillRect(tx, y0, tw, 90); D();
+          if (DATE) { K7.txt(DTOP, tx + tw / 2, y0 + 58, F(700, Math.min(30, fitSize(DTOP || ' ', 700, tw - 30, 30, SANS, 3)), SANS), K7.on(OR), { align: 'center', ls: 3, a: a * E.outC(p) }); if (DAYN) K7.txt(DAYN, tx + tw / 2, y0 + 300, F(700, 220, SER), K7.on(TBG), { align: 'center', a: a * E.outC(p) }); }
+          else K7.need('date', tx + tw / 2, y0 + 240, 20, { align: 'center', col: K7.on(TBG), a: a * E.outC(p) });
+          const x = tx + tw + 50, wcol = 1008 - x;
           if (TIME) { K7.icon('clock', x + 22, y0 + 50, 44, OR, { a: a * seg(t, DO + 1.3, 0.5) }); fade(TIME, x + 64, y0 + 70, F(700, Math.min(64, fitSize(TIME, 700, wcol - 70, 64, SER, 0)), SER), WHT, seg(t, DO + 1.3, 0.5), { a }); }
           else K7.need('time', x, y0 + 70, 20, { col: WHT, a });
           const al = K7.fitLines(ADDR, 600, SANS, wcol - 60, 40, 3);
           if (ADDR) { K7.icon('pin', x + 22, y0 + 160, 44, OR, { a: a * seg(t, DO + 1.5, 0.5) }); al.lines.forEach((ln, i) => fade(ln, x + 64, y0 + 175 + i * al.size * 1.15, F(600, al.size, SANS), WHT, seg(t, DO + 1.5 + i * 0.1, 0.5), { a })); }
           else K7.need('address', x, y0 + 175, 20, { col: WHT, a });
           if (AREA) fade(up(AREA), x + 64, y0 + 190 + Math.max(1, al.lines.length) * al.size * 1.15, F(600, 22, SANS), OR, seg(t, DO + 1.7, 0.5), { ls: 4, a });
-          factRow(FT, 72, y0 + th + 90, 30, WHT, seg(t, DO + 1.9, 0.7), { align: 'left', icol: OR, a, rule: rgbaOf(WHT, 0.3) });
+          factRow(FT, tx, y0 + th + 90, 30, WHT, seg(t, DO + 1.9, 0.7), { align: 'left', icol: OR, a, rule: rgbaOf(WHT, 0.3) });
         }
         // filmstrip
         if (t >= F0 - 0.2 && t < OUT + 0.2) {
           ctx.save(); ctx.globalAlpha = 1 - q; strip(t, 560); ctx.restore();
-          if (!VID.collecting) { fade(PEEK, W / 2, 470, F(500, Math.min(66, fitSize(PEEK, 500, 936, 66, SER, 0, 'italic')), SER, 'italic'), WHT, seg(t, F0, 0.7), { align: 'center', a: 1 - q });
+          if (!VID.collecting) { const [pkx, pky] = posOf(elP('peek'), [W / 2, 470]); fade(PEEK, pkx, pky, F(500, Math.min(66, fitSize(PEEK, 500, 936, 66, SER, 0, 'italic')), SER, 'italic'), WHT, seg(t, F0, 0.7), { align: 'center', a: 1 - q });
             const fy = 1240; FEAT.slice(0, 3).forEach((ft, i) => fade('—  ' + ft, 72, fy + i * 56, F(600, 36, SANS), WHT, seg(t, F0 + 0.6 + i * 0.25, 0.5), { a: 1 - q }));
             const dline = [DATE, TIME].filter(Boolean).join('  ·  '); if (dline) fade(up(dline), 72, fy + Math.min(3, FEAT.length) * 56 + 4, F(700, 30, SANS), OR, seg(t, F0 + 1.2, 0.5), { ls: 4, a: 1 - q }); }
         }
@@ -275,18 +377,18 @@ STUDIO_REG['estate'] = (() => {
           door(-1, ang, a); door(1, ang, a);
           if (!VID.collecting) { const tq = seg(t, DO - 0.15, 0.2), ta = seg(t, 0.15, 0.5) * (1 - tq);
             if (ta > 0) { const c = G(); c.globalAlpha = ta; c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(W / 2 - 3, 0, 6, H); D(); }
-            fade(INV, W / 2, 760, F(400, Math.min(120, fitSize(INV, 400, 900, 120, SCR, 0)), SCR), ACC2, ta, { align: 'center' });
-            fade(HEAD, W / 2, 980, F(700, Math.min(230, fitSize(HEAD, 700, 940, 230, DSP, 4)), DSP), '#FFFFFF', seg(t, 0.35, 0.5) * (1 - tq), { align: 'center', ls: 4 });
+            const [ivx, ivy] = posOf(elP('inv'), [W / 2, 760]); fade(INV, ivx, ivy, F(400, Math.min(120, fitSize(INV, 400, 900, 120, SCR, 0)), SCR), ACC2, ta, { align: 'center' });
+            const [hdx, hdy] = posOf(elP('head'), [W / 2, 980]); fade(HEAD, hdx, hdy, F(700, Math.min(230, fitSize(HEAD, 700, 940, 230, DSP, 4)), DSP), '#FFFFFF', seg(t, 0.35, 0.5) * (1 - tq), { align: 'center', ls: 4 });
             const dl = [DATE, TIME].filter(Boolean).join('  ·  '); if (dl) fade(up(dl), W / 2, 1060, F(700, 30, SANS), ACC2, seg(t, 0.55, 0.5) * (1 - tq), { align: 'center', ls: 4 }); }
         }
         // close
         if (t >= OUT && !VID.collecting) {
           const o = t - OUT;
-          fade(END, W / 2, 640, F(400, Math.min(160, fitSize(END, 400, 920, 160, SCR, 0)), SCR), OR, seg(o, 0.2, 0.8), { align: 'center' });
+          const [enx, eny] = posOf(elP('end'), [W / 2, 640]); fade(END, enx, eny, F(400, Math.min(160, fitSize(END, 400, 920, 160, SCR, 0)), SCR), OR, seg(o, 0.2, 0.8), { align: 'center' });
           const dl = [DATE, TIME].filter(Boolean).join('  ·  '); if (dl) fade(up(dl), W / 2, 760, F(700, 34, SANS), WHT, seg(o, 0.5, 0.6), { align: 'center', ls: 4 });
           if (ADDR) fade(ADDR + (AREA ? ', ' + AREA : ''), W / 2, 820, F(600, Math.min(34, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 600, 936, 34, SANS, 0)), SANS), WA(0.75), seg(o, 0.6, 0.6), { align: 'center' });
-          const cp = seg(o, 0.8, 0.5); if (cp > 0) { const f = F(700, ctaSize(CTA, 700, 34, SANS, 4), SANS), bw = textW(CTA, f, 4) + 100, c = G(); c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(W / 2 - bw / 2, 900, bw, 90); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, W / 2 + 2, 946); D(); }
-          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), W / 2, 1080, F(600, 30, SANS), WHT, seg(o, 1.0, 0.5), { align: 'center' });
+          const cp = seg(o, 0.8, 0.5); if (cp > 0) { const f = F(700, ctaSize(CTA, 700, 34, SANS, 4), SANS), bw = textW(CTA, f, 4) + 100, [cx2, cy2] = posOf(elP('cta'), [W / 2, 945]), c = G(); c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(cx2 - bw / 2, cy2 - 45, bw, 90); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, cx2 + 2, cy2 + 1); D(); }
+          const [agx, agy] = posOf(elP('agent'), [W / 2, 1080]); fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), agx, agy, F(600, 30, SANS), WHT, seg(o, 1.0, 0.5), { align: 'center' });
           if (URL || CONTACT.web) fade(up(URL || CONTACT.web), W / 2, 1130, F(600, 22, SANS), WA(0.6), seg(o, 1.1, 0.5), { align: 'center', ls: 4 });
           K7.logo(W / 2, 1300, 420, E.outC(seg(o, 1.2, 0.6)));
         }
@@ -313,48 +415,66 @@ STUDIO_REG['estate'] = (() => {
     S[0].start = P0; S[1].start = 4.2; S[2].start = 6.9;
     const NEW = priceOr(PRICE, DEAL), OLD = priceOr(WAS, DEAL);
     let MM = null; const m = () => MM || (MM = { ns: Math.min(250, fitSize(NEW || '$0', 400, 940, 250, DSP, 1)), os: Math.min(170, fitSize(OLD || '$0', 400, 880, 170, DSP, 1)) });
+    function elements() {
+      const { ns, os } = m(), cy = 520;
+      const els = [
+        { id: 'photo', kind: 'pos', label: 'Photo', x: 0, y: 790, t0: P0, d: OUT - P0, box: [0, 790, W, 520], dup: false, del: false },
+        mkEl('price', NEW || 'New price', W / 2, cy + 110, NP, OUT - NP, p => [p[0] - 470, p[1] - ns, 940, ns + 40]),
+        mkEl('addr', ADDR || 'Address', W / 2, 1350, NP + 0.5, OUT - (NP + 0.5), p => [p[0] - 468, p[1] - 42, 936, 56]),
+        mkEl('cta', CTA, W / 2, 810, OUT + 0.3, DUR - (OUT + 0.3), p => { const f = F(700, ctaSize(CTA, 700, 40, SANS, 5), SANS), bw = textW(CTA, f, 5) + 100; return [p[0] - bw / 2, p[1] - 50, bw, 100]; }),
+      ];
+      if (WAS) els.splice(1, 0, mkEl('old', OLD, W / 2, cy + 80, P0 + 0.1, 1.3, p => [p[0] - 440, p[1] - os, 880, os + 20]));
+      if (FT.length) els.push(mkEl('facts', 'Beds · baths · size', W / 2, 1414, NP + 0.7, OUT - (NP + 0.7), p => [p[0] - 400, p[1] - 30, 800, 60]));
+      if (NEW) els.push(mkEl('endprice', up(LAB) + ' ' + NEW, W / 2, 660, OUT + 0.1, DUR - (OUT + 0.1), p => [p[0] - 470, p[1] - 90, 940, 110]));
+      if (AG) els.push(mkEl('agent', AG, W / 2, 960, OUT + 0.6, DUR - (OUT + 0.6), p => [p[0] - 400, p[1] - 32, 800, 64]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [[NP + 0.05, 14]],
+      elements,
       render(t) {
         const sp = E.outQ(seg(t, 0, 0.5)), py = 760, q = seg(t, OUT - 0.3, 0.35);
         if (!BACKDROP() && !VID.collecting) { const c = G(); c.fillStyle = DEEP2; c.fillRect(-20, -20, W + 40, H + 40); c.fillStyle = BLK; c.fillRect(0, 0, W, py * sp); c.fillStyle = OR; c.fillRect(0, py * sp - 8, W, 8); D(); }
         // photos in the lower half: push up between them
         if (t >= P0 && t < OUT + 0.3) {
-          const k = t < S[1].start ? 0 : t < S[2].start ? 1 : 2, sh = S[k], into = k ? E.inOutC(seg(t, sh.start - 0.05, 0.5)) : E.outQ(seg(t, P0, 0.6)), box = [0, py + 30, W, 520];
+          const k = t < S[1].start ? 0 : t < S[2].start ? 1 : 2, sh = S[k], into = k ? E.inOutC(seg(t, sh.start - 0.05, 0.5)) : E.outQ(seg(t, P0, 0.6)), [bx, by] = posOf(elP('photo'), [0, py + 30]), box = [bx, by, W, 520];
           const r = vert(sh) ? K3.wholeIn(sh.c, box) : topIn(sh.c, box);
           ctx.save(); ctx.globalAlpha = 1 - q; if (!VID.collecting) { ctx.beginPath(); ctx.rect(0, py, W, 560); ctx.clip(); }
           if (k > 0 && into < 1) { const pv = S[k - 1], r2 = vert(pv) ? K3.wholeIn(pv.c, box) : topIn(pv.c, box); K7.photo(pv, t, [r2[0], r2[1] - into * 560, r2[2], r2[3]], { lt: 1 }); }
           K7.photo(sh, t, [r[0], r[1] + (1 - into) * 560, r[2], r[3]], { lt: 1 }); ctx.restore();
         }
         if (VID.collecting) return;
-        const { ns, os } = m(), cy = 520;
+        const { ns, os } = m(), cy = 520, [nx, ny] = posOf(elP('price'), [W / 2, cy + 110]);
         // old price: struck, then it falls
         if (WAS && t < NP + 1.2) {
-          const p = seg(t, P0 + 0.1, 0.4), fall = Math.max(0, t - 1.35), y = cy + 80 + 1600 * fall * fall, rot = fall * 0.9, a = (1 - seg(t, 1.6, 0.5)) * E.outC(p);
-          const c = G(); c.globalAlpha = a; c.translate(W / 2, y); c.rotate(rot); setF(F(400, os, DSP), 1); c.fillStyle = WA(0.8); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(OLD, 0, 0);
+          const p = seg(t, P0 + 0.1, 0.4), fall = Math.max(0, t - 1.35), [ox, oy] = posOf(elP('old'), [W / 2, cy + 80]), y = oy + 1600 * fall * fall, rot = fall * 0.9, a = (1 - seg(t, 1.6, 0.5)) * E.outC(p);
+          const c = G(); c.globalAlpha = a; c.translate(ox, y); c.rotate(rot); setF(F(400, os, DSP), 1); c.fillStyle = WA(0.8); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(OLD, 0, 0);
           const w = textW(OLD, F(400, os, DSP), 1) + 60, sk = E.outC(seg(t, 0.95, 0.25)); c.strokeStyle = OR; c.lineWidth = 16; c.lineCap = 'round'; c.beginPath(); c.moveTo(-w / 2, -os * 0.2); c.lineTo(-w / 2 + w * sk, -os * 0.2 - os * 0.32 * sk); c.stroke(); D();
-          fade(WASL, W / 2, cy - os * 0.95 + 80, F(700, 30, SANS), WA(0.6), p * (1 - seg(t, 1.35, 0.2)), { align: 'center', ls: 6 });
+          fade(WASL, ox, oy - os * 0.95, F(700, 30, SANS), WA(0.6), p * (1 - seg(t, 1.35, 0.2)), { align: 'center', ls: 6 });
         }
-        if (!WAS && t < NP + 0.2) { const p = seg(t, P0 + 0.1, 0.4), x2 = seg(t, NP - 0.2, 0.2); fade(LAB, W / 2, cy + 40, F(400, 150, DSP), WA(0.85), p * (1 - x2), { align: 'center', ls: 6 }); const ab = Math.sin(t * 9) * 14; K7.icon('arrow', W / 2, cy + 160 + ab, 90, OR, { a: E.outC(p) * (1 - x2), lw: 2.4 }); }
+        if (!WAS && t < NP + 0.2) { const p = seg(t, P0 + 0.1, 0.4), x2 = seg(t, NP - 0.2, 0.2); fade(LAB, nx, ny - 70, F(400, 150, DSP), WA(0.85), p * (1 - x2), { align: 'center', ls: 6 }); const ab = Math.sin(t * 9) * 14; K7.icon('arrow', nx, ny + 50 + ab, 90, OR, { a: E.outC(p) * (1 - x2), lw: 2.4 }); }
         // the new price
         const np = seg(t, NP, 0.16);
         if (np > 0 && t < OUT + 0.3) {
-          const c = G(), s = lerp(1.5, 1, E.outC(np)); c.globalAlpha = clamp(np * 3) * (1 - q); c.translate(W / 2, cy + 110); c.scale(s, s); setF(F(400, ns, DSP), 1); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-          if (NEW) c.fillText(NEW, 0, 0); D(); if (!NEW) K7.need('price', W / 2, cy + 40, 30, { align: 'center', col: WHT });
-          const lp = seg(t, NP + 0.15, 0.3), f = F(700, 40, SANS), lw = textW(LAB, f, 5) + 50 + 60, c2 = G(); c2.globalAlpha = E.outC(lp) * (1 - q); c2.fillStyle = OR; c2.fillRect(W / 2 - lw / 2, cy - ns * 0.86 + 40, lw, 74); setF(f, 5); c2.fillStyle = K7.on(OR); c2.textBaseline = 'middle'; c2.textAlign = 'left'; c2.fillText(LAB, W / 2 - lw / 2 + 25, cy - ns * 0.86 + 79); D();
-          const ab = Math.abs(Math.sin((t - NP) * 5)) * Math.exp(-(t - NP) * 1.5) * 18; K7.icon('arrow', W / 2 + lw / 2 - 38, cy - ns * 0.86 + 77 + ab, 44, K7.on(OR), { a: E.outC(lp) * (1 - q), lw: 2.6 });
+          const c = G(), s = lerp(1.5, 1, E.outC(np)); c.globalAlpha = clamp(np * 3) * (1 - q); c.translate(nx, ny); c.scale(s, s); setF(F(400, ns, DSP), 1); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+          if (NEW) c.fillText(NEW, 0, 0); D(); if (!NEW) K7.need('price', nx, ny - 70, 30, { align: 'center', col: WHT });
+          const lp = seg(t, NP + 0.15, 0.3), f = F(700, 40, SANS), lw = textW(LAB, f, 5) + 50 + 60, c2 = G(); c2.globalAlpha = E.outC(lp) * (1 - q); c2.fillStyle = OR; c2.fillRect(nx - lw / 2, ny - ns * 0.86 - 70, lw, 74); setF(f, 5); c2.fillStyle = K7.on(OR); c2.textBaseline = 'middle'; c2.textAlign = 'left'; c2.fillText(LAB, nx - lw / 2 + 25, ny - ns * 0.86 - 31); D();
+          const ab = Math.abs(Math.sin((t - NP) * 5)) * Math.exp(-(t - NP) * 1.5) * 18; K7.icon('arrow', nx + lw / 2 - 38, ny - ns * 0.86 - 33 + ab, 44, K7.on(OR), { a: E.outC(lp) * (1 - q), lw: 2.6 });
         }
         // address + facts under the photo
         if (t >= NP + 0.4 && t < OUT + 0.3) {
-          const a = 1 - q, y = py + 590, al = ADDR + (AREA ? ', ' + AREA : '');
-          if (ADDR) fade(al, W / 2, y, F(700, Math.min(42, fitSize(al, 700, 936, 42, SANS, 0)), SANS), WHT, seg(t, NP + 0.5, 0.5), { align: 'center', a }); else K7.need('address', W / 2, y, 22, { align: 'center', col: WHT, a });
-          factRow(FT, W / 2, y + 64, 30, WA(0.85), seg(t, NP + 0.7, 0.6), { icol: OR, a });
+          const a = 1 - q, y = py + 590, al = ADDR + (AREA ? ', ' + AREA : ''), [ax, ay] = posOf(elP('addr'), [W / 2, y]);
+          if (ADDR) fade(al, ax, ay, F(700, Math.min(42, fitSize(al, 700, 936, 42, SANS, 0)), SANS), WHT, seg(t, NP + 0.5, 0.5), { align: 'center', a }); else K7.need('address', ax, ay, 22, { align: 'center', col: WHT, a });
+          const [fx, fy] = posOf(elP('facts'), [W / 2, y + 64]);
+          factRow(FT, fx, fy, 30, WA(0.85), seg(t, NP + 0.7, 0.6), { icol: OR, a });
         }
         if (t >= OUT) {
-          const o = t - OUT, f = F(700, ctaSize(CTA, 700, 40, SANS, 5), SANS), bw = textW(CTA, f, 5) + 100, p = seg(o, 0.3, 0.35), c = G();
-          c.globalAlpha = E.outC(p); c.fillStyle = OR; c.fillRect(W / 2 - bw / 2, 760, bw, 100); setF(f, 5); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, W / 2 + 2, 812); D();
-          if (NEW) fade(up(LAB) + '  ' + NEW, W / 2, 660, F(400, 90, DSP), WHT, seg(o, 0.1, 0.4), { align: 'center', ls: 1 });
-          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), W / 2, 960, F(600, 32, SANS), WHT, seg(o, 0.6, 0.5), { align: 'center' });
+          const o = t - OUT, f = F(700, ctaSize(CTA, 700, 40, SANS, 5), SANS), bw = textW(CTA, f, 5) + 100, p = seg(o, 0.3, 0.35), [cx2, cy2] = posOf(elP('cta'), [W / 2, 810]), c = G();
+          c.globalAlpha = E.outC(p); c.fillStyle = OR; c.fillRect(cx2 - bw / 2, cy2 - 50, bw, 100); setF(f, 5); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, cx2 + 2, cy2 + 2); D();
+          const [epx, epy] = posOf(elP('endprice'), [W / 2, 660]);
+          if (NEW) fade(up(LAB) + '  ' + NEW, epx, epy, F(400, 90, DSP), WHT, seg(o, 0.1, 0.4), { align: 'center', ls: 1 });
+          const [agx, agy] = posOf(elP('agent'), [W / 2, 960]);
+          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), agx, agy, F(600, 32, SANS), WHT, seg(o, 0.6, 0.5), { align: 'center' });
           if (URL || CONTACT.web) fade(up(URL || CONTACT.web), W / 2, 1012, F(600, 22, SANS), WA(0.6), seg(o, 0.7, 0.5), { align: 'center', ls: 4 });
           K7.logo(W / 2, 1180, 420, E.outC(seg(o, 0.9, 0.5)));
         }
@@ -383,13 +503,13 @@ STUDIO_REG['estate'] = (() => {
     const SG = 0.8, RD = 2.35, OUT = 8.8, DUR = 13.6, AY = 1060;
     const hasPortrait = !isPh(AP[0]);
     function sign(t) {
-      if (VID.collecting) return; const px = 160, c = G();
+      if (VID.collecting) return; const [px, sAY] = posOf(elP('sign'), [160, 1060]), c = G();
       const pin = E.outC(seg(t, SG - 0.3, 0.5)); c.globalAlpha = pin; c.translate(0, (1 - pin) * 300);
-      c.fillStyle = '#3B2A1E'; c.fillRect(px - 22, AY - 70, 44, H - AY + 120); c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px - 22, AY - 70, 10, H - AY + 120);
-      c.fillStyle = '#3B2A1E'; c.fillRect(px - 22, AY - 16, 820, 32); c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px - 22, AY - 16, 820, 7);
+      c.fillStyle = '#3B2A1E'; c.fillRect(px - 22, sAY - 70, 44, H - sAY + 120); c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px - 22, sAY - 70, 10, H - sAY + 120);
+      c.fillStyle = '#3B2A1E'; c.fillRect(px - 22, sAY - 16, 820, 32); c.fillStyle = 'rgba(255,255,255,0.12)'; c.fillRect(px - 22, sAY - 16, 820, 7);
       // the panel on its chains, swinging
       const u = Math.max(0, t - SG), ang = 0.5 * Math.exp(-u * 1.6) * Math.cos(u * 4.2) * seg(t, SG, 0.05), bx = px + 160, bw = 600, bh = 330, cx = bx + bw / 2;
-      c.save(); c.translate(cx, AY + 16); c.rotate(ang);
+      c.save(); c.translate(cx, sAY + 16); c.rotate(ang);
       c.strokeStyle = '#8A8A8A'; c.lineWidth = 4; for (const x of [-bw / 2 + 60, bw / 2 - 60]) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, 56); c.stroke(); }
       c.shadowColor = 'rgba(0,0,0,0.4)'; c.shadowBlur = 30; c.shadowOffsetY = 12; c.fillStyle = PAPER; c.fillRect(-bw / 2, 56, bw, bh); c.shadowColor = 'transparent';
       c.strokeStyle = BLK; c.lineWidth = 6; c.strokeRect(-bw / 2 + 14, 70, bw - 28, bh - 28);
@@ -400,7 +520,7 @@ STUDIO_REG['estate'] = (() => {
       c.restore();
       // the rider drops onto the arm, then the shine
       const rp = seg(t, RD, 0.5); if (rp > 0) {
-        const ry = AY - 16 - 160, by = lerp(-500, 0, E.outBack(clamp(rp))), f = F(400, 140, DSP); c.save(); c.translate(0, by);
+        const ry = sAY - 16 - 160, by = lerp(-500, 0, E.outBack(clamp(rp))), f = F(400, 140, DSP); c.save(); c.translate(0, by);
         c.fillStyle = ACC2; c.fillRect(bx, ry, bw, 160); c.strokeStyle = PAPER; c.lineWidth = 6; c.strokeRect(bx + 10, ry + 10, bw - 20, 140);
         setF(f, 18); c.fillStyle = PAPER; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(RIDER, cx + 9, ry + 88);
         const sh = seg(t, RD + 0.7, 0.8); if (sh > 0 && sh < 1) { c.save(); c.beginPath(); c.rect(bx, ry, bw, 160); c.clip(); const gx = lerp(bx - 300, bx + bw + 300, E.inOutS(sh)), g = c.createLinearGradient(gx - 140, 0, gx + 140, 0); g.addColorStop(0, rgbaOf(OR, 0)); g.addColorStop(0.5, rgbaOf(OR, 0.85)); g.addColorStop(1, rgbaOf(OR, 0)); c.globalCompositeOperation = 'lighter'; c.fillStyle = g; c.fillRect(bx, ry, bw, 160); c.restore(); }
@@ -408,35 +528,66 @@ STUDIO_REG['estate'] = (() => {
       }
       D();
     }
+    function elements() {
+      const sh = S[0], v = vert(sh);
+      const r0 = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : topIn(sh.c, [0, 120, W, 600]);
+      const [hrx, hry] = posOf(elP('hero'), [r0[0], r0[1]]);
+      const r = [hrx, hry, r0[2], r0[3]];
+      const y0 = v ? 700 : r[1] + r[3] + 40;
+      const x = hasPortrait ? 560 : W / 2, y = hasPortrait ? 560 : 640;
+      const nm = K7.agentName({ agent: AG }), ph = K7.agentPhone({ agent_phone: AGP });
+      const L = K7.fitLines(nm, 600, SER, hasPortrait ? 448 : 936, 76, 2, { style: 'italic' });
+      let yy = y + L.lines.length * L.size * 1.05;
+      if (AGT) yy += 60;
+      if (ph) yy += 70;
+      const cy = hasPortrait ? 1260 : yy + 140;
+      const els = [
+        { id: 'hero', kind: 'pos', label: 'Hero photo', x: r[0], y: r[1], t0: 0, d: OUT, box: [r[0], r[1], r[2], r[3]], dup: false, del: false },
+        mkEl('sign', 'Yard sign', 160, AY, SG - 0.3, OUT - (SG - 0.3), p => [p[0] - 22, p[1] - 176, 820, 578]),
+        mkEl('kick', KICK, 72, y0, RD + 0.9, OUT - (RD + 0.9), p => [p[0], p[1] - 30, 400, 44]),
+        mkEl('addr', ADDR || 'Address', 72, y0 + 80, RD + 1.0, OUT - (RD + 1.0), p => [p[0], p[1] - 68, 936, 90]),
+        mkEl('name', nm, x, y, OUT + 0.4, DUR - (OUT + 0.4), p => [p[0] - (hasPortrait ? 0 : 468), p[1] - 76, hasPortrait ? 448 : 936, 170]),
+        mkEl('cta', CTA, W / 2, cy, OUT + 1.0, DUR - (OUT + 1.0), p => [p[0] - 468, p[1] - 60, 936, 120]),
+      ];
+      if (hasPortrait) {
+        const rp0 = K3.wholeIn(AP[0], [72, 380, 430, 760]);
+        els.push({ id: 'portrait', kind: 'pos', label: 'Agent portrait', x: rp0[0], y: rp0[1], t0: OUT, d: DUR - OUT, box: rp0, dup: false, del: false });
+      }
+      return els;
+    }
     return {
       dur: DUR, shakes: [[RD + 0.3, 12]],
+      elements,
       render(t) {
         if (!BACKDROP() && !VID.collecting) { const c = G(); c.fillStyle = BLK; c.fillRect(-20, -20, W + 40, H + 40); D(); }
-        const q = seg(t, OUT - 0.35, 0.35), sh = S[0], v = vert(sh), r = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : topIn(sh.c, [0, 120, W, 600]);
+        const q = seg(t, OUT - 0.35, 0.35), sh = S[0], v = vert(sh), r0 = v ? K3.wholeIn(sh.c, [0, 0, W, H]) : topIn(sh.c, [0, 120, W, 600]);
+        const [hrx, hry] = posOf(elP('hero'), [r0[0], r0[1]]), r = [hrx, hry, r0[2], r0[3]];
         if (t < OUT + 0.1) { ctx.save(); ctx.globalAlpha = seg(t, 0, 0.6) * (1 - q); K7.photo(sh, t, r); ctx.restore(); if (v && !VID.collecting) { ctx.save(); ctx.globalAlpha = 1 - q; shade(0, 420, 0.6, 0, BLK); shade(H * 0.36, H * 0.6, 0, 0.88, BLK); fill([0, H * 0.6, W, H], BLK, 0.88); ctx.restore(); } }
-        if (t >= OUT && hasPortrait) { const o = t - OUT, box = [72, 380, 430, 760], rp = K3.wholeIn(AP[0], box), p = seg(o, 0.2, 0.6); fill([rp[0] - 10, rp[1] - 10, rp[2] + 20, rp[3] + 20], OR, E.outC(p)); ctx.save(); ctx.globalAlpha = E.outC(p); K3.clip(AP[0], AP[1], o, rp); ctx.restore(); }
+        if (t >= OUT && hasPortrait) { const o = t - OUT, box = [72, 380, 430, 760], rp0 = K3.wholeIn(AP[0], box), [prx, pry] = posOf(elP('portrait'), [rp0[0], rp0[1]]), rp = [prx, pry, rp0[2], rp0[3]], p = seg(o, 0.2, 0.6); fill([rp[0] - 10, rp[1] - 10, rp[2] + 20, rp[3] + 20], OR, E.outC(p)); ctx.save(); ctx.globalAlpha = E.outC(p); K3.clip(AP[0], AP[1], o, rp); ctx.restore(); }
         if (VID.collecting) return;
         if (t < OUT + 0.1) {
           ctx.save(); ctx.globalAlpha = 1 - q; sign(t); ctx.restore();
-          const y0 = v ? 700 : r[1] + r[3] + 40;
-          fade(KICK, 72, y0, F(700, 30, SANS), OR, seg(t, RD + 0.9, 0.5), { ls: 7, a: 1 - q });
-          if (ADDR) { const L = K7.fitLines(ADDR, 600, SER, 936, 68, 1, { style: 'italic' }); L.lines.forEach((ln, i) => fade(ln, 72, y0 + 80 + i * L.size * 1.05, F(600, L.size, SER, 'italic'), WHT, seg(t, RD + 1.0 + i * 0.12, 0.6), { a: 1 - q })); }
-          else K7.need('address', 72, y0 + 80, 24, { col: WHT, a: 1 - q });
+          const y0 = v ? 700 : r[1] + r[3] + 40, [kx, ky] = posOf(elP('kick'), [72, y0]);
+          fade(KICK, kx, ky, F(700, 30, SANS), OR, seg(t, RD + 0.9, 0.5), { ls: 7, a: 1 - q });
+          const [ax, ay] = posOf(elP('addr'), [72, y0 + 80]);
+          if (ADDR) { const L = K7.fitLines(ADDR, 600, SER, 936, 68, 1, { style: 'italic' }); L.lines.forEach((ln, i) => fade(ln, ax, ay + i * L.size * 1.05, F(600, L.size, SER, 'italic'), WHT, seg(t, RD + 1.0 + i * 0.12, 0.6), { a: 1 - q })); }
+          else K7.need('address', ax, ay, 24, { col: WHT, a: 1 - q });
           const meta = [AREA && up(AREA), ROLE && up(ROLE)].filter(Boolean).join('   ·   ');
           if (meta) fade(meta, 72, y0 + (ADDR ? 168 : 120), F(600, 22, SANS), WA(0.7), seg(t, RD + 1.3, 0.6), { ls: 4, a: 1 - q });
         }
         if (t >= OUT) {
           const o = t - OUT, nm = K7.agentName({ agent: AG }), ph = K7.agentPhone({ agent_phone: AGP });
           const x = hasPortrait ? 560 : W / 2, al = hasPortrait ? 'left' : 'center', mw = hasPortrait ? 448 : 936, L = K7.fitLines(nm, 600, SER, mw, 76, 2, { style: 'italic' }), y = hasPortrait ? 560 : 640;
-          L.lines.forEach((ln, i) => fade(ln, x, y + i * L.size * 1.05, F(600, L.size, SER, 'italic'), WHT, seg(o, 0.4 + i * 0.1, 0.6), { align: al }));
-          let yy = y + L.lines.length * L.size * 1.05;
-          if (AGT) { fade(up(AGT), x, yy, F(600, 22, SANS), OR, seg(o, 0.6, 0.5), { align: al, ls: 5 }); yy += 60; }
-          if (ph) { fade(ph, x, yy + 20, F(600, 36, SANS), WHT, seg(o, 0.7, 0.5), { align: al }); yy += 70; }
-          if (URL || CONTACT.web) fade(up(URL || CONTACT.web), x, yy + 10, F(600, 20, SANS), WA(0.6), seg(o, 0.8, 0.5), { align: al, ls: 4 });
-          const cy = hasPortrait ? 1260 : yy + 140, cl = K7.fitLines(CTA, 500, SER, 936, 60, 2, { style: 'italic' });
-          rule(W / 2, cy - 70, 140, seg(o, 1.0, 0.6), { col: OR });
-          cl.lines.forEach((ln, i) => fade(ln, W / 2, cy + i * cl.size * 1.1, F(500, cl.size, SER, 'italic'), WHT, seg(o, 1.1 + i * 0.1, 0.6), { align: 'center' }));
-          K7.logo(W / 2, cy + cl.lines.length * cl.size * 1.1 + 140, 400, E.outC(seg(o, 1.4, 0.6)));
+          const [nx, ny] = posOf(elP('name'), [x, y]);
+          L.lines.forEach((ln, i) => fade(ln, nx, ny + i * L.size * 1.05, F(600, L.size, SER, 'italic'), WHT, seg(o, 0.4 + i * 0.1, 0.6), { align: al }));
+          let yy = ny + L.lines.length * L.size * 1.05;
+          if (AGT) { fade(up(AGT), nx, yy, F(600, 22, SANS), OR, seg(o, 0.6, 0.5), { align: al, ls: 5 }); yy += 60; }
+          if (ph) { fade(ph, nx, yy + 20, F(600, 36, SANS), WHT, seg(o, 0.7, 0.5), { align: al }); yy += 70; }
+          if (URL || CONTACT.web) fade(up(URL || CONTACT.web), nx, yy + 10, F(600, 20, SANS), WA(0.6), seg(o, 0.8, 0.5), { align: al, ls: 4 });
+          const cy = hasPortrait ? 1260 : yy + 140, cl = K7.fitLines(CTA, 500, SER, 936, 60, 2, { style: 'italic' }), [cx2, cy2] = posOf(elP('cta'), [W / 2, cy]);
+          rule(cx2, cy2 - 70, 140, seg(o, 1.0, 0.6), { col: OR });
+          cl.lines.forEach((ln, i) => fade(ln, cx2, cy2 + i * cl.size * 1.1, F(500, cl.size, SER, 'italic'), WHT, seg(o, 1.1 + i * 0.1, 0.6), { align: 'center' }));
+          K7.logo(W / 2, cy2 + cl.lines.length * cl.size * 1.1 + 140, 400, E.outC(seg(o, 1.4, 0.6)));
         }
       },
       cues() {
@@ -474,31 +625,52 @@ STUDIO_REG['estate'] = (() => {
       spots.forEach(({ s, k }, j) => { const [u, v] = PINS[k], px = r[0] + r[2] * u, py = r[1] + r[3] * v, p = seg(t, t0 + j * 0.35, 0.45); if (p <= 0) return; const c = G(), dy = (1 - E.outBack(p)) * -120; c.globalAlpha = a * clamp(p * 3); c.translate(px, py + dy);
         c.fillStyle = OR; c.beginPath(); c.moveTo(0, 0); c.bezierCurveTo(-30, -40, -30, -76, 0, -76); c.bezierCurveTo(30, -76, 30, -40, 0, 0); c.fill(); setF(F(700, 26, SANS), 0); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(k + 1), 0, -50); D(); });
     }
+    function elements() {
+      const sh0 = S[0], box0 = vert(sh0) ? [448, 260, 560, 996] : [72, 330, 936, 700], r0 = topIn(sh0.c, box0);
+      const ty0 = vert(sh0) ? 1360 : r0[1] + r0[3] + 170;
+      const els = [
+        { id: 'map', kind: 'pos', label: 'Map grid', x: 72, y: 300, t0: 0, d: C0, box: [72, 300, 936, 760], dup: false, del: false },
+        mkEl('kick', KICK, 72, 250, 0.3, C0 - 0.3, p => [p[0], p[1] - 24, 400, 40]),
+        mkEl('area', AREA || 'Neighbourhood', 72, 1200, 0.8, C0 - 0.8, p => [p[0], p[1] - 170, 936, 200]),
+        { id: 'photo', kind: 'pos', label: 'Chapter photo', x: r0[0], y: r0[1], t0: C0 - 0.1, d: OUT - (C0 - 0.1), box: [r0[0], r0[1], r0[2], r0[3]], dup: false, del: false },
+        mkEl('chapter', LN[0], 72, ty0, C0 + 0.3, CD - 0.3, p => [p[0], p[1] - 114, 936, 360]),
+        mkEl('endarea', AREA || 'Neighbourhood', W / 2, 920, OUT + 0.3, DUR - (OUT + 0.3), p => [p[0] - 468, p[1] - 110, 936, 130]),
+        mkEl('end', END, W / 2, 1010, OUT + 0.6, DUR - (OUT + 0.6), p => [p[0] - 468, p[1] - 40, 936, 60]),
+        mkEl('cta', CONTACT.cta, W / 2, 1123, OUT + 0.9, DUR - (OUT + 0.9), p => { const f = F(700, ctaSize(CONTACT.cta, 700, 30, SANS, 4), SANS), bw = textW(CONTACT.cta, f, 4) + 100; return [p[0] - bw / 2, p[1] - 42, bw, 84]; }),
+      ];
+      if (spots.length) els.push(mkEl('spots', spots[0].s, 72, 1460, 1.4, C0 - 1.4, p => [p[0], p[1] - 30, 600, spots.length * 56 + 30]));
+      if (AG) els.push(mkEl('agent', AG, W / 2, 1240, OUT + 1.1, DUR - (OUT + 1.1), p => [p[0] - 400, p[1] - 28, 800, 56]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [],
+      elements,
       render(t) {
         if (!BACKDROP() && !VID.collecting) { const c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, DEEP2); g.addColorStop(1, DEEP1); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); }
-        const q = seg(t, OUT - 0.3, 0.4), mr = [72, 300, 936, 760];
+        const q = seg(t, OUT - 0.3, 0.4), [mx, my] = posOf(elP('map'), [72, 300]), mr = [mx, my, 936, 760];
         // opening: the map, the name, the pins and a legend
         if (t < C0 + 0.3) {
           const a = 1 - seg(t, C0 - 0.3, 0.5); map(t, mr, seg(t, 0.1, 1.6), a);
           pins(t, mr, 1.2, a);
           if (!VID.collecting) {
-            fade(KICK, 72, 250, F(600, 24, SANS), OR, seg(t, 0.3, 0.6), { ls: 6, a });
-            if (AREA) { const L = K7.fitLines(AREA, 400, SER, 936, 170, 2, { style: 'italic' }); L.lines.forEach((ln, i) => fade(ln, 72, 1200 + i * L.size * 0.95, F(400, L.size, SER, 'italic'), WHT, seg(t, 0.8 + i * 0.15, 0.9), { a })); }
-            else K7.need('neighbourhood', 72, 1200, 30, { col: WHT, a });
-            spots.forEach(({ s, k }, j) => fade((k + 1) + '   ' + s, 72, 1460 + j * 56, F(600, 30, SANS), WHT, seg(t, 1.4 + j * 0.3, 0.5), { a }));
+            const [kx, ky] = posOf(elP('kick'), [72, 250]);
+            fade(KICK, kx, ky, F(600, 24, SANS), OR, seg(t, 0.3, 0.6), { ls: 6, a });
+            const [ax, ay] = posOf(elP('area'), [72, 1200]);
+            if (AREA) { const L = K7.fitLines(AREA, 400, SER, 936, 170, 2, { style: 'italic' }); L.lines.forEach((ln, i) => fade(ln, ax, ay + i * L.size * 0.95, F(400, L.size, SER, 'italic'), WHT, seg(t, 0.8 + i * 0.15, 0.9), { a })); }
+            else K7.need('neighbourhood', ax, ay, 30, { col: WHT, a });
+            const [sx, sy] = posOf(elP('spots'), [72, 1460]);
+            spots.forEach(({ s, k }, j) => fade((k + 1) + '   ' + s, sx, sy + j * 56, F(600, 30, SANS), WHT, seg(t, 1.4 + j * 0.3, 0.5), { a }));
           }
         }
         // chapters: framed footage with a hard offset block, a numbered line, the pin it belongs to (if named)
         if (t >= C0 - 0.1 && t < OUT + 0.3) {
           const k = clamp(Math.floor((t - C0) / CD), 0, 2), t0 = C0 + k * CD, sh = S[k], into = E.inOutC(seg(t, t0 - 0.1, 0.6)), out = E.inC(seg(t, t0 + CD - 0.25, 0.35));
-          const box = vert(sh) ? [W - 72 - 560, 260, 560, 996] : [72, 330, 936, 700], r = topIn(sh.c, box), dx = (1 - into) * 400 - out * 400, a = clamp(into * 1.5) * (1 - out) * (1 - q);
+          const box = vert(sh) ? [W - 72 - 560, 260, 560, 996] : [72, 330, 936, 700], r0 = topIn(sh.c, box), [rx, ry] = posOf(elP('photo'), [r0[0], r0[1]]), r = [rx, ry, r0[2], r0[3]], dx = (1 - into) * 400 - out * 400, a = clamp(into * 1.5) * (1 - out) * (1 - q);
           map(t, [0, 0, W, H], 1, 0.12 * (1 - q));
           fill([r[0] + 24 + dx, r[1] + 24, r[2], r[3]], OR, a);
           ctx.save(); ctx.globalAlpha = a; K7.photo(sh, t, [r[0] + dx, r[1], r[2], r[3]]); ctx.restore();
           if (!VID.collecting) {
-            const tx = vert(sh) ? 72 : 72, ty = vert(sh) ? 1360 : r[1] + r[3] + 170;
+            const [tx, ty] = posOf(elP('chapter'), [72, vert(sh) ? 1360 : r[1] + r[3] + 170]);
             fade('No. ' + (k + 1), tx, ty - 90, F(600, 24, SANS), OR, seg(t, t0 + 0.3, 0.5) * (1 - out), { ls: 5, a: 1 - q });
             const L = K7.fitLines(LN[k], 400, SER, vert(sh) ? 380 : 936, 110, 3, { style: 'italic' });
             L.lines.forEach((ln, i) => fade(ln, tx, ty + i * L.size, F(400, L.size, SER, 'italic'), WHT, seg(t, t0 + 0.4 + i * 0.1, 0.6) * (1 - out), { a: 1 - q }));
@@ -507,10 +679,13 @@ STUDIO_REG['estate'] = (() => {
         }
         if (t >= OUT && !VID.collecting) {
           const o = t - OUT; map(t, [72, 260, 936, 560], 1, 0.35 * seg(o, 0, 0.6)); pins(t, [72, 260, 936, 560], OUT + 0.2, seg(o, 0, 0.6));
-          if (AREA) fade(AREA, W / 2, 920, F(400, Math.min(110, fitSize(AREA, 400, 936, 110, SER, 0, 'italic')), SER, 'italic'), WHT, seg(o, 0.3, 0.8), { align: 'center' });
-          fade(END, W / 2, 1010, F(600, Math.min(40, fitSize(END, 600, 936, 40, SANS, 1)), SANS), WA(0.8), seg(o, 0.6, 0.6), { align: 'center' });
-          const cp = seg(o, 0.9, 0.5); if (cp > 0) { const f = F(700, ctaSize(CONTACT.cta, 700, 30, SANS, 4), SANS), bw = textW(CONTACT.cta, f, 4) + 100, c = G(); c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(W / 2 - bw / 2, 1080, bw, 84); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, W / 2 + 2, 1123); D(); }
-          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), W / 2, 1240, F(600, 28, SANS), WHT, seg(o, 1.1, 0.5), { align: 'center' });
+          const [eax, eay] = posOf(elP('endarea'), [W / 2, 920]);
+          if (AREA) fade(AREA, eax, eay, F(400, Math.min(110, fitSize(AREA, 400, 936, 110, SER, 0, 'italic')), SER, 'italic'), WHT, seg(o, 0.3, 0.8), { align: 'center' });
+          const [enx, eny] = posOf(elP('end'), [W / 2, 1010]);
+          fade(END, enx, eny, F(600, Math.min(40, fitSize(END, 600, 936, 40, SANS, 1)), SANS), WA(0.8), seg(o, 0.6, 0.6), { align: 'center' });
+          const cp = seg(o, 0.9, 0.5); if (cp > 0) { const f = F(700, ctaSize(CONTACT.cta, 700, 30, SANS, 4), SANS), bw = textW(CONTACT.cta, f, 4) + 100, [cx2, cy2] = posOf(elP('cta'), [W / 2, 1123]), c = G(); c.globalAlpha = E.outC(cp); c.fillStyle = OR; c.fillRect(cx2 - bw / 2, cy2 - 43, bw, 84); setF(f, 4); c.fillStyle = K7.on(OR); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, cx2 + 2, cy2); D(); }
+          const [agx, agy] = posOf(elP('agent'), [W / 2, 1240]);
+          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), agx, agy, F(600, 28, SANS), WHT, seg(o, 1.1, 0.5), { align: 'center' });
           K7.logo(W / 2, 1400, 400, E.outC(seg(o, 1.3, 0.6)));
         }
       },
@@ -540,37 +715,57 @@ STUDIO_REG['estate'] = (() => {
       if (VID.collecting || a <= 0) return; const x0 = 72, w = 936, sw = w / 5;
       for (let i = 0; i < 5; i++) { fill([x0 + i * sw + 4, y, sw - 8, 6], i <= k ? OR : WA(0.25), a); K7.txt(RM[i], x0 + i * sw + sw / 2, y + 44, F(600, Math.min(18, fitSize(RM[i], 600, sw - 10, 18, SANS, 2)), SANS), i === k ? WHT : WA(0.45), { align: 'center', ls: 2, a }); }
     }
+    function elements() {
+      const sh0 = S[0], r0 = rectOf(sh0);
+      const ly0 = r0[3] >= H - 2 ? 1380 : r0[1] + r0[3] + 170;
+      const els = [
+        mkEl('kick', KICK, W / 2, 760, 0.2, R0 - 0.2, p => [p[0] - 400, p[1] - 24, 800, 40]),
+        mkEl('addr', ADDR || BRAND.name, W / 2, 880, 0.4, R0 - 0.4, p => [p[0] - 450, p[1] - 90, 900, 200]),
+        { id: 'photo', kind: 'pos', label: 'Room photo', x: r0[0], y: r0[1], t0: R0 - 0.05, d: OUT - (R0 - 0.05), box: [r0[0], r0[1], r0[2], r0[3]], dup: false, del: false },
+        mkEl('room', RM[0], 72, ly0, R0 + 0.35, RD - 0.35, p => [p[0], p[1] - 130, 936, 160]),
+        mkEl('rail', 'Room rail', 72, 1640, 0.9, OUT - 0.9, p => [p[0], p[1], 936, 80]),
+        mkEl('cta', CTA, W / 2, 790, OUT + 0.3, DUR - (OUT + 0.3), p => { const f = F(700, ctaSize(CTA, 700, 70, DSP, 3), DSP), bw = textW(CTA, f, 3) + 100; return [p[0] - bw / 2, p[1] - 65, bw, 130]; }),
+      ];
+      if (NT[0]) els.push(mkEl('note', NT[0], 74, ly0 + 70, R0 + 0.55, RD - 0.55, p => [p[0] - 2, p[1] - 44, 936, 60]));
+      if (ADDR) els.push(mkEl('endaddr', ADDR, W / 2, 940, OUT + 0.5, DUR - (OUT + 0.5), p => [p[0] - 468, p[1] - 44, 936, 60]));
+      if (AG) els.push(mkEl('agent', AG, W / 2, 1020, OUT + 0.7, DUR - (OUT + 0.7), p => [p[0] - 400, p[1] - 28, 800, 56]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [],
+      elements,
       render(t) {
         if (!BACKDROP() && !VID.collecting) { const c = G(), g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, DEEP1); g.addColorStop(1, DEEP2); c.fillStyle = g; c.fillRect(-20, -20, W + 40, H + 40); D(); }
         const q = seg(t, OUT - 0.3, 0.35);
         if (t < R0 + 0.3 && !VID.collecting) {
-          const a = 1 - seg(t, R0 - 0.3, 0.4); fade(KICK, W / 2, 760, F(600, 24, SANS), OR, seg(t, 0.2, 0.6), { align: 'center', ls: 8, a });
-          const L = K7.fitLines(ADDR || BRAND.name, 500, SER, 900, 90, 2, { style: 'italic' }); L.lines.forEach((ln, i) => fade(ln, W / 2, 880 + i * L.size * 1.05, F(500, L.size, SER, 'italic'), WHT, seg(t, 0.4 + i * 0.12, 0.8), { align: 'center', a }));
-          if (AREA) fade(up(AREA), W / 2, 900 + L.lines.length * L.size * 1.05, F(600, 22, SANS), WA(0.6), seg(t, 0.7, 0.6), { align: 'center', ls: 6, a });
+          const a = 1 - seg(t, R0 - 0.3, 0.4), [kx, ky] = posOf(elP('kick'), [W / 2, 760]); fade(KICK, kx, ky, F(600, 24, SANS), OR, seg(t, 0.2, 0.6), { align: 'center', ls: 8, a });
+          const L = K7.fitLines(ADDR || BRAND.name, 500, SER, 900, 90, 2, { style: 'italic' }), [ax, ay] = posOf(elP('addr'), [W / 2, 880]); L.lines.forEach((ln, i) => fade(ln, ax, ay + i * L.size * 1.05, F(500, L.size, SER, 'italic'), WHT, seg(t, 0.4 + i * 0.12, 0.8), { align: 'center', a }));
+          if (AREA) fade(up(AREA), ax, ay + 20 + L.lines.length * L.size * 1.05, F(600, 22, SANS), WA(0.6), seg(t, 0.7, 0.6), { align: 'center', ls: 6, a });
           rail(-1, 1200, a * seg(t, 0.9, 0.6));
         }
         if (t >= R0 - 0.05 && t < OUT + 0.3) {
-          const k = clamp(Math.floor((t - R0) / RD), 0, 4), sh = S[k], t0 = R0 + k * RD, u = E.inOutC(seg(t, t0 - 0.05, 0.6)), r = rectOf(sh);
+          const k = clamp(Math.floor((t - R0) / RD), 0, 4), sh = S[k], t0 = R0 + k * RD, u = E.inOutC(seg(t, t0 - 0.05, 0.6)), r0 = rectOf(sh), [rx, ry] = posOf(elP('photo'), [r0[0], r0[1]]), r = [rx, ry, r0[2], r0[3]];
           ctx.save(); ctx.globalAlpha = 1 - q;
           if (k > 0 && u < 1) { const pv = S[k - 1], r2 = rectOf(pv); K7.photo(pv, t, [r2[0] - u * 120, r2[1], r2[2], r2[3]], { lt: 1 }); if (!VID.collecting) fill([0, 0, W, H], '#000000', 0.45 * u); }
           const sw = W * u; if (!VID.collecting && u < 1) { ctx.beginPath(); ctx.rect(W / 2 - sw / 2, 0, sw, H); ctx.clip(); } K7.photo(sh, t, r, { lt: 1 }); ctx.restore();
           if (!VID.collecting && u > 0 && u < 1) { fill([W / 2 - sw / 2 - 10, 0, 10, H], OR, (1 - q) * (1 - u)); fill([W / 2 + sw / 2, 0, 10, H], OR, (1 - q) * (1 - u)); }
           if (!VID.collecting) {
             if (r[3] >= H - 2) shade(H * 0.55, H, 0, 0.9, DEEP2);
-            const a = (1 - q) * (1 - seg(t, t0 + RD - 0.2, 0.2)), ly = r[3] >= H - 2 ? 1380 : r[1] + r[3] + 170;
-            fade(RM[k], 72, ly, F(700, Math.min(130, fitSize(RM[k], 700, 936, 130, DSP, 2)), DSP), WHT, seg(t, t0 + 0.35, 0.4), { a, ls: 2 });
-            if (NT[k]) fade(NT[k], 74, ly + 70, F(500, Math.min(44, fitSize(NT[k], 500, 936, 44, SER, 0, 'italic')), SER, 'italic'), WA(0.85), seg(t, t0 + 0.55, 0.5), { a });
+            const a = (1 - q) * (1 - seg(t, t0 + RD - 0.2, 0.2)), ly = r[3] >= H - 2 ? 1380 : r[1] + r[3] + 170, [rmx, rmy] = posOf(elP('room'), [72, ly]);
+            fade(RM[k], rmx, rmy, F(700, Math.min(130, fitSize(RM[k], 700, 936, 130, DSP, 2)), DSP), WHT, seg(t, t0 + 0.35, 0.4), { a, ls: 2 });
+            if (NT[k]) fade(NT[k], rmx + 2, rmy + 70, F(500, Math.min(44, fitSize(NT[k], 500, 936, 44, SER, 0, 'italic')), SER, 'italic'), WA(0.85), seg(t, t0 + 0.55, 0.5), { a });
             K7.txt('0' + (k + 1) + ' / 05', 1008, 300, F(700, 26, 'Mono'), OR, { align: 'right', ls: 3, a: 1 - q });
-            rail(k, 1640, 1 - q);
+            const [rlx, rly] = posOf(elP('rail'), [72, 1640]);
+            rail(k, rly, 1 - q);
           }
         }
         if (t >= OUT && !VID.collecting) {
-          const o = t - OUT, f = F(700, ctaSize(CTA, 700, 70, DSP, 3), DSP), bw = textW(CTA, f, 3) + 100, p = seg(o, 0.3, 0.4), c = G();
-          c.strokeStyle = OR; c.lineWidth = 3; c.globalAlpha = E.outC(p); c.strokeRect(W / 2 - bw / 2, 720, bw, 130); setF(f, 3); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, W / 2, 790); D();
-          if (ADDR) fade(ADDR + (AREA ? ', ' + AREA : ''), W / 2, 940, F(500, Math.min(44, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 500, 936, 44, SER, 0, 'italic')), SER, 'italic'), WHT, seg(o, 0.5, 0.6), { align: 'center' });
-          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), W / 2, 1020, F(600, 28, SANS), WA(0.8), seg(o, 0.7, 0.5), { align: 'center' });
+          const o = t - OUT, f = F(700, ctaSize(CTA, 700, 70, DSP, 3), DSP), bw = textW(CTA, f, 3) + 100, p = seg(o, 0.3, 0.4), [cx2, cy2] = posOf(elP('cta'), [W / 2, 790]), c = G();
+          c.strokeStyle = OR; c.lineWidth = 3; c.globalAlpha = E.outC(p); c.strokeRect(cx2 - bw / 2, cy2 - 65, bw, 130); setF(f, 3); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(CTA, cx2, cy2); D();
+          const [eax, eay] = posOf(elP('endaddr'), [W / 2, 940]);
+          if (ADDR) fade(ADDR + (AREA ? ', ' + AREA : ''), eax, eay, F(500, Math.min(44, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 500, 936, 44, SER, 0, 'italic')), SER, 'italic'), WHT, seg(o, 0.5, 0.6), { align: 'center' });
+          const [agx, agy] = posOf(elP('agent'), [W / 2, 1020]);
+          fade([AG, K7.agentPhone({ agent_phone: AGP })].filter(Boolean).join('   ·   '), agx, agy, F(600, 28, SANS), WA(0.8), seg(o, 0.7, 0.5), { align: 'center' });
           if (URL || CONTACT.web) fade(up(URL || CONTACT.web), W / 2, 1070, F(600, 20, SANS), WA(0.55), seg(o, 0.8, 0.5), { align: 'center', ls: 4 });
           K7.logo(W / 2, 1230, 400, E.outC(seg(o, 1.0, 0.6)));
         }
@@ -598,33 +793,48 @@ STUDIO_REG['estate'] = (() => {
     const V0 = 4.0, VD = 1.35, ST0 = V0 + 3 * VD, OUT = ST0 + 1.9, DUR = OUT + 3.8;
     const NAME = K7.agentName({ agent: AG }), parts = NAME.split(/\s+/), NL = parts.length > 1 ? [parts.slice(0, -1).join(' '), parts[parts.length - 1]] : [NAME];
     let MM = null; const m = () => MM || (MM = { ns: Math.min(240, ...NL.map(l => fitSize(up(l), 400, 936, 240, DSP, 2))) });
+    function elements() {
+      const r0 = K3.wholeIn(AP[0], vert({ c: AP[0] }) ? [0, 0, W, H] : [0, 200, W, 760]);
+      const full = r0[3] >= H - 2, ns = m().ns, y0 = full ? 1310 - (NL.length - 1) * ns * 0.9 : r0[1] + r0[3] + 260;
+      const els = [
+        { id: 'portrait', kind: 'pos', label: 'Portrait', x: r0[0], y: r0[1], t0: 0, d: OUT, box: [r0[0], r0[1], r0[2], r0[3]], dup: false, del: false },
+        mkEl('hello', HELLO, 72, y0 - ns * 0.95 - 30, 0.5, V0 - 0.5, p => [p[0], p[1] - 72, 500, 90]),
+        mkEl('name', NAME, 72, y0, 0.8, V0 - 0.8, p => [p[0], p[1] - ns, 936, NL.length * ns * 0.9 + ns]),
+        mkEl('doing', VS[0], W / 2, 1000, V0, 3 * VD, p => [p[0] - 468, p[1] - 220, 936, 260]),
+        { id: 'card', kind: 'pos', label: 'Contact card', x: 100, y: 420, t0: OUT, d: DUR - OUT, box: [100, 420, 880, 720], dup: false, del: false },
+      ];
+      if (STAT) els.push(mkEl('stat', STAT, W / 2, 1000, ST0, OUT - ST0, p => [p[0] - 468, p[1] - 300, 936, 380]));
+      return els;
+    }
     return {
       dur: DUR, shakes: [[V0 + 0.1, 6], [V0 + VD + 0.1, 6], [V0 + 2 * VD + 0.1, 6]],
+      elements,
       render(t) {
         if (!BACKDROP() && !VID.collecting) { const c = G(); c.fillStyle = BLK; c.fillRect(-20, -20, W + 40, H + 40); D(); }
-        const r = K3.wholeIn(AP[0], vert({ c: AP[0] }) ? [0, 0, W, H] : [0, 200, W, 760]), full = r[3] >= H - 2, q = seg(t, OUT - 0.3, 0.4);
+        const r0 = K3.wholeIn(AP[0], vert({ c: AP[0] }) ? [0, 0, W, H] : [0, 200, W, 760]), [prx, pry] = posOf(elP('portrait'), [r0[0], r0[1]]), r = [prx, pry, r0[2], r0[3]], full = r[3] >= H - 2, q = seg(t, OUT - 0.3, 0.4);
         if (t < OUT + 0.2) { ctx.save(); ctx.globalAlpha = seg(t, 0, 0.6) * (1 - q); K3.clip(AP[0], AP[1], t, r); ctx.restore(); if (!VID.collecting) { ctx.save(); ctx.globalAlpha = 1 - q; if (full) shade(H * 0.45, H * 0.8, 0, 0.95, BLK); fill([0, H * 0.8, W, H * 0.2], BLK, full ? 0.95 : 0); if (t > V0 - 0.3) fill([0, 0, W, H], BLK, 0.62 * seg(t, V0 - 0.3, 0.4)); ctx.restore(); } }
         if (VID.collecting) return;
         // the name
         if (t < V0 + 0.2) {
           const a = 1 - seg(t, V0 - 0.35, 0.35), ns = m().ns, y0 = full ? 1310 - (NL.length - 1) * ns * 0.9 : r[1] + r[3] + 260;
-          fade(HELLO, 72, y0 - ns * 0.95 - 30, F(400, 72, SCR), OR, seg(t, 0.5, 0.6), { a });
-          NL.forEach((ln, i) => T([[up(ln), WHT]], 72, y0 + i * ns * 0.9, F(400, ns, DSP), { p: seg(t, 0.8 + i * 0.15, 0.5), ls: 2, alpha: a }));
-          if (AGT) fade(up(AGT), 74, y0 + (NL.length - 1) * ns * 0.9 + 70, F(600, 26, SANS), OR, seg(t, 1.4, 0.5), { ls: 6, a });
+          const [hx, hy] = posOf(elP('hello'), [72, y0 - ns * 0.95 - 30]), [nx, ny] = posOf(elP('name'), [72, y0]);
+          fade(HELLO, hx, hy, F(400, 72, SCR), OR, seg(t, 0.5, 0.6), { a });
+          NL.forEach((ln, i) => T([[up(ln), WHT]], nx, ny + i * ns * 0.9, F(400, ns, DSP), { p: seg(t, 0.8 + i * 0.15, 0.5), ls: 2, alpha: a }));
+          if (AGT) fade(up(AGT), nx + 2, ny + (NL.length - 1) * ns * 0.9 + 70, F(600, 26, SANS), OR, seg(t, 1.4, 0.5), { ls: 6, a });
         }
         // what you do, one word at a time
         VS.forEach((w, k) => {
           const t0 = V0 + k * VD, p = seg(t, t0, 0.16), x2 = seg(t, t0 + VD - 0.18, 0.2); if (p <= 0 || x2 >= 1) return;
-          const sz = Math.min(220, fitSize(w, 400, 936, 220, DSP, 3)), c = G(), s = lerp(1.35, 1, E.outC(p)); c.globalAlpha = clamp(p * 3) * (1 - x2); c.translate(W / 2, 1000 - x2 * 160); c.scale(s, s); setF(F(400, sz, DSP), 3); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(w, 0, 0);
+          const sz = Math.min(220, fitSize(w, 400, 936, 220, DSP, 3)), [dx, dy] = posOf(elP('doing'), [W / 2, 1000]), c = G(), s = lerp(1.35, 1, E.outC(p)); c.globalAlpha = clamp(p * 3) * (1 - x2); c.translate(dx, dy - x2 * 160); c.scale(s, s); setF(F(400, sz, DSP), 3); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(w, 0, 0);
           const uw = textW(w, F(400, sz, DSP), 3) * E.inOutC(seg(t, t0 + 0.12, 0.35)); c.fillStyle = OR; c.fillRect(-uw / 2, 34, uw, 10); D();
         });
         if (!STAT && t >= ST0 && t < OUT + 0.2) { const p = seg(t, ST0, 0.3), a = 1 - q, ns = m().ns * 0.7; NL.forEach((ln, i) => fade(up(ln), W / 2, 900 + i * ns * 0.9, F(400, ns, DSP), i ? OR : WHT, seg(t, ST0 + i * 0.12, 0.35), { align: 'center', a, ls: 2 })); }
-        if (STAT && t >= ST0 && t < OUT + 0.2) { const p = seg(t, ST0, 0.3), a = 1 - q; fade(STAT, W / 2, 1000, F(400, Math.min(300, fitSize(STAT, 400, 936, 300, DSP, 2)), DSP), OR, p, { align: 'center', a, ls: 2 }); if (STATL) fade(STATL, W / 2, 1080, F(600, 30, SANS), WHT, seg(t, ST0 + 0.3, 0.4), { align: 'center', ls: 5, a }); }
+        if (STAT && t >= ST0 && t < OUT + 0.2) { const p = seg(t, ST0, 0.3), a = 1 - q, [stx, sty] = posOf(elP('stat'), [W / 2, 1000]); fade(STAT, stx, sty, F(400, Math.min(300, fitSize(STAT, 400, 936, 300, DSP, 2)), DSP), OR, p, { align: 'center', a, ls: 2 }); if (STATL) fade(STATL, stx, sty + 80, F(600, 30, SANS), WHT, seg(t, ST0 + 0.3, 0.4), { align: 'center', ls: 5, a }); }
         // the contact card
         if (t >= OUT) {
-          const o = t - OUT, p = E.outQ(seg(o, 0.1, 0.6)), cy = lerp(H, 420, p), cw = 880, ch = 720, c = G();
-          c.shadowColor = 'rgba(0,0,0,0.4)'; c.shadowBlur = 40; c.shadowOffsetY = 16; c.fillStyle = PAPER; c.fillRect(W / 2 - cw / 2, cy, cw, ch); c.shadowColor = 'transparent'; c.fillStyle = OR; c.fillRect(W / 2 - cw / 2, cy, 12, ch); D();
-          const ink = K7.on(PAPER), x = W / 2 - cw / 2 + 80, nl = K7.fitLines(NAME, 400, DSP, cw - 160, 120, 2);
+          const o = t - OUT, p = E.outQ(seg(o, 0.1, 0.6)), [cdx, cdy] = posOf(elP('card'), [100, 420]), cy = lerp(H, cdy, p), cw = 880, ch = 720, c = G();
+          c.shadowColor = 'rgba(0,0,0,0.4)'; c.shadowBlur = 40; c.shadowOffsetY = 16; c.fillStyle = PAPER; c.fillRect(cdx, cy, cw, ch); c.shadowColor = 'transparent'; c.fillStyle = OR; c.fillRect(cdx, cy, 12, ch); D();
+          const ink = K7.on(PAPER), x = cdx + 80, nl = K7.fitLines(NAME, 400, DSP, cw - 160, 120, 2);
           nl.lines.forEach((ln, i) => K7.txt(up(ln), x, cy + 170 + i * nl.size * 0.92, F(400, nl.size, DSP), ink, { ls: 2, a: seg(o, 0.5, 0.4) }));
           let y = cy + 170 + nl.lines.length * nl.size * 0.92;
           if (AGT) { K7.txt(up(AGT), x, y, F(600, 24, SANS), OR, { ls: 5, a: seg(o, 0.6, 0.4) }); y += 70; }
@@ -647,6 +857,6 @@ STUDIO_REG['estate'] = (() => {
   const MAKE = { sig, listed, open, drop, sold, hood, tour, agent };
   const P = (MAKE[V] || sig)();
   const light = LIGHTPAL;
-  DIR = { bgSwap: true, dur: P.dur, bg: BLK, finish: { vig: light ? 0.1 : 0.26, grain: light ? 0.08 : 0.16 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, fam: V,
+  DIR = { bgSwap: true, dur: P.dur, bg: BLK, finish: { vig: light ? 0.1 : 0.26, grain: light ? 0.08 : 0.16 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, fam: V, ...(P.elements ? { elements: P.elements } : {}),
     setup() { if (!window.STUDIO && LIGHTPAL) { const w = IMG.logoW; IMG.logoW = IMG.logoB; IMG.logoB = w; } } };
 });

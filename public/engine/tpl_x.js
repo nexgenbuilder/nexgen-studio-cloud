@@ -10,6 +10,16 @@
    ?v=tallwall  #66 The Vertical Wall (15 s seamless loop): three columns of 9:16 tiles scrolling in opposite directions */
 STUDIO_REG['x'] = (() => {
   const V = QS.get('v') || 'frame';
+  // Per-element model: tpl_free sets window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // factory; positions below fall back to the original hardcoded values when EL is null, so rendering
+  // is byte-for-byte the old path. (Same pattern as tpl_trade.js / tpl_nx9.js.)
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
+  // shotChanged lives in core.js; the static harness sandbox does not provide it, where the
+  // default TX values always match the originals anyway, so a missing global means "unchanged".
+  const chg = (s, def) => (typeof shotChanged === 'function' ? shotChanged(s, def) : false);
   const lmod = K3.lmod, G = K3.G, D = K3.D;
   const whole = (c, r) => K3.wholeIn(c, r);
   const play = (c, inn, lt, r, o) => K3.clip(c, inn, lt, whole(c, r), o);
@@ -77,7 +87,7 @@ STUDIO_REG['x'] = (() => {
       const lines = b.lines.map((l, j) => TX(`b${n}l${j + 1}`, l, { label: 'Line ' + (j + 1) + (j === b.lines.length - 1 ? ' (last word highlighted)' : ''), group: g, upper: true, max: 16 }));
       const L = SHOT(`b${n}land`, [b.x.lc, b.x.li], { label: 'Landscape shot (in the frame)', group: g, kind: 'land', d: b.x.d + XD });
       const Vt = SHOT(`b${n}vert`, [b.x.vc, b.x.vl[0][0]], { label: 'Vertical shot (breaks out)', group: g, kind: 'vert', d: XD + b.full + CD });
-      const ch = shotChanged(L, [b.x.lc, b.x.li]) || shotChanged(Vt, [b.x.vc, b.x.vl[0][0]]);
+      const ch = chg(L, [b.x.lc, b.x.li]) || chg(Vt, [b.x.vc, b.x.vl[0][0]]);
       const x = ch ? Object.assign({}, b.x, { lc: L[0], li: L[1], vc: Vt[0], vl: [[Vt[1], 99]], xf: GEN, seam: false }) : b.x;
       const last = lines[lines.length - 1].split(' ');
       return Object.assign({}, b, { x, lines, hl: [lines.length - 1, last.length - 1] }); });
@@ -86,17 +96,33 @@ STUDIO_REG['x'] = (() => {
     let t0 = 0; BEATS.forEach((b, i) => { b.t0 = t0; b.cIn = i ? CD : 0; b.tx = t0 + b.cIn + b.x.d; b.tf = b.tx + XD; b.t1 = b.tf + b.full; t0 = b.t1; });
     const END = t0, DUR = 15;
     let SZ = null; const sz = () => SZ || (SZ = { l: BEATS.map(b => Math.min(...b.lines.map(l => fit(l, 900, 950, 104, 'Mont', -3)))), out: fit(OUTL, 900, 950, 96, 'Mont', -3) });
-    function frameRect(B, p, br) {   // white frame around the band; br = break-out 0..1 (flies to the screen edges)
+    function frameRect(B, p, br, off) {   // white frame around the band; br = break-out 0..1 (flies to the screen edges)
       if (VID.collecting || p <= 0) return; const pad = 16, R = lerpR([B[0] + pad, B[1] - pad, B[2] - 2 * pad, B[3] + 2 * pad], [-40, -40, W + 80, H + 80], E.inC(clamp(br)));
+      if (off) { R[0] += off[0]; R[1] += off[1]; }
       const c = G(); c.globalAlpha = 1 - clamp(br * 1.3); c.strokeStyle = WHT; c.lineWidth = 6; const L = (2 * R[2] + 2 * R[3]) * E.inOutC(clamp(p));
       c.setLineDash([L, 1e5]); c.beginPath(); c.moveTo(R[0], R[1]); c.lineTo(R[0] + R[2], R[1]); c.lineTo(R[0] + R[2], R[1] + R[3]); c.lineTo(R[0], R[1] + R[3]); c.closePath(); c.stroke(); D();
     }
     function words(b, i, t, push) {
-      const z = sz().l[i], y0 = 330 + z;
-      b.lines.forEach((l, k) => { const ws = l.split(' '); K3.words(ws, 64, y0 + k * z * 1.04 - push * 260, z, t, b.t0 + b.cIn + 0.1 + k * 0.32, { align: 'left', step: 0.12, hl: b.hl[0] === k ? b.hl[1] : -1, q: push * 1.4 }); });
+      const z = sz().l[i], [wx, wy] = posOf(elP('beatlines' + (i + 1)), [64, 330 + z]);
+      b.lines.forEach((l, k) => { const ws = l.split(' '); K3.words(ws, wx, wy + k * z * 1.04 - push * 260, z, t, b.t0 + b.cIn + 0.1 + k * 0.32, { align: 'left', step: 0.12, hl: b.hl[0] === k ? b.hl[1] : -1, q: push * 1.4 }); });
+    }
+    function elements() {
+      const bl = [0, 1, 2].map(i => { const b = BEATS[i], p = posOf(elP('beatlines' + (i + 1)), [64, 330 + sz().l[i]]);
+        return { id: 'beatlines' + (i + 1), kind: 'pos', label: b.lines.join(' / '), x: p[0], y: p[1], t0: b.t0, d: b.t1 - b.t0, box: [p[0], p[1] - sz().l[i], 950, sz().l[i] * 1.04 * b.lines.length + sz().l[i]], dup: false, del: false }; });
+      const plP = posOf(elP('projlabel'), [64, 330]), cpP = posOf(elP('cap2'), [64, 1200]);
+      const B0 = bandAt(BEATS[0].x.lc, CY), frP = posOf(elP('frame'), [B0[0] + 16, B0[1] - 16]);
+      const ouP = posOf(elP('outro'), [W / 2, 560]), ctP = posOf(elP('cta'), [W / 2, 930]);
+      return [
+        ...bl,
+        { id: 'projlabel', kind: 'pos', label: 'N° 01 · ' + (PJ[BEATS[0].x.vc] || ''), x: plP[0], y: plP[1], t0: BEATS[0].tx + 0.3, d: END - (BEATS[0].tx + 0.3), box: [plP[0], plP[1] - 22, 700, 30], dup: false, del: false },
+        { id: 'cap2', kind: 'pos', label: CAP2, x: cpP[0], y: cpP[1], t0: BEATS[0].tx + 0.5, d: END - (BEATS[0].tx + 0.5), box: [cpP[0], cpP[1] - 22, 950, 30], dup: false, del: false },
+        { id: 'frame', kind: 'box', label: 'White frame', x: frP[0], y: frP[1], w: B0[2] - 32, h: B0[3] + 32, t0: 0, d: END, box: [frP[0], frP[1], B0[2] - 32, B0[3] + 32], dup: false, del: false },
+        { id: 'outro', kind: 'pos', label: OUTL, x: ouP[0], y: ouP[1], t0: END, d: DUR - END, box: [ouP[0] - 475, ouP[1] - 96, 950, 110], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: END, d: DUR - END, box: [ctP[0] - 400, ctP[1] - 35, 800, 270], dup: false, del: false },
+      ];
     }
     return {
-      dur: DUR, shakes: BEATS.map(b => [b.tx + 0.1, 10]),
+      dur: DUR, shakes: BEATS.map(b => [b.tx + 0.1, 10]), elements,
       render(t) {
         K3.bgKinetic(t, CY, 60 / 112 * 4);
         if (t < END) {
@@ -107,17 +133,21 @@ STUDIO_REG['x'] = (() => {
           else if (t < b.tf) expand(x, (t - b.tx) / XD, ltL, t - b.tx, B);
           else full(x, t - b.tx);
           const br = clamp((t - b.tx) / XD);
-          frameRect(B, clamp((t - (b.t0 + b.cIn) + 0.05) / 0.4), br);
+          const fP = posOf(elP('frame'), [B[0] + 16, B[1] - 16]);
+          frameRect(B, clamp((t - (b.t0 + b.cIn) + 0.05) / 0.4), br, [fP[0] - (B[0] + 16), fP[1] - (B[1] - 16)]);
           if (t < b.tf) words(b, i, t, E.inC(clamp((t - b.tx) / (XD * 0.7))));
           if (t >= b.tx + 0.3) { scrim(1500, H, 0, 0.55); scrim(0, 520, 0.5, 0);
-            caps('N° 0' + (i + 1) + '  ·  ' + (PJ[x.vc] || projOf(x.vc)), 64, 330, 22, clamp((t - b.tx - 0.35) / 0.35), clamp((t - (b.t1 - 0.2)) / 0.2), { w: 700, fam: 'Mono', ls: 4, align: 'left', col: WHT, ls0: 0, shadow: 'rgba(0,0,0,0.6)' });
-            caps(CAP2, 64, 1200, 22, clamp((t - b.tx - 0.5) / 0.35), clamp((t - (b.t1 - 0.2)) / 0.2), { w: 700, fam: 'Mono', ls: 3, align: 'left', col: OR, ls0: 0, shadow: 'rgba(0,0,0,0.6)', maxW: 950 }); }
+            const [plx, ply] = posOf(elP('projlabel'), [64, 330]);
+            caps('N° 0' + (i + 1) + '  ·  ' + (PJ[x.vc] || projOf(x.vc)), plx, ply, 22, clamp((t - b.tx - 0.35) / 0.35), clamp((t - (b.t1 - 0.2)) / 0.2), { w: 700, fam: 'Mono', ls: 4, align: 'left', col: WHT, ls0: 0, shadow: 'rgba(0,0,0,0.6)' });
+            const [cpx, cpy] = posOf(elP('cap2'), [64, 1200]);
+            caps(CAP2, cpx, cpy, 22, clamp((t - b.tx - 0.5) / 0.35), clamp((t - (b.t1 - 0.2)) / 0.2), { w: 700, fam: 'Mono', ls: 3, align: 'left', col: OR, ls0: 0, shadow: 'rgba(0,0,0,0.6)', maxW: 950 }); }
         } else {   // the last vertical folds into a white frame that becomes the outro
           const o = t - END, last = BEATS[BEATS.length - 1];
           if (o < 0.5) { const u = E.inOutC(o / 0.5), R = lerpR(FULLR, [140, 380, 800, 1422], u); full(last.x, t - last.tx, { clip: () => ctx.rect(R[0], R[1], R[2], R[3]), alpha: 1 - u }); }
-          const z = sz().out, ow = OUTL.split(' '); K3.words(ow, W / 2, 560, z, o, 0.3, { step: 0.13, hl: ow.length - 1 });
+          const z = sz().out, ow = OUTL.split(' '), [oux, ouy] = posOf(elP('outro'), [W / 2, 560]);
+          K3.words(ow, oux, ouy, z, o, 0.3, { step: 0.13, hl: ow.length - 1 });
           K3.logoBuild(W / 2, 760, 600, 0.75, o, { speed: 1.5 });
-          K3.ctaBlock(o, 930, 0.85, 'kinetic');
+          K3.ctaBlock(o, posOf(elP('cta'), [W / 2, 930])[1], 0.85, 'kinetic');
         }
       },
       cues() {
@@ -154,45 +184,66 @@ STUDIO_REG['x'] = (() => {
     let t0 = 0; ST.forEach(s => { s.t0 = t0; t0 += s.d; }); const END = t0, DUR = 15;
     function ui(t, i, lt) {   // progress bars + header (generic story UI)
       if (VID.collecting) return; scrim(0, 520, 0.55, 0); const c = G(), n = ST.length, gw = (W - 48 - (n - 1) * 8) / n;
-      for (let k = 0; k < n; k++) { const x = 24 + k * (gw + 8); c.fillStyle = 'rgba(255,255,255,0.35)'; rrect(x, 284, gw, 6, 3); c.fill(); const f = k < i ? 1 : k === i ? clamp(lt / ST[k].d) : 0;
-        if (f > 0) { c.fillStyle = WHT; rrect(x, 284, gw * f, 6, 3); c.fill(); } }
-      c.fillStyle = BLK; c.beginPath(); c.arc(70, 350, 32, 0, 7); c.fill(); c.strokeStyle = OR; c.lineWidth = 4; c.stroke(); D();
-      K3.mark(70, 350, 30);
+      const [hx, hy] = posOf(elP('header'), [24, 284]);
+      for (let k = 0; k < n; k++) { const x = hx + k * (gw + 8); c.fillStyle = 'rgba(255,255,255,0.35)'; rrect(x, hy, gw, 6, 3); c.fill(); const f = k < i ? 1 : k === i ? clamp(lt / ST[k].d) : 0;
+        if (f > 0) { c.fillStyle = WHT; rrect(x, hy, gw * f, 6, 3); c.fill(); } }
+      c.fillStyle = BLK; c.beginPath(); c.arc(hx + 46, hy + 66, 32, 0, 7); c.fill(); c.strokeStyle = OR; c.lineWidth = 4; c.stroke(); D();
+      K3.mark(hx + 46, hy + 66, 30);
       const c2 = G(); setF(F(700, 28, 'Mont'), 0); c2.fillStyle = WHT; c2.textAlign = 'left'; c2.textBaseline = 'alphabetic'; c2.shadowColor = 'rgba(0,0,0,0.5)'; c2.shadowBlur = 8;
-      setF(F(700, Math.min(28, fitSize(BRAND.name, 700, 600, 28, 'Mont')), 'Mont'), 0); c2.fillText(BRAND.name, 118, 344); setF(F(500, 20, 'Mono'), 1); c2.fillStyle = 'rgba(255,255,255,0.75)'; c2.fillText(PJ[ST[i].c] || projOf(ST[i].c), 118, 374); D();
+      setF(F(700, Math.min(28, fitSize(BRAND.name, 700, 600, 28, 'Mont')), 'Mont'), 0); c2.fillText(BRAND.name, hx + 94, hy + 60); setF(F(500, 20, 'Mono'), 1); c2.fillStyle = 'rgba(255,255,255,0.75)'; c2.fillText(PJ[ST[i].c] || projOf(ST[i].c), hx + 94, hy + 90); D();
     }
     function tap(x, y, t, t0) { if (t >= t0 - 0.12 && t < t0 + 0.2 && !VID.collecting) { const c = G(); c.globalAlpha = 0.5 * (1 - clamp((t - t0) / 0.2)); c.fillStyle = WHT; c.beginPath(); c.arc(x + 6, y + 6, 40, 0, 7); c.fill(); D(); } K3.ripple(x, y, t, t0); }
     function sticker(s, lt, t) {
       if (VID.collecting) return;
       if (s.kind === 'poll') {   // poll sticker; the viewer picks ABSOLUTELY (no vote counts shown)
-        const p = E.outBack(clamp((lt - 0.4) / 0.35)), cx = W / 2, cy = 1020, c = G(); c.globalAlpha = clamp(p * 3); c.translate(cx, cy); c.scale(p, p); c.rotate(-0.03);
+        const p = E.outBack(clamp((lt - 0.4) / 0.35)), [plx, ply] = posOf(elP('poll'), [W / 2 - 380, 1020 - 170]), cx = plx + 380, cy = ply + 170, c = G(); c.globalAlpha = clamp(p * 3); c.translate(cx, cy); c.scale(p, p); c.rotate(-0.03);
         c.shadowColor = 'rgba(0,0,0,0.35)'; c.shadowBlur = 30; c.fillStyle = WHT; rrect(-380, -170, 760, 340, 34); c.fill(); c.shadowBlur = 0;
         setF(F(900, Math.min(46, fitSize(X.poll, 900, 700, 46, 'Mont', -1)), 'Mont'), -1); c.fillStyle = BLK; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.fillText(X.poll, 0, -84);
         const picked = lt >= 2.0, pp = clamp((lt - 2.0) / 0.3);
         [[X.yes, -175], [X.abs, 175]].forEach(([w, x], k) => { c.fillStyle = k === 1 && picked ? OR : '#EFEFEF'; rrect(x - 160, -30, 320, 120, 22); c.fill();
           setF(F(800, Math.min(34, fitSize(w, 800, 286, 34, 'Mont', 1)), 'Mont'), 1); c.fillStyle = BLK; c.textBaseline = 'middle'; c.fillText(w, x, 32); c.textBaseline = 'alphabetic'; });
         if (picked) { c.globalAlpha = clamp(p * 3) * pp; setF(F(700, 22, 'Mono'), 2); c.fillStyle = OR; c.fillText(X.same, 175, 130); }
-        D(); tap(W / 2 + 175, 1052, t, s.t0 + 2.0);
+        D(); tap(cx + 175, cy + 32, t, s.t0 + 2.0);
       } else if (s.kind === 'label') {   // text sticker slapped on
-        K3.label(X.lab, W / 2, 720, Math.min(72, 860 / (textW(X.lab, F(400, 100, 'Bebas'), 3) / 100 + 0.9)), -0.04, clamp((lt - 0.35) / 0.3));
-        caps(X.labCap, W / 2, 830, 22, clamp((lt - 0.8) / 0.4), 0, { w: 700, fam: 'Mono', ls: 3, shadow: 'rgba(0,0,0,0.7)', maxW: 960 });
+        const [stx, sty] = posOf(elP('sticker'), [W / 2, 720]);
+        K3.label(X.lab, stx, sty, Math.min(72, 860 / (textW(X.lab, F(400, 100, 'Bebas'), 3) / 100 + 0.9)), -0.04, clamp((lt - 0.35) / 0.3));
+        const [cax, cay] = posOf(elP('stickercap'), [W / 2, 830]);
+        caps(X.labCap, cax, cay, 22, clamp((lt - 0.8) / 0.4), 0, { w: 700, fam: 'Mono', ls: 3, shadow: 'rgba(0,0,0,0.7)', maxW: 960 });
       } else if (s.kind === 'qa') {   // question box, typed question, then the answer card
-        const p = E.outBack(clamp((lt - 0.3) / 0.35)), c = G(); c.globalAlpha = clamp(p * 3); c.translate(W / 2, 900); c.scale(p, p);
+        const p = E.outBack(clamp((lt - 0.3) / 0.35)), c = G(); c.globalAlpha = clamp(p * 3); const [qax, qay] = posOf(elP('qabox'), [W / 2 - 400, 900 - 150]); c.translate(qax + 400, qay + 150); c.scale(p, p);
         c.shadowColor = 'rgba(0,0,0,0.35)'; c.shadowBlur = 30; c.fillStyle = OR; rrect(-400, -150, 800, 110, [34, 34, 0, 0]); c.fill(); c.fillStyle = WHT; rrect(-400, -40, 800, 170, [0, 0, 34, 34]); c.fill(); c.shadowBlur = 0;
         setF(F(800, Math.min(36, fitSize(X.qaHead, 800, 740, 36, 'Mont', 1)), 'Mont'), 1); c.fillStyle = BLK; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(X.qaHead, 0, -95);
         const q = X.qaQ, n = Math.floor(clamp((lt - 0.8) / 0.9) * q.length); setF(F(600, Math.min(38, fitSize(q, 600, 740, 38, 'Mont')), 'Mont'), 0); c.fillStyle = '#222'; c.fillText(q.slice(0, n) || ' ', 0, 45); D();
-        if (lt > 2.0) { const p2 = E.outBack(clamp((lt - 2.0) / 0.35)), c2 = G(); c2.globalAlpha = clamp(p2 * 3); c2.translate(W / 2, 1150); c2.scale(p2, p2); c2.rotate(0.02); c2.fillStyle = BLK; rrect(-390, -70, 780, 140, 30); c2.fill();
+        if (lt > 2.0) { const p2 = E.outBack(clamp((lt - 2.0) / 0.35)), c2 = G(); c2.globalAlpha = clamp(p2 * 3); const [anx, any] = posOf(elP('answer'), [W / 2 - 390, 1150 - 70]); c2.translate(anx + 390, any + 70); c2.scale(p2, p2); c2.rotate(0.02); c2.fillStyle = BLK; rrect(-390, -70, 780, 140, 30); c2.fill();
           setF(F(500, 22, 'Mono'), 2); c2.fillStyle = OR; c2.textAlign = 'center'; c2.textBaseline = 'alphabetic'; c2.fillText(X.qaLab, 0, -22); setF(F(800, Math.min(38, fitSize(X.qaA, 800, 720, 38, 'Mont')), 'Mont'), 0); c2.fillStyle = WHT; c2.fillText(X.qaA, 0, 34); D(); }
       } else if (s.kind === 'link') {   // link sticker, tapped
-        const p = E.outBack(clamp((lt - 0.3) / 0.35)), press = lt > 1.4 && lt < 1.55 ? 0.94 : 1, c = G(); c.globalAlpha = clamp(p * 3); c.translate(W / 2, 1020); c.scale(p * press, p * press);
+        const p = E.outBack(clamp((lt - 0.3) / 0.35)), press = lt > 1.4 && lt < 1.55 ? 0.94 : 1, c = G(); c.globalAlpha = clamp(p * 3); const [lix, liy] = posOf(elP('link'), [W / 2 - 360, 1020 - 56]); c.translate(lix + 360, liy + 56); c.scale(p * press, p * press);
         c.shadowColor = 'rgba(0,0,0,0.35)'; c.shadowBlur = 24; c.fillStyle = WHT; rrect(-360, -56, 720, 112, 56); c.fill(); c.shadowBlur = 0;
         c.strokeStyle = OR; c.lineWidth = 6; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(-304, 14); c.lineTo(-276, -14); c.moveTo(-296, -14); c.lineTo(-276, -14); c.lineTo(-276, 6); c.stroke();
         setF(F(800, Math.min(32, fitSize(CONTACT.cta, 800, 580, 32, 'Mont', 1.5)), 'Mont'), 1.5); c.fillStyle = BLK; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(CONTACT.cta, -250, 2); D();
-        tap(W / 2 + 160, 1020, t, s.t0 + 1.4);
+        tap(lix + 360 + 160, liy + 56, t, s.t0 + 1.4);
       }
     }
+    function elements() {
+      const heP = posOf(elP('header'), [24, 284]), poP = posOf(elP('poll'), [W / 2 - 380, 850]);
+      const stP = posOf(elP('sticker'), [W / 2, 720]), scP = posOf(elP('stickercap'), [W / 2, 830]);
+      const qaP = posOf(elP('qabox'), [W / 2 - 400, 750]), anP = posOf(elP('answer'), [W / 2 - 390, 1080]);
+      const liP = posOf(elP('link'), [W / 2 - 360, 964]), etP = posOf(elP('endtag'), [W / 2, 800]), ctP = posOf(elP('cta'), [W / 2, 920]);
+      const tagLabel = (CONTACT.tagline || '').replace(/[.!]+$/, '').toUpperCase() || 'End card tagline';
+      return [
+        { id: 'header', kind: 'box', label: 'Story header', x: heP[0], y: heP[1], w: W - 48, h: 100, t0: 0, d: END, box: [heP[0], heP[1], W - 48, 100], dup: false, del: false },
+        { id: 'poll', kind: 'card', label: X.poll, x: poP[0], y: poP[1], w: 760, h: 340, t0: ST[0].t0 + 0.4, d: ST[0].d - 0.4, box: [poP[0], poP[1], 760, 340], dup: false, del: false },
+        { id: 'sticker', kind: 'pos', label: X.lab, x: stP[0], y: stP[1], t0: ST[1].t0 + 0.35, d: ST[1].d - 0.35, box: [stP[0] - 430, stP[1] - 40, 860, 80], dup: false, del: false },
+        { id: 'stickercap', kind: 'pos', label: X.labCap, x: scP[0], y: scP[1], t0: ST[1].t0 + 0.8, d: ST[1].d - 0.8, box: [scP[0] - 480, scP[1] - 22, 960, 30], dup: false, del: false },
+        { id: 'qabox', kind: 'card', label: X.qaHead, x: qaP[0], y: qaP[1], w: 800, h: 280, t0: ST[2].t0 + 0.3, d: ST[2].d - 0.3, box: [qaP[0], qaP[1], 800, 280], dup: false, del: false },
+        { id: 'answer', kind: 'card', label: X.qaA, x: anP[0], y: anP[1], w: 780, h: 140, t0: ST[2].t0 + 2.0, d: ST[2].d - 2.0, box: [anP[0], anP[1], 780, 140], dup: false, del: false },
+        { id: 'link', kind: 'card', label: CONTACT.cta, x: liP[0], y: liP[1], w: 720, h: 112, t0: ST[3].t0 + 0.3, d: ST[3].d - 0.3, box: [liP[0], liP[1], 720, 112], dup: false, del: false },
+        { id: 'endtag', kind: 'pos', label: tagLabel, x: etP[0], y: etP[1], t0: END, d: DUR - END, box: [etP[0] - 490, etP[1] - 24, 980, 32], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: END, d: DUR - END, box: [ctP[0] - 400, ctP[1] - 35, 800, 270], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [],
+      dur: DUR, shakes: [], elements,
       render(t) {
         fillScreen(BLK);
         if (t < END) {
@@ -203,8 +254,9 @@ STUDIO_REG['x'] = (() => {
         } else {   // end card: the link opened
           const o = t - END; if (o < 0.35) { const sv = ST[ST.length - 1]; K3.clip(sv.c, sv.in, sv.d + o, FULLR, { alpha: 1 - o / 0.35 }); }
           K3.logoBuild(W / 2, 640, 720, 0.2, o, { speed: 1.5 });
-          caps(tagCaps(), W / 2, 800, 24, clamp((o - 0.7) / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, col: 'rgba(255,255,255,0.8)', maxW: 980 });
-          K3.ctaBlock(o, 920, 0.6, 'kinetic');
+          const [etx, ety] = posOf(elP('endtag'), [W / 2, 800]);
+          caps(tagCaps(), etx, ety, 24, clamp((o - 0.7) / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, col: 'rgba(255,255,255,0.8)', maxW: 980 });
+          K3.ctaBlock(o, posOf(elP('cta'), [W / 2, 920])[1], 0.6, 'kinetic');
         }
       },
       cues() {
@@ -414,5 +466,5 @@ STUDIO_REG['x'] = (() => {
 
   const P = V === 'stories' ? stories() : V === 'gatefold' ? gatefold() : V === 'uncropped' ? uncropped() : V === 'scale' ? scale() : V === 'tallwall' ? tallwall() : frame();
   const fin = V === 'gatefold' ? { vig: 0.06, grain: 0.12 } : V === 'tallwall' ? { vig: 0.3, grain: 0.15 } : { vig: 0.22, grain: 0.18 };
-  DIR = { dur: P.dur, bg: V === 'gatefold' ? PAPER : BLK, finish: fin, edl: [], shakes: P.shakes, preload: () => K3.init({ grunge: V === 'uncropped' }), render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: V === 'gatefold' ? PAPER : BLK, finish: fin, edl: [], shakes: P.shakes, preload: () => K3.init({ grunge: V === 'uncropped' }), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

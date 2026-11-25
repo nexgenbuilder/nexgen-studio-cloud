@@ -12,6 +12,13 @@
    Captions name projects or what is visibly there, never a service DPG doesn't list (no lighting, no pools, no fire). */
 STUDIO_REG['n1'] = (() => {
   const V = QS.get('v') || 'sketch';
+  // Per-element model: tpl_free sets window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // factory; positions below fall back to the original hardcoded values when EL is null, so rendering
+  // is byte-for-byte the old path. (Same pattern as tpl_trade.js.)
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const lmod = K3.lmod, G = K3.G, D = K3.D;
   const whole = (c, r) => K3.wholeIn(c, r);
   const play = (c, inn, lt, r, o) => K3.clip(c, inn, lt, whole(c, r), o);
@@ -240,7 +247,8 @@ STUDIO_REG['n1'] = (() => {
     const EF = { pl1: TX('emptyTitle', 'YOUR BACKYARD', { label: 'Placard title', group: 'The empty frame', upper: true, max: 22 }),
       pl2: TX('emptyMedium', 'Medium: yours to choose', { label: 'Placard medium', group: 'The empty frame', max: 30 }),
       pl3: TX('emptyBy', 'BY COMMISSION', { label: 'Placard credit', group: 'The empty frame', upper: true, max: 22 }),
-      h1: TX('emptyLine1', 'Your backyard,', { label: 'Line 1', group: 'The empty frame', max: 24 }), h2: TX('emptyLine2', 'on permanent display.', { label: 'Line 2 (orange)', group: 'The empty frame', max: 26 }) };
+      h1: TX('emptyLine1', 'Your backyard,', { label: 'Line 1', group: 'The empty frame', max: 24 }), h2: TX('emptyLine2', 'on permanent display.', { label: 'Line 2 (orange)', group: 'The empty frame', max: 26 }),
+      res: TX('reserved', 'reserved', { label: 'Text inside the empty frame', group: 'The empty frame', max: 20 }) };
     const N = ART.length, X = k => 1500 + k * 1100, EMPTY = X(N), ARR = k => IN + MV + k * SEG, LAST = IN + N * SEG, OUT = LAST + 1.4, DUR = 30;
     function camX(t) {
       if (t < IN) return 0;
@@ -251,27 +259,64 @@ STUDIO_REG['n1'] = (() => {
     const artSize = c => { const a = K3.ar(c); return a < 1 ? [450, 800] : a < 1.6 ? [690, 460] : [760, 428]; };
     function frame(x, w, h, art, t, k) {   // spotlight, shadow, frame, mat; the artwork plays its playlist on a loop
       const fw = 30, mat = 64, x0 = x - w / 2 - mat - fw, y0 = CYF - h / 2 - mat - fw, W0 = w + 2 * (mat + fw), H0 = h + 2 * (mat + fw);
+      const [fx0, fy0] = posOf(elP('frame' + (k + 1)), [x0, y0]);
+      x += fx0 - x0; const cyf = CYF + (fy0 - y0), X0 = x - w / 2 - mat - fw, Y0 = cyf - h / 2 - mat - fw;
       if (!VID.collecting) {
-        const c = K4.GI(), g = c.createRadialGradient(x, y0 - 160, 30, x, CYF, 880); g.addColorStop(0, 'rgba(255,249,238,0.8)'); g.addColorStop(0.5, 'rgba(255,249,238,0.2)'); g.addColorStop(1, 'rgba(255,249,238,0)');
+        const c = K4.GI(), g = c.createRadialGradient(x, Y0 - 160, 30, x, cyf, 880); g.addColorStop(0, 'rgba(255,249,238,0.8)'); g.addColorStop(0.5, 'rgba(255,249,238,0.2)'); g.addColorStop(1, 'rgba(255,249,238,0)');
         c.fillStyle = g; c.fillRect(x - 900, 0, 1800, FLOOR0);
         c.fillStyle = '#1A1A1A'; c.fillRect(x - 34, 96, 68, 22); c.fillRect(x - 5, 60, 10, 40); c.beginPath(); c.ellipse(x, 124, 26, 16, 0, 0, 7); c.fill();
-        c.shadowColor = 'rgba(40,30,20,0.45)'; c.shadowBlur = 50; c.shadowOffsetY = 26; c.fillStyle = '#1D1814'; c.fillRect(x0, y0, W0, H0); c.shadowBlur = 0; c.shadowOffsetY = 0;
-        c.fillStyle = '#2A221C'; c.fillRect(x0 + 6, y0 + 6, W0 - 12, H0 - 12); c.fillStyle = '#F6F3EE'; c.fillRect(x0 + fw, y0 + fw, W0 - 2 * fw, H0 - 2 * fw);
-        c.strokeStyle = 'rgba(0,0,0,0.12)'; c.lineWidth = 2; c.strokeRect(x - w / 2 - 3, CYF - h / 2 - 3, w + 6, h + 6); D();
+        c.shadowColor = 'rgba(40,30,20,0.45)'; c.shadowBlur = 50; c.shadowOffsetY = 26; c.fillStyle = '#1D1814'; c.fillRect(X0, Y0, W0, H0); c.shadowBlur = 0; c.shadowOffsetY = 0;
+        c.fillStyle = '#2A221C'; c.fillRect(X0 + 6, Y0 + 6, W0 - 12, H0 - 12); c.fillStyle = '#F6F3EE'; c.fillRect(X0 + fw, Y0 + fw, W0 - 2 * fw, H0 - 2 * fw);
+        c.strokeStyle = 'rgba(0,0,0,0.12)'; c.lineWidth = 2; c.strokeRect(x - w / 2 - 3, cyf - h / 2 - 3, w + 6, h + 6); D();
       }
-      const r = [x - w / 2, CYF - h / 2, w, h];
+      const r = [x - w / 2, cyf - h / 2, w, h];
       if (art) { const tot = art.list.reduce((s, l) => s + l[2], 0), lt = lmod(t - (ARR(k) - 2.2), tot); let acc = 0;
         for (const [c, inn, d] of art.list) { if (lt < acc + d) { play(c, inn, lt - acc, r); break; } acc += d; } }
-      return [x0, y0, W0, H0, r];
+      return [X0, Y0, W0, H0, r];
     }
-    function placard(x, y, title, medium, by, a) {
-      if (VID.collecting || a <= 0) return; const c = K4.GI(); c.globalAlpha = a; c.shadowColor = 'rgba(0,0,0,0.18)'; c.shadowBlur = 12; c.shadowOffsetY = 4; c.fillStyle = '#FFFFFF'; c.fillRect(x, y, 380, 178); c.shadowBlur = 0; c.shadowOffsetY = 0;
+    function placard(x, y, title, medium, by, a, id) {
+      if (VID.collecting || a <= 0) return;
+      if (id) { const [px, py] = posOf(elP(id), [x, y]); x = px; y = py; }
+      const c = K4.GI(); c.globalAlpha = a; c.shadowColor = 'rgba(0,0,0,0.18)'; c.shadowBlur = 12; c.shadowOffsetY = 4; c.fillStyle = '#FFFFFF'; c.fillRect(x, y, 380, 178); c.shadowBlur = 0; c.shadowOffsetY = 0;
       setF(F(800, Math.min(23, fitSize(title, 800, 332, 23, 'Mont', 2)), 'Mont'), 2); c.fillStyle = ONLIGHT(); c.textBaseline = 'alphabetic'; c.textAlign = 'left'; c.fillText(title, x + 24, y + 48);
       setF(F(600, Math.min(30, fitSize(medium, 600, 332, 30, 'Corm', 0, 'italic')), 'Corm', 'italic'), 0); c.fillStyle = 'rgba(11,11,11,0.8)'; c.fillText(medium, x + 24, y + 96);
       setF(F(700, Math.min(16, fitSize(by, 700, 332, 16, 'Mono', 2)), 'Mono'), 2); c.fillStyle = OR; c.fillText(by, x + 24, y + 148); D();
     }
+    function elements() {
+      const kiP = posOf(elP('kick'), [540, 400]), lgP = posOf(elP('wallLogo'), [540, 560]);
+      const t1P = posOf(elP('title1'), [540, 800]), t2P = posOf(elP('title2'), [540, 930]), suP = posOf(elP('sub'), [540, 1060]);
+      const frames = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), x0 = X(k) - w / 2 - 94, y0 = CYF - h / 2 - 94, W0 = w + 188, H0 = h + 188;
+        const fp = posOf(elP('frame' + (k + 1)), [x0, y0]);
+        return { id: 'frame' + (k + 1), kind: 'box', label: 'Frame ' + (k + 1) + (art.title ? ' · ' + art.title : ''), x: fp[0], y: fp[1], w: W0, h: H0, t0: Math.max(0, ARR(k) - 2.2), d: SEG, box: [fp[0], fp[1], W0, H0], dup: false, del: false }; });
+      const placards = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), pp = posOf(elP('placard' + (k + 1)), [X(k) + w / 2 - 286, CYF + h / 2 + 134]);
+        return { id: 'placard' + (k + 1), kind: 'card', label: art.title || 'Artwork ' + (k + 1), x: pp[0], y: pp[1], w: 380, h: 178, t0: ARR(k) + 0.15, d: 3.2, box: [pp[0], pp[1], 380, 178], dup: false, del: false }; });
+      const nums = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), np = posOf(elP('num' + (k + 1)), [X(k), CYF - h / 2 - 134]);
+        return { id: 'num' + (k + 1), kind: 'pos', label: 'N° 0' + (k + 1), x: np[0], y: np[1], t0: ARR(k) + 0.15, d: 3.2, box: [np[0] - 60, np[1] - 40, 200, 60], dup: false, del: false }; });
+      const f6P = posOf(elP('frame6'), [EMPTY - 439, 536]), p6P = posOf(elP('placard6'), [EMPTY + 59, 1224]);
+      const rsP = posOf(elP('reserved'), [EMPTY, CYF]), e1P = posOf(elP('empty1'), [EMPTY, 380]), e2P = posOf(elP('empty2'), [EMPTY, 452]);
+      const clP = posOf(elP('ctaLogo'), [EMPTY, 702]), ctP = posOf(elP('cta'), [EMPTY, 815]);
+      const phP = posOf(elP('phone'), [EMPTY, 918]), wbP = posOf(elP('web'), [EMPTY, 968]), ftP = posOf(elP('foot'), [EMPTY, 1032]);
+      return [
+        { id: 'kick', kind: 'pos', label: TW.kick, x: kiP[0], y: kiP[1], t0: 0.1, d: 2.1, box: [kiP[0] - 250, kiP[1] - 40, 500, 60], dup: false, del: false },
+        { id: 'wallLogo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: 0.2, d: 2.0, box: [lgP[0] - 220, lgP[1] - 60, 440, 120], dup: false, del: false },
+        { id: 'title1', kind: 'pos', label: TW.l1, x: t1P[0], y: t1P[1], t0: 0.55, d: 1.65, box: [t1P[0] - 470, t1P[1] - 90, 940, 180], dup: false, del: false },
+        { id: 'title2', kind: 'pos', label: TW.l2, x: t2P[0], y: t2P[1], t0: 0.75, d: 1.45, box: [t2P[0] - 470, t2P[1] - 90, 940, 180], dup: false, del: false },
+        { id: 'sub', kind: 'pos', label: TW.sub, x: suP[0], y: suP[1], t0: 1.2, d: 1.0, box: [suP[0] - 470, suP[1] - 40, 940, 70], dup: false, del: false },
+        ...frames, ...placards, ...nums,
+        { id: 'frame6', kind: 'box', label: 'Empty frame', x: f6P[0], y: f6P[1], w: 878, h: 648, t0: LAST + MV, d: DUR - (LAST + MV), box: [f6P[0], f6P[1], 878, 648], dup: false, del: false },
+        { id: 'placard6', kind: 'card', label: EF.pl1, x: p6P[0], y: p6P[1], w: 380, h: 178, t0: LAST + MV + 0.1, d: DUR - (LAST + MV + 0.1), box: [p6P[0], p6P[1], 380, 178], dup: false, del: false },
+        { id: 'reserved', kind: 'pos', label: EF.res, x: rsP[0], y: rsP[1], t0: LAST + MV, d: OUT + 0.4 - (LAST + MV), box: [rsP[0] - 200, rsP[1] - 40, 400, 80], dup: false, del: false },
+        { id: 'empty1', kind: 'pos', label: EF.h1, x: e1P[0], y: e1P[1], t0: LAST + MV + 0.15, d: DUR - (LAST + MV + 0.15), box: [e1P[0] - 470, e1P[1] - 60, 940, 120], dup: false, del: false },
+        { id: 'empty2', kind: 'pos', label: EF.h2, x: e2P[0], y: e2P[1], t0: LAST + MV + 0.35, d: DUR - (LAST + MV + 0.35), box: [e2P[0] - 470, e2P[1] - 60, 940, 120], dup: false, del: false },
+        { id: 'ctaLogo', kind: 'pos', label: 'Logo', x: clP[0], y: clP[1], t0: OUT, d: DUR - OUT, box: [clP[0] - 200, clP[1] - 60, 400, 120], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: OUT + 0.35, d: DUR - (OUT + 0.35), box: [ctP[0] - 320, ctP[1] - 40, 640, 80], dup: false, del: false },
+        { id: 'phone', kind: 'pos', label: CONTACT.phone, x: phP[0], y: phP[1], t0: OUT + 0.6, d: DUR - (OUT + 0.6), box: [phP[0] - 400, phP[1] - 60, 800, 110], dup: false, del: false },
+        { id: 'web', kind: 'pos', label: CONTACT.web, x: wbP[0], y: wbP[1], t0: OUT + 0.85, d: DUR - (OUT + 0.85), box: [wbP[0] - 300, wbP[1] - 40, 600, 70], dup: false, del: false },
+        { id: 'foot', kind: 'pos', label: 'Footer line', x: ftP[0], y: ftP[1], t0: OUT + 1.05, d: DUR - (OUT + 1.05), box: [ftP[0] - 250, ftP[1] - 30, 500, 60], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR,
+      dur: DUR, elements,
       render(t) {
         const cx = camX(t);
         if (!VID.collecting) { const c = K4.GI(), g = c.createLinearGradient(0, 0, 0, FLOOR0); g.addColorStop(0, '#E0DAD0'); g.addColorStop(0.5, WALL); g.addColorStop(1, '#E6E0D6'); c.fillStyle = g; c.fillRect(0, 0, W, FLOOR0);
@@ -281,29 +326,41 @@ STUDIO_REG['n1'] = (() => {
         // the title wall
         const tx = 540 - cx;
         if (tx > -700) {
-          caps(TW.kick, tx, 400, 22, clamp((t - 0.1) / 0.5), 0, { w: 700, fam: 'Mono', ls: 6, col: OR, maxW: 960 });
-          K3.logoBuild(tx, 560, 440, 0.2, t, { img: LOGO_LIGHT(), soft: true, speed: 0.9 });
-          K3.serifLines([TW.l1], tx, 800, Math.min(132, fitSize(TW.l1, 600, 960, 132, 'Corm')), 136, t, 0.55, { align: 'center', col: ONLIGHT(), style: '', w: 600 });
-          K3.serifLines([TW.l2], tx, 930, Math.min(132, fitSize(TW.l2, 600, 960, 132, 'Corm', 0, 'italic')), 136, t, 0.75, { align: 'center', col: OR, w: 600 });
-          caps(TW.sub, tx, 1060, 21, clamp((t - 1.2) / 0.5), 0, { w: 700, fam: 'Mono', ls: 4, col: 'rgba(11,11,11,0.7)', maxW: 960 });
+          const [kx, ky] = posOf(elP('kick'), [tx, 400]);
+          caps(TW.kick, kx, ky, 22, clamp((t - 0.1) / 0.5), 0, { w: 700, fam: 'Mono', ls: 6, col: OR, maxW: 960 });
+          const [lx, ly] = posOf(elP('wallLogo'), [tx, 560]);
+          K3.logoBuild(lx, ly, 440, 0.2, t, { img: LOGO_LIGHT(), soft: true, speed: 0.9 });
+          const [t1x, t1y] = posOf(elP('title1'), [tx, 800]);
+          K3.serifLines([TW.l1], t1x, t1y, Math.min(132, fitSize(TW.l1, 600, 960, 132, 'Corm')), 136, t, 0.55, { align: 'center', col: ONLIGHT(), style: '', w: 600 });
+          const [t2x, t2y] = posOf(elP('title2'), [tx, 930]);
+          K3.serifLines([TW.l2], t2x, t2y, Math.min(132, fitSize(TW.l2, 600, 960, 132, 'Corm', 0, 'italic')), 136, t, 0.75, { align: 'center', col: OR, w: 600 });
+          const [sux, suy] = posOf(elP('sub'), [tx, 1060]);
+          caps(TW.sub, sux, suy, 21, clamp((t - 1.2) / 0.5), 0, { w: 700, fam: 'Mono', ls: 4, col: 'rgba(11,11,11,0.7)', maxW: 960 });
         }
         // the artworks
         ART.forEach((art, k) => { const x = X(k) - cx; if (x < -700 || x > W + 700) return; const [w, h] = artSize(art.list[0][0]), fr = frame(x, w, h, art, t, k);
           const a = clamp((t - ARR(k) - 0.15) / 0.4) * (1 - clamp((t - (ARR(k) + SEG - MV - 0.25)) / 0.25));
-          placard(fr[0] + fr[2] - 380, fr[1] + fr[3] + 40, art.title, art.medium, BRAND.name.toUpperCase(), a);
-          caps('N° 0' + (k + 1), x, fr[1] - 40, 18, a, 0, { w: 700, fam: 'Mono', ls: 4, col: 'rgba(11,11,11,0.55)' }); });
+          placard(fr[0] + fr[2] - 380, fr[1] + fr[3] + 40, art.title, art.medium, BRAND.name.toUpperCase(), a, 'placard' + (k + 1));
+          const [nx, ny] = posOf(elP('num' + (k + 1)), [x, fr[1] - 40]);
+          caps('N° 0' + (k + 1), nx, ny, 18, a, 0, { w: 700, fam: 'Mono', ls: 4, col: 'rgba(11,11,11,0.55)' }); });
         // the empty frame: "reserved", then it becomes the CTA
         const ex = EMPTY - cx;
         if (ex < W + 700) { const fr = frame(ex, 690, 460, null, t, N), o = t - OUT, cf = clamp(o / 0.4);
-          if (!VID.collecting && cf < 1) { const c = K4.GI(); c.globalAlpha = 1 - cf; setF(F(600, 44, 'Corm', 'italic'), 0); c.fillStyle = 'rgba(11,11,11,0.35)'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('reserved', ex, CYF); D(); }
-          if (o > 0) { drawLogo(LIGHTPAL ? 'w' : 'b', ex, 702, 400, E.outQ(clamp(o / 0.6)));
-            pill(CONTACT.cta, ex, 815, { size: Math.min(24, fitSize(CONTACT.cta, 800, 640, 24, 'Mont', 2.5)), p: clamp((o - 0.35) / 0.35) });
-            caps(CONTACT.phone, ex, 918, 54, clamp((o - 0.6) / 0.35), 0, { w: 800, ls: 1, col: ONLIGHT() });
-            caps(CONTACT.web, ex, 968, 22, clamp((o - 0.85) / 0.35), 0, { w: 700, ls: 4, col: OR });
-            caps(footLine('  ·  '), ex, 1032, 15, clamp((o - 1.05) / 0.35), 0, { w: 500, fam: 'Mono', ls: 2, col: 'rgba(11,11,11,0.6)' }); }
-          const a = clamp((t - (LAST + MV) - 0.1) / 0.4); placard(fr[0] + fr[2] - 380, fr[1] + fr[3] + 40, EF.pl1, EF.pl2, EF.pl3, a);
-          K3.serifLines([EF.h1], ex, 380, Math.min(64, fitSize(EF.h1, 600, 960, 64, 'Corm')), 70, t, LAST + MV + 0.15, { align: 'center', col: ONLIGHT(), style: '', w: 600 });
-          K3.serifLines([EF.h2], ex, 452, Math.min(64, fitSize(EF.h2, 600, 960, 64, 'Corm', 0, 'italic')), 70, t, LAST + MV + 0.35, { align: 'center', col: OR, w: 600 }); }
+          if (!VID.collecting && cf < 1) { const c = K4.GI(); c.globalAlpha = 1 - cf; setF(F(600, 44, 'Corm', 'italic'), 0); c.fillStyle = 'rgba(11,11,11,0.35)'; c.textAlign = 'center'; c.textBaseline = 'middle'; const [rx, ry] = posOf(elP('reserved'), [ex, CYF]); c.fillText(EF.res, rx, ry); D(); }
+          if (o > 0) { const [lgx, lgy] = posOf(elP('ctaLogo'), [ex, 702]); drawLogo(LIGHTPAL ? 'w' : 'b', lgx, lgy, 400, E.outQ(clamp(o / 0.6)));
+            const [cax, cay] = posOf(elP('cta'), [ex, 815]);
+            pill(CONTACT.cta, cax, cay, { size: Math.min(24, fitSize(CONTACT.cta, 800, 640, 24, 'Mont', 2.5)), p: clamp((o - 0.35) / 0.35) });
+            const [phx, phy] = posOf(elP('phone'), [ex, 918]);
+            caps(CONTACT.phone, phx, phy, 54, clamp((o - 0.6) / 0.35), 0, { w: 800, ls: 1, col: ONLIGHT() });
+            const [wbx, wby] = posOf(elP('web'), [ex, 968]);
+            caps(CONTACT.web, wbx, wby, 22, clamp((o - 0.85) / 0.35), 0, { w: 700, ls: 4, col: OR });
+            const [ftx, fty] = posOf(elP('foot'), [ex, 1032]);
+            caps(footLine('  ·  '), ftx, fty, 15, clamp((o - 1.05) / 0.35), 0, { w: 500, fam: 'Mono', ls: 2, col: 'rgba(11,11,11,0.6)' }); }
+          const a = clamp((t - (LAST + MV) - 0.1) / 0.4); placard(fr[0] + fr[2] - 380, fr[1] + fr[3] + 40, EF.pl1, EF.pl2, EF.pl3, a, 'placard6');
+          const [e1x, e1y] = posOf(elP('empty1'), [ex, 380]);
+          K3.serifLines([EF.h1], e1x, e1y, Math.min(64, fitSize(EF.h1, 600, 960, 64, 'Corm')), 70, t, LAST + MV + 0.15, { align: 'center', col: ONLIGHT(), style: '', w: 600 });
+          const [e2x, e2y] = posOf(elP('empty2'), [ex, 452]);
+          K3.serifLines([EF.h2], e2x, e2y, Math.min(64, fitSize(EF.h2, 600, 960, 64, 'Corm', 0, 'italic')), 70, t, LAST + MV + 0.35, { align: 'center', col: OR, w: 600 }); }
       },
       cues() {
         const ev = [['air', 0.15, 0.2, 0]];
@@ -334,39 +391,74 @@ STUDIO_REG['n1'] = (() => {
     const OVER = [['DESIGNED.', 14.4, 0.9], ['BUILT.', 16.3, 0.8], ['LIVED IN.', 17.9, 0.75]].map((o, i) => [TX('over' + (i + 1), o[0], { label: 'Word over the montage ' + (i + 1), group: 'Montage', upper: true, max: 12 }), o[1], o[2]]);
     const BIG = TX('title', 'BUILT BY ' + BRAND.short.toUpperCase(), { label: 'Title', group: 'Title and ending', upper: true, max: 16 });
     const SOONTX = [TX('soon1', 'COMING SOON', { label: 'Ending card, line 1', group: 'Title and ending', upper: true, max: 18 }), TX('soon2', 'TO YOUR BACKYARD', { label: 'Ending card, line 2', group: 'Title and ending', upper: true, max: 20 })].join('\n');
+    const PRESENTS = TX('presents', 'PRESENTS', { label: 'Opener line', group: 'Opening', upper: true, max: 12 });
+    const SHOWING = TX('showing', CONTACT.area ? 'NOW SHOWING ACROSS ' + CONTACT.area : 'NOW SHOWING', { label: 'Now showing line', group: 'Title and ending', upper: true, max: 40 });
     const BILLING = (BRAND.billing || []).concat(CONTACT.lic ? [CONTACT.lic] : []);
     const bfit = (s, max, maxW, ls) => Math.min(max, max * maxW / textW(s, F(400, max, 'Bebas'), ls));
-    function card(txt, lt, d, o) {   // Bebas title card; '\n' splits lines
+    function card(txt, lt, d, o, id) {   // Bebas title card; '\n' splits lines
       if (VID.collecting) return; o = o || {}; const a = clamp(lt / 0.12) * (1 - clamp((lt - (d - 0.15)) / 0.15)), s = 1 + 0.05 * (lt / d), lines = txt.split('\n');
+      const [ccx, ccy] = id ? posOf(elP(id), [W / 2, CY]) : [W / 2, CY];
       const size = Math.min(...lines.map(l => bfit(l, o.max || 190, 900, (o.max || 190) * 0.08))), c = G();
-      c.globalAlpha = a; c.translate(W / 2, CY); c.scale(s, s); setF(F(400, size, 'Bebas'), size * 0.08); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.globalAlpha = a; c.translate(ccx, ccy); c.scale(s, s); setF(F(400, size, 'Bebas'), size * 0.08); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.shadowColor = 'rgba(255,255,255,0.3)'; c.shadowBlur = 26; lines.forEach((l, k) => c.fillText(l, size * 0.04, (k - (lines.length - 1) / 2) * size * 0.95)); D();
       const k = Math.pow(clamp(1 - lt / 0.7), 2) * a;   // anamorphic streak through the title
       if (k > 0.01) { const c2 = K4.GI(); c2.globalCompositeOperation = 'lighter'; const g = c2.createLinearGradient(0, 0, W, 0); g.addColorStop(0, 'rgba(255,101,0,0)'); g.addColorStop(0.5, `rgba(255,190,120,${0.9 * k})`); g.addColorStop(1, 'rgba(255,101,0,0)');
-        c2.fillStyle = g; c2.fillRect(0, CY - 2, W, 4); c2.globalAlpha = 0.35 * k; c2.fillRect(0, CY - 16, W, 32); D(); }
+        c2.fillStyle = g; c2.fillRect(0, ccy - 2, W, 4); c2.globalAlpha = 0.35 * k; c2.fillRect(0, ccy - 16, W, 32); D(); }
     }
     function shot(c, inn, lt, d, fade) { const a = fade ? clamp(lt / 0.35) * (1 - clamp((lt - (d - 0.3)) / 0.3)) : 1; ctx.save(); ctx.globalAlpha = a; play(c, inn, lt, bandR(c, CY)); ctx.restore(); }
+    function elements() {
+      const lgP = posOf(elP('logo'), [W / 2, CY - 30]), prP = posOf(elP('presents'), [W / 2, CY + 110]);
+      const cards = SEQ.filter(s => s[0] === 'card').map((s, i) => { const cp = posOf(elP('card' + (i + 1)), [W / 2, CY]);
+        return { id: 'card' + (i + 1), kind: 'pos', label: s[3], x: cp[0], y: cp[1], t0: s[1], d: s[2], box: [cp[0] - 470, cp[1] - 130, 940, 260], dup: false, del: false }; });
+      const snP = posOf(elP('soon'), [W / 2, CY]);
+      const overs = OVER.map(([w, t0, d], i) => { const op = posOf(elP('over' + (i + 1)), [W / 2, 540]);
+        return { id: 'over' + (i + 1), kind: 'pos', label: w, x: op[0], y: op[1], t0, d, box: [op[0] - 470, op[1] - 100, 940, 200], dup: false, del: false }; });
+      const tiP = posOf(elP('title'), [W / 2, CY - 40]), blP = posOf(elP('billLogo'), [W / 2, 440]);
+      const ctP = posOf(elP('cta'), [W / 2, 930]), coP = posOf(elP('contact'), [W / 2, 1030]), shP = posOf(elP('showing'), [W / 2, 1100]);
+      const bills = BILLING.map((l, k) => { const bp = posOf(elP('bill' + (k + 1)), [W / 2, 590 + k * 44]);
+        return { id: 'bill' + (k + 1), kind: 'pos', label: l, x: bp[0], y: bp[1], t0: BILL + 0.2 + k * 0.1, d: DUR - (BILL + 0.2 + k * 0.1), box: [bp[0] - 450, bp[1] - 30, 900, 60], dup: false, del: false }; });
+      return [
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: 0, d: 1.5, box: [lgP[0] - 310, lgP[1] - 60, 620, 120], dup: false, del: false },
+        { id: 'presents', kind: 'pos', label: PRESENTS, x: prP[0], y: prP[1], t0: 0.45, d: 1.05, box: [prP[0] - 250, prP[1] - 40, 500, 70], dup: false, del: false },
+        ...cards,
+        { id: 'soon', kind: 'pos', label: SOONTX, x: snP[0], y: snP[1], t0: SOON, d: BILL - SOON + 0.2, box: [snP[0] - 470, snP[1] - 130, 940, 260], dup: false, del: false },
+        ...overs,
+        { id: 'title', kind: 'pos', label: BIG, x: tiP[0], y: tiP[1], t0: TITLE, d: SOON + 0.2 - TITLE, box: [tiP[0] - 470, tiP[1] - 120, 940, 240], dup: false, del: false },
+        { id: 'billLogo', kind: 'pos', label: 'Logo', x: blP[0], y: blP[1], t0: BILL, d: DUR - BILL, box: [blP[0] - 280, blP[1] - 60, 560, 120], dup: false, del: false },
+        ...bills,
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: BILL + 0.8, d: DUR - (BILL + 0.8), box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+        { id: 'contact', kind: 'pos', label: CONTACT.phone + ' · ' + CONTACT.web, x: coP[0], y: coP[1], t0: BILL + 1.0, d: DUR - (BILL + 1.0), box: [coP[0] - 490, coP[1] - 40, 980, 70], dup: false, del: false },
+        { id: 'showing', kind: 'pos', label: SHOWING, x: shP[0], y: shP[1], t0: BILL + 1.2, d: DUR - (BILL + 1.2), box: [shP[0] - 470, shP[1] - 40, 940, 70], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [[3.3, 6], [6.4, 6], [9.5, 6], [12.4, 9], [TITLE, 14]],
+      dur: DUR, shakes: [[3.3, 6], [6.4, 6], [9.5, 6], [12.4, 9], [TITLE, 14]], elements,
       render(t) {
         fillScreen(BLK);
         if (t < 1.5) {   // studio-style opener: the logo, then PRESENTS
-          const a = clamp(t / 0.5) * (1 - clamp((t - 1.2) / 0.3)); drawLogo('w', W / 2, CY - 30, 620, 1, a);
-          caps('PRESENTS', W / 2, CY + 110, 26, clamp((t - 0.45) / 0.4) * (1 - clamp((t - 1.2) / 0.3)), 0, { w: 500, ls: 16, col: WA(0.85) }); }
-        for (const s of SEQ) { if (t >= s[1] && t < s[1] + s[2]) { const lt = t - s[1]; if (s[0] === 'card') card(s[3], lt, s[2]); else shot(s[3], s[4], lt, s[2], true); } }
+          const a = clamp(t / 0.5) * (1 - clamp((t - 1.2) / 0.3));
+          const [lgx, lgy] = posOf(elP('logo'), [W / 2, CY - 30]); drawLogo('w', lgx, lgy, 620, 1, a);
+          const [prx, pry] = posOf(elP('presents'), [W / 2, CY + 110]);
+          caps(PRESENTS, prx, pry, 26, clamp((t - 0.45) / 0.4) * (1 - clamp((t - 1.2) / 0.3)), 0, { w: 500, ls: 16, col: WA(0.85) }); }
+        let ci = 0; for (const s of SEQ) { if (t >= s[1] && t < s[1] + s[2]) { const lt = t - s[1]; if (s[0] === 'card') card(s[3], lt, s[2], null, 'card' + (++ci)); else shot(s[3], s[4], lt, s[2], true); } }
         for (const s of MS) { if (t >= s.t0 && t < s.t0 + s.d) { const lt = t - s.t0; shot(s.c, s.in, lt, s.d, false); if (lt < 1 / 30 + 0.001 && !VID.collecting) fillScreen(WHT, 0.65); } }
-        for (const [w, t0, d] of OVER) { if (t >= t0 && t < t0 + d && !VID.collecting) { const lt = t - t0, a = clamp(lt / 0.08) * (1 - clamp((lt - d + 0.1) / 0.1)), c = G(); c.globalAlpha = a;
-          setF(F(400, Math.min(150, bfit(w, 150, 940, 12)), 'Bebas'), 12); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 24; c.fillText(w, W / 2 + 6, 540 + (1 - E.outC(clamp(lt / 0.3))) * 20); D(); } }
+        OVER.forEach(([w, t0, d], oi) => { if (t >= t0 && t < t0 + d && !VID.collecting) { const lt = t - t0, a = clamp(lt / 0.08) * (1 - clamp((lt - d + 0.1) / 0.1)), c = G(); c.globalAlpha = a;
+          const [ovx, ovy] = posOf(elP('over' + (oi + 1)), [W / 2, 540]);
+          setF(F(400, Math.min(150, bfit(w, 150, 940, 12)), 'Bebas'), 12); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 24; c.fillText(w, ovx + 6, ovy + (1 - E.outC(clamp(lt / 0.3))) * 20); D(); } });
         if (t >= TITLE && t < SOON + 0.2) { const lt = t - TITLE, a = clamp(lt / 0.08) * (1 - clamp((t - SOON) / 0.2)), s = 1.12 - 0.12 * E.outQ(clamp(lt / 0.5));
-          if (!VID.collecting) { const size = bfit(BIG, 240, 940, 14), c = G(); c.globalAlpha = a; c.translate(W / 2, CY - 40); c.scale(s, s); setF(F(400, size, 'Bebas'), 14); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(BIG, 7, 0); D();
-            const c2 = G(); c2.globalAlpha = a; c2.fillStyle = OR; const w = 640 * E.inOutC(clamp((lt - 0.3) / 0.5)); c2.fillRect(W / 2 - w / 2, CY + 80, w, 6); D(); } }
-        if (t >= SOON && t < BILL + 0.2) card(SOONTX, t - SOON, BILL - SOON + 0.2, { max: 150 });
+          if (!VID.collecting) { const size = bfit(BIG, 240, 940, 14), c = G(); c.globalAlpha = a; const [tix, tiy] = posOf(elP('title'), [W / 2, CY - 40]); c.translate(tix, tiy); c.scale(s, s); setF(F(400, size, 'Bebas'), 14); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(BIG, 7, 0); D();
+            const c2 = G(); c2.globalAlpha = a; c2.fillStyle = OR; const w = 640 * E.inOutC(clamp((lt - 0.3) / 0.5)); c2.fillRect(tix - w / 2, tiy + 120, w, 6); D(); } }
+        if (t >= SOON && t < BILL + 0.2) card(SOONTX, t - SOON, BILL - SOON + 0.2, { max: 150 }, 'soon');
         if (t >= BILL) { const o = t - BILL;
-          K3.logoBuild(W / 2, 440, 560, 0.0, o, { speed: 2 });
-          BILLING.forEach((l, k) => { const sz = bfit(l, k === 0 ? 34 : 30, 900, 2); caps(l, W / 2, 590 + k * 44, sz, clamp((o - 0.2 - k * 0.1) / 0.4), 0, { w: 400, fam: 'Bebas', ls: 2, ls0: 2, col: k === 0 ? WHT : WA(0.72) }); });
-          pill(CONTACT.cta, W / 2, 930, { size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)), p: clamp((o - 0.8) / 0.35) });
-          caps(CONTACT.phone + '   ·   ' + CONTACT.web, W / 2, 1030, 30, clamp((o - 1.0) / 0.35), 0, { w: 800, ls: 2 });
-          caps(CONTACT.area ? 'NOW SHOWING ACROSS ' + CONTACT.area : 'NOW SHOWING', W / 2, 1100, 20, clamp((o - 1.2) / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, col: OR, maxW: 960 }); }
+          const [blx, bly] = posOf(elP('billLogo'), [W / 2, 440]);
+          K3.logoBuild(blx, bly, 560, 0.0, o, { speed: 2 });
+          BILLING.forEach((l, k) => { const sz = bfit(l, k === 0 ? 34 : 30, 900, 2); const [bix, biy] = posOf(elP('bill' + (k + 1)), [W / 2, 590 + k * 44]); caps(l, bix, biy, sz, clamp((o - 0.2 - k * 0.1) / 0.4), 0, { w: 400, fam: 'Bebas', ls: 2, ls0: 2, col: k === 0 ? WHT : WA(0.72) }); });
+          const [cax, cay] = posOf(elP('cta'), [W / 2, 930]);
+          pill(CONTACT.cta, cax, cay, { size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)), p: clamp((o - 0.8) / 0.35) });
+          const [cox, coy] = posOf(elP('contact'), [W / 2, 1030]);
+          caps(CONTACT.phone + '   ·   ' + CONTACT.web, cox, coy, 30, clamp((o - 1.0) / 0.35), 0, { w: 800, ls: 2 });
+          const [shx, shy] = posOf(elP('showing'), [W / 2, 1100]);
+          caps(SHOWING, shx, shy, 20, clamp((o - 1.2) / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, col: OR, maxW: 960 }); }
         if (!VID.collecting) { const c = K4.GI(); c.fillStyle = BLK; c.fillRect(0, 0, W, 120); c.fillRect(0, H - 120, W, 120); D(); }
       },
       cues() {
@@ -382,5 +474,5 @@ STUDIO_REG['n1'] = (() => {
 
   const P = V === 'elements' ? elements() : V === 'gallery' ? gallery() : V === 'trailer' ? trailer() : sketch();
   const fin = V === 'gallery' ? { vig: 0.18, grain: 0.1 } : V === 'sketch' ? { vig: 0.06, grain: 0.12 } : { vig: 0.25, grain: 0.2 };
-  DIR = { dur: P.dur, bg: V === 'sketch' ? PAPER : BLK, finish: fin, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: V === 'sketch' ? PAPER : BLK, finish: fin, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

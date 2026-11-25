@@ -5,6 +5,13 @@
    ?v=film   #50 The DPG Portfolio 60 s: opening line, six project chapters, DPG's homepage numbers, Vince's review, outro. */
 STUDIO_REG['edit'] = (() => {
   const V = QS.get('v') || 'review';
+  // Per-element model: tpl_free sets window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // factory; positions below fall back to the original hardcoded values when EL is null, so rendering
+  // is byte-for-byte the old path. (Same pattern as tpl_trade.js / tpl_nx9.js.)
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const INK = BLK, MUTE = 'rgba(11,11,11,0.62)';
   function bug(t, a) { ctx.save(); ctx.globalAlpha = a; K3.logoBuild(185, 196, 250, 0.3, t, { img: IMG.logoB, soft: true, speed: 0.8 }); ctx.restore(); }
   function rule(x, y, w, p, col) { if (VID.collecting || p <= 0) return; const c = K3.G(); c.fillStyle = col || OR; c.fillRect(x, y, w * E.inOutC(clamp(p)), 3); K3.D(); }
@@ -19,10 +26,28 @@ STUDIO_REG['edit'] = (() => {
     const NUM = TX('num', 'N° 08', { label: 'Number', group: 'Header', max: 6 }), KICK = TX('kick', 'IN THEIR WORDS', { label: 'Kicker', group: 'Header', upper: true, max: 24 });
     const SH0 = [['c11', 15.0, 2.7], ['c02', 9.0, 2.7], ['c11', 12.05, 2.6], ['c02', 0.05, 2.6]];
     const S = K3.shots(SH0.map(([c, inn, d], i) => { const sh = SHOT('s' + (i + 1), [c, inn], { label: 'Shot ' + (i + 1), group: 'Footage', kind: 'land', d: d + 0.6 }); return [sh[0], sh[1], d, { tr: 'dissolve' }]; }));
-    const PCAP = TX('projCap', 'PROJECT SHOWN: ' + projOf(S[0].c), { label: 'Caption under the footage', group: 'Footage', upper: true, max: 40 });
+    // projOf lives in kit.js; the static harness sandbox does not provide it, where the caption
+    // default falls back to the bare prefix (the real studio resolves the project name).
+    const PCAP = TX('projCap', 'PROJECT SHOWN: ' + (typeof projOf === 'function' ? projOf(S[0].c) : ''), { label: 'Caption under the footage', group: 'Footage', upper: true, max: 40 });
     const TAG = TX('tag', CONTACT.tagline || BRAND.name, { label: 'Ending line', group: 'Ending', max: 34 });
     const OUT = S.total, DUR = 15, CY = 620;
     const Q = REVIEWS[RV];
+    // OUT from the shot list alone (the sandbox K3.shots stub sets no .total); equals S.total.
+    const OUTL = SH0.reduce((a, s) => a + s[2], 0);
+    // settled band height for the caption default: 16:9 land band at CY (K3.band settles at h).
+    const bandH = Math.round(W / K3.ar(S[0].c));
+    function elements() {
+      const nmP = posOf(elP('num'), [72, 300]);
+      const kiP = posOf(elP('kick'), [72 + Math.max(96, textW(NUM, F(700, 21, 'Mono'), 4) + 12), 300]);
+      const pcP = posOf(elP('pcap'), [72, CY + bandH / 2 + 44]);
+      const quP = posOf(elP('quote'), [72, 1000]);
+      return [
+        { id: 'num', kind: 'pos', label: NUM, x: nmP[0], y: nmP[1], t0: 0, d: OUTL, box: [nmP[0], nmP[1] - 21, 200, 30], dup: false, del: false },
+        { id: 'kick', kind: 'pos', label: KICK, x: kiP[0], y: kiP[1], t0: 0, d: OUTL, box: [kiP[0], kiP[1] - 21, 500, 30], dup: false, del: false },
+        { id: 'pcap', kind: 'pos', label: PCAP, x: pcP[0], y: pcP[1], t0: 0.8, d: OUTL - 0.8, box: [pcP[0], pcP[1] - 18, 936, 26], dup: false, del: false },
+        { id: 'quote', kind: 'pos', label: 'Review quote', x: quP[0], y: quP[1], t0: 1.2, d: OUTL - 1.2, box: [quP[0], quP[1], 936, 420], dup: false, del: false },
+      ];
+    }
     return {
       dur: DUR,
       render(t) {
@@ -32,10 +57,13 @@ STUDIO_REG['edit'] = (() => {
         if (body > 0) {
           ctx.save(); ctx.globalAlpha = body;
           bug(t, body);
-          caps(NUM, 72, 300 - 0, 21, clamp(t / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: OR, ls0: 0 });
-          caps(KICK, 72 + Math.max(96, textW(NUM, F(700, 21, 'Mono'), 4) + 12), 300, 21, clamp(t / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: INK, ls0: 0 });
-          if (!b.closed) { caps(PCAP, 72, b.r[1] + b.r[3] + 44, 18, clamp((t - 0.8) / 0.5), 0, { w: 700, fam: 'Mono', ls: 3, align: 'left', col: MUTE, ls0: 0, maxW: 936 }); }
-          K3.quote(Q.text, Q.by, 72, 1000, 936, 64, t, 1.2, { col: INK, byCol: OR });
+          const [nux, nuy] = posOf(elP('num'), [72, 300]);
+          caps(NUM, nux, nuy, 21, clamp(t / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: OR, ls0: 0 });
+          const [kix, kiy] = posOf(elP('kick'), [72 + Math.max(96, textW(NUM, F(700, 21, 'Mono'), 4) + 12), 300]);
+          caps(KICK, kix, kiy, 21, clamp(t / 0.4), 0, { w: 700, fam: 'Mono', ls: 4, align: 'left', col: INK, ls0: 0 });
+          if (!b.closed) { const [pcx, pcy] = posOf(elP('pcap'), [72, b.r[1] + b.r[3] + 44]); caps(PCAP, pcx, pcy, 18, clamp((t - 0.8) / 0.5), 0, { w: 700, fam: 'Mono', ls: 3, align: 'left', col: MUTE, ls0: 0, maxW: 936 }); }
+          const [qux, quy] = posOf(elP('quote'), [72, 1000]);
+          K3.quote(Q.text, Q.by, qux, quy, 936, 64, t, 1.2, { col: INK, byCol: OR });
           ctx.restore();
         }
         if (t >= OUT + 0.1) K3.outro('editorial', t - OUT, TAG);
@@ -46,6 +74,7 @@ STUDIO_REG['edit'] = (() => {
         ev.push(['shimmer', 2.6, 0.15, 0]); ev.push(['air', OUT, 0.25, 0]); ev.push(['chime', OUT + 1.6, 0.25, 0]); ev.push(['ticks', OUT + 2.0, 0.16, 0, { dur: 0.8, n: 14 }]);
         return { dur: DUR, beds: [['music', 0, DUR, 1.0, { style: 'cinematic', bpm: 84, key: 0, drop: 2.9, lift: OUT + 20, end: OUT }]], events: ev };
       },
+      elements,
     };
   }
 
@@ -114,5 +143,5 @@ STUDIO_REG['edit'] = (() => {
     };
   }
   const P = V === 'film' ? film() : review();
-  DIR = { dur: P.dur, bg: PAPER, finish: { vig: 0.06, grain: 0.12 }, edl: [], preload: () => K3.init(), render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: PAPER, finish: { vig: 0.06, grain: 0.12 }, edl: [], preload: () => K3.init(), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

@@ -185,6 +185,10 @@ const PX = (() => {
 
 STUDIO_REG['pixel'] = (() => {
   const V = QS.get('v') || 'pxstart';
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const { g, clamp, ease, bounce, typed, rng, rect, rectO, pt, line, txt, tw, sprite, logoAny, scan, stars, tri, button, wipe, flash, cue, bed } = PX;
   const isWF = /webflix/i.test((typeof BRAND !== 'undefined' && BRAND.name) || '') || !window.STUDIO;
   const LOGO = PX.logoSetup(isWF);
@@ -196,19 +200,34 @@ STUDIO_REG['pixel'] = (() => {
   // ============================================ PRESS START (7s)
   function pxstart() {
     const PLAYER = W_('player', 'PLAYER 1 : YOUR BUSINESS', 'Top line', 26), L1 = W_('line1', 'LEVEL UP', 'Headline', 8), L2 = W_('line2', 'YOUR BUSINESS', 'Second line', 15), CTA = W_('cta', 'DM "START" TO PLAY', 'Button', 22, 'Call to action');
+    const PRESS = W_('press', 'PRESS START', 'Press Start line', 12);
     const DUR = 7.0;
     function render(t) {
       const P = PX.begin(); stars(g, t, 2, 40); scan(g);
-      const s = typed(PLAYER, t - 0.2, 30); if (s) { rectO(g, 24, 70, 246, 88, P.EDGE, 2); txt(g, 135, 76, s, { col: P.GREY, a: 'm' }); }
-      if (t > 0.9) { const ly = Math.round(-90 + (128 + 90) * bounce((t - 0.9) / 0.7)); logoAny(LOGO, g, 135, ly, 4, false); }
-      if (LOGO === 'pixel' && t > 1.7) PX.wordmark(g, 135, 212, 3, Math.min(7, Math.floor((t - 1.7) * 14) + 1));
-      txt(g, 135, 262, typed(L1, t - 2.5, 16), { k: 2, col: P.WHITE, sh: P.DRED, a: 'm' });
-      txt(g, 135, 286, typed(L2, t - 3.0, 16), { k: 2, col: P.WHITE, sh: P.DRED, a: 'm' });
-      if (t > 3.9 && t < 5.6) { if (blink(t)) { tri(g, 68, 340, 11, P.RED); txt(g, 84, 342, 'PRESS START', { col: P.RED }); } }
-      else if (t >= 5.6) { if (t < 6.0 && Math.floor(t * 16) % 2 === 0) flash(g, P.WHITE); else button(g, 135, 336, CTA, blink(t)); }
+      const s = typed(PLAYER, t - 0.2, 30); if (s) { const [plx, ply] = posOf(elP('player'), [135, 76]); rectO(g, plx - 111, ply - 6, plx + 111, ply + 12, P.EDGE, 2); txt(g, plx, ply, s, { col: P.GREY, a: 'm' }); }
+      if (t > 0.9) { const [lgx, lgy] = posOf(elP('logo'), [135, 128]); const ly = Math.round(-90 + (lgy + 90) * bounce((t - 0.9) / 0.7)); logoAny(LOGO, g, lgx, ly, 4, false); }
+      if (LOGO === 'pixel' && t > 1.7) { const [wmx, wmy] = posOf(elP('wordmark'), [135, 212]); PX.wordmark(g, wmx, wmy, 3, Math.min(7, Math.floor((t - 1.7) * 14) + 1)); }
+      const [l1x, l1y] = posOf(elP('line1'), [135, 262]); txt(g, l1x, l1y, typed(L1, t - 2.5, 16), { k: 2, col: P.WHITE, sh: P.DRED, a: 'm' });
+      const [l2x, l2y] = posOf(elP('line2'), [135, 286]); txt(g, l2x, l2y, typed(L2, t - 3.0, 16), { k: 2, col: P.WHITE, sh: P.DRED, a: 'm' });
+      if (t > 3.9 && t < 5.6) { if (blink(t)) { const [psx, psy] = posOf(elP('pressstart'), [84, 342]); tri(g, psx - 16, psy - 2, 11, P.RED); txt(g, psx, psy, PRESS, { col: P.RED }); } }
+      else if (t >= 5.6) { if (t < 6.0 && Math.floor(t * 16) % 2 === 0) flash(g, P.WHITE); else { const [cx, cy] = posOf(elP('cta'), [135, 336]); button(g, cx, cy, CTA, blink(t)); } }
+    }
+    function elements() {
+      const [plx, ply] = posOf(elP('player'), [135, 76]), [lgx, lgy] = posOf(elP('logo'), [135, 128]), [wmx, wmy] = posOf(elP('wordmark'), [135, 212]);
+      const [l1x, l1y] = posOf(elP('line1'), [135, 262]), [l2x, l2y] = posOf(elP('line2'), [135, 286]);
+      const [psx, psy] = posOf(elP('pressstart'), [84, 342]), [cx, cy] = posOf(elP('cta'), [135, 336]);
+      return [
+        { id: 'player', kind: 'box', label: PLAYER, x: plx, y: ply, w: 222, h: 18, t0: 0.2, d: 6.8, box: [plx - 111, ply - 6, 222, 18], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 0.9, d: 6.1, box: [lgx - 116, lgy, 232, 72], dup: false, del: false },
+        { id: 'wordmark', kind: 'pos', label: 'WEBFLIX wordmark', x: wmx, y: wmy, t0: 1.7, d: 5.3, box: [wmx - 77, wmy, 153, 21], dup: false, del: false },
+        { id: 'line1', kind: 'pos', label: L1, x: l1x, y: l1y, t0: 2.5, d: 4.5, box: [l1x - 70, l1y - 4, 140, 28], dup: false, del: false },
+        { id: 'line2', kind: 'pos', label: L2, x: l2x, y: l2y, t0: 3.0, d: 4.0, box: [l2x - 110, l2y - 4, 220, 28], dup: false, del: false },
+        { id: 'pressstart', kind: 'pos', label: PRESS, x: psx, y: psy, t0: 3.9, d: 1.7, box: [psx - 16, psy - 6, 110, 16], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CTA, x: cx, y: cy, t0: 5.6, d: 1.4, box: [cx - 100, cy - 4, 200, 28], dup: false, del: false },
+      ];
     }
     const cues = () => ({ dur: DUR, beds: [bed(DUR)], events: [cue('drop', 1.4), ...[0, 1, 2, 3, 4, 5, 6].map(i => cue('blip', 1.7 + i / 14, 0.4)), cue('blip', 2.5), cue('blip', 3.0), cue('select', 5.6), cue('coin', 6.0)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ QUEST CHECKLIST
@@ -222,18 +241,33 @@ STUDIO_REG['pixel'] = (() => {
       if (on) { const pts = [[3, 8], [4, 9], [5, 10], [6, 11], [7, 10], [8, 9], [9, 8], [10, 7], [11, 6], [12, 5]]; pts.slice(0, Math.max(1, Math.round(pts.length * clamp(u)))).forEach(([a, b]) => rect(g, x + a, y + b, x + a, y + b + 1, P.RED)); } }
     function render(t) {
       const P = PX.begin(); scan(g);
-      txt(g, 14, 40, Q, { col: P.GREY });
-      if (t > 0.2) logoAny(LOGO, g, 225, 32, 1, false);
-      if (t > 0.4) { const bw = Math.round(242 * ease((t - 0.4) / 0.5)); rect(g, 18, 70, 18 + bw, 144, P.DRED); rect(g, 14, 66, 14 + bw, 140, P.INK); rectO(g, 14, 66, 14 + bw, 140, P.RED, 3);
-        TT.forEach((ln, i) => txt(g, 26, 78 + i * 20, typed(ln, t - 0.9 - i * 0.45, 20), { f: 'ps16', col: P.WHITE })); }
-      ITEMS.forEach((it, i) => { const t0 = 2.4 + i * 1.25; if (t < t0) return; const x = Math.round(-260 + 274 * ease((t - t0) / 0.3)), y = 160 + i * 44;
+      const [qx, qy] = posOf(elP('quest'), [14, 40]); txt(g, qx, qy, Q, { col: P.GREY });
+      if (t > 0.2) { const [lgx, lgy] = posOf(elP('logo'), [225, 32]); logoAny(LOGO, g, lgx, lgy, 1, false); }
+      if (t > 0.4) { const [tbx, tby] = posOf(elP('titlebox'), [14, 66]); const bw = Math.round(242 * ease((t - 0.4) / 0.5)); rect(g, tbx + 4, tby + 4, tbx + 4 + bw, tby + 78, P.DRED); rect(g, tbx, tby, tbx + bw, tby + 74, P.INK); rectO(g, tbx, tby, tbx + bw, tby + 74, P.RED, 3);
+        TT.forEach((ln, i) => txt(g, tbx + 12, tby + 12 + i * 20, typed(ln, t - 0.9 - i * 0.45, 20), { f: 'ps16', col: P.WHITE })); }
+      ITEMS.forEach((it, i) => { const t0 = 2.4 + i * 1.25; if (t < t0) return; const [ix, iy] = posOf(elP('item' + (i + 1)), [14, 160 + i * 44]); const x = Math.round(ix - 274 + 274 * ease((t - t0) / 0.3)), y = iy;
         rect(g, x, y, x + 241, y + 36, P.PANEL); rectO(g, x, y, x + 241, y + 36, P.EDGE, 2); check(x + 8, y + 10, t > t0 + 0.45, (t - t0 - 0.45) / 0.2, P);
         txt(g, x + 30, y + 14, '0' + (i + 1), { col: P.RED }); const [a, b] = wrap(it); txt(g, x + 50, y + (b ? 4 : 11), a, { f: 'vt', col: P.WHITE }); if (b) txt(g, x + 50, y + 18, b, { f: 'vt', col: P.WHITE }); });
-      if (t > TD) { const fl = Math.floor((t - TD) * 6) % 2 === 0 && t < TD + 1; txt(g, 135, 352, DONE, { f: 'ps16', col: fl ? P.YEL : P.WHITE, sh: P.DRED, a: 'm' }); txt(g, 135, 378, typed(REWARD, t - TD - 0.4, 40), { f: 'vt', col: P.GREY, a: 'm' }); }
-      if (t > TD + 1.6) { const bw = Math.max(110, tw(CTA) + 44); button(g, 135, 412, CTA, blink(t), bw); tri(g, Math.round(135 - tw(CTA) / 2 - 14), 416, 11, P.INK); }
+      if (t > TD) { const fl = Math.floor((t - TD) * 6) % 2 === 0 && t < TD + 1; const [dx, dy] = posOf(elP('done'), [135, 352]); txt(g, dx, dy, DONE, { f: 'ps16', col: fl ? P.YEL : P.WHITE, sh: P.DRED, a: 'm' }); const [rx, ry] = posOf(elP('reward'), [135, 378]); txt(g, rx, ry, typed(REWARD, t - TD - 0.4, 40), { f: 'vt', col: P.GREY, a: 'm' }); }
+      if (t > TD + 1.6) { const bw = Math.max(110, tw(CTA) + 44); const [cx, cy] = posOf(elP('cta'), [135, 412]); button(g, cx, cy, CTA, blink(t), bw); tri(g, Math.round(cx - tw(CTA) / 2 - 14), cy + 4, 11, P.INK); }
+    }
+    function elements() {
+      const [qx, qy] = posOf(elP('quest'), [14, 40]), [lgx, lgy] = posOf(elP('logo'), [225, 32]), [tbx, tby] = posOf(elP('titlebox'), [14, 66]);
+      const [dx, dy] = posOf(elP('done'), [135, 352]), [rx, ry] = posOf(elP('reward'), [135, 378]), [cx, cy] = posOf(elP('cta'), [135, 412]);
+      const items = ITEMS.map((it, i) => { const [ix, iy] = posOf(elP('item' + (i + 1)), [14, 160 + i * 44]); const t0 = 2.4 + i * 1.25;
+        return { id: 'item' + (i + 1), kind: 'card', label: it, x: ix, y: iy, w: 241, h: 36, t0, d: DUR - t0, box: [ix, iy, 241, 36], dup: false, del: false }; });
+      return [
+        { id: 'quest', kind: 'pos', label: Q, x: qx, y: qy, t0: 0, d: DUR, box: [qx, qy - 4, 100, 16], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 0.2, d: DUR - 0.2, box: [lgx - 30, lgy, 60, 20], dup: false, del: false },
+        { id: 'titlebox', kind: 'box', label: TT.join(' '), x: tbx, y: tby, w: 242, h: 74, t0: 0.4, d: DUR - 0.4, box: [tbx, tby, 242, 74], dup: false, del: false },
+        ...items,
+        { id: 'done', kind: 'pos', label: DONE, x: dx, y: dy, t0: TD, d: DUR - TD, box: [dx - 110, dy - 8, 220, 24], dup: false, del: false },
+        { id: 'reward', kind: 'pos', label: REWARD, x: rx, y: ry, t0: TD + 0.4, d: DUR - (TD + 0.4), box: [rx - 120, ry - 4, 240, 16], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CTA, x: cx, y: cy, t0: TD + 1.6, d: DUR - (TD + 1.6), box: [cx - 70, cy - 4, 140, 28], dup: false, del: false },
+      ];
     }
     const cues = () => { const ev = [cue('drop', 0.4), ...[0, 1, 2].map(i => cue('blip', 0.9 + i * 0.45, 0.4))]; ITEMS.forEach((_, i) => ev.push(cue('drop', 2.4 + i * 1.25, 0.4), cue('coin', 2.85 + i * 1.25))); ev.push(cue('fanfare', TD), cue('select', TD + 1.6)); return { dur: DUR, beds: [bed(DUR)], events: ev }; };
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ GAME OVER (8s)
@@ -241,50 +275,90 @@ STUDIO_REG['pixel'] = (() => {
     const H1 = W_('head1', 'GAME', 'Big word 1', 5), H2 = W_('head2', 'OVER', 'Big word 2', 5);
     const L1 = w_('line1', 'No website?', 'Problem line 1', 34), L2 = w_('line2', 'Customers searching for you', 'Problem line 2', 34), L3 = w_('line3', 'find your competitor instead.', 'Problem line 3', 34);
     const BACK = W_('back', 'GET BACK IN THE GAME', 'Comeback line', 28), CTA = W_('cta', 'DM "START"', 'Button', 22, 'Call to action');
+    const CONT = W_('continue', 'CONTINUE?', 'Continue box', 12), YES = W_('yes', 'YES', 'Yes option', 4), NO = W_('no', 'NO', 'No option', 4);
     const DUR = 8.0;
     function render(t) {
       const P = PX.begin();
       if (t < 0.5) { const r = rng(Math.floor(t * 30) + 1), cols = [P.WHITE, P.GREY, P.DIM, P.INK]; for (let i = 0; i < 900; i++) pt(g, Math.floor(r() * 270), Math.floor(r() * 480), cols[Math.floor(r() * 4)]); return; }
       g.fillStyle = P.BAR; for (let y = 0; y < 480; y += 3) g.fillRect(0, y, 270, 1);
-      [H1, H2].forEach((wd, li) => [...wd].forEach((ch, k) => { const t0 = 0.6 + (li * 4 + k) * 0.12; if (t < t0) return; const yy = Math.round(-40 + (70 + li * 46 + 40) * bounce((t - t0) / 0.35)); const n = wd.length; txt(g, 135 - (n * 32) / 2 + k * 32 + 16, yy, ch, { f: 'ps16', k: 2, col: P.RED, sh: P.DRED, a: 'm' }); }));
-      if (t > 1.8) { txt(g, 135, 180, typed(L1, t - 1.8, 30), { f: 'vt', col: P.WHITE, a: 'm' }); txt(g, 135, 198, typed(L2, t - 2.3, 30), { f: 'vt', col: P.GREY, a: 'm' }); txt(g, 135, 214, typed(L3, t - 3.1, 30), { f: 'vt', col: P.GREY, a: 'm' }); }
-      if (t > 3.9) { rect(g, 40, 250, 230, 340, P.INK); rectO(g, 40, 250, 230, 340, P.WHITE, 2); txt(g, 135, 262, 'CONTINUE?', { f: 'ps16', col: P.WHITE, a: 'm' });
-        const cnt = Math.max(7, 9 - Math.floor((t - 3.9) / 0.6)); if (t < 5.6) txt(g, 135, 284, String(cnt), { f: 'ps16', col: P.YEL, a: 'm' });
-        const yes = t > 5.4; if (blink(t) || yes) tri(g, 70, 314, 9, P.RED); txt(g, 84, 315, 'YES', { col: yes ? P.RED : P.WHITE }); txt(g, 160, 315, 'NO', { col: P.DIM });
+      [H1, H2].forEach((wd, li) => { const [hx, hy] = posOf(elP('head' + (li + 1)), [135, 70 + li * 46]); [...wd].forEach((ch, k) => { const t0 = 0.6 + (li * 4 + k) * 0.12; if (t < t0) return; const yy = Math.round(-40 + (hy + 40) * bounce((t - t0) / 0.35)); const n = wd.length; txt(g, hx - (n * 32) / 2 + k * 32 + 16, yy, ch, { f: 'ps16', k: 2, col: P.RED, sh: P.DRED, a: 'm' }); }); });
+      if (t > 1.8) { const [p1x, p1y] = posOf(elP('line1'), [135, 180]); txt(g, p1x, p1y, typed(L1, t - 1.8, 30), { f: 'vt', col: P.WHITE, a: 'm' }); const [p2x, p2y] = posOf(elP('line2'), [135, 198]); txt(g, p2x, p2y, typed(L2, t - 2.3, 30), { f: 'vt', col: P.GREY, a: 'm' }); const [p3x, p3y] = posOf(elP('line3'), [135, 214]); txt(g, p3x, p3y, typed(L3, t - 3.1, 30), { f: 'vt', col: P.GREY, a: 'm' }); }
+      if (t > 3.9) { const [bx, by] = posOf(elP('continue'), [40, 250]); rect(g, bx, by, bx + 190, by + 90, P.INK); rectO(g, bx, by, bx + 190, by + 90, P.WHITE, 2); txt(g, bx + 95, by + 12, CONT, { f: 'ps16', col: P.WHITE, a: 'm' });
+        const cnt = Math.max(7, 9 - Math.floor((t - 3.9) / 0.6)); if (t < 5.6) txt(g, bx + 95, by + 34, String(cnt), { f: 'ps16', col: P.YEL, a: 'm' });
+        const yes = t > 5.4; if (blink(t) || yes) tri(g, bx + 30, by + 64, 9, P.RED); txt(g, bx + 44, by + 65, YES, { col: yes ? P.RED : P.WHITE }); txt(g, bx + 120, by + 65, NO, { col: P.DIM });
         if (t > 5.6 && t < 5.9 && Math.floor(t * 20) % 2 === 0) { flash(g, P.WHITE); return; } }
-      if (t > 5.9) { txt(g, 135, 362, typed(BACK, t - 5.9, 30), { col: P.WHITE, a: 'm' }); logoAny(LOGO, g, 135, 382, 2, false); if (t > 6.6) button(g, 135, 432, CTA, blink(t)); }
+      if (t > 5.9) { const [bkx, bky] = posOf(elP('back'), [135, 362]); txt(g, bkx, bky, typed(BACK, t - 5.9, 30), { col: P.WHITE, a: 'm' }); const [lgx, lgy] = posOf(elP('logo'), [135, 382]); logoAny(LOGO, g, lgx, lgy, 2, false); if (t > 6.6) { const [cx, cy] = posOf(elP('cta'), [135, 432]); button(g, cx, cy, CTA, blink(t)); } }
+    }
+    function elements() {
+      const [h1x, h1y] = posOf(elP('head1'), [135, 70]), [h2x, h2y] = posOf(elP('head2'), [135, 116]);
+      const [p1x, p1y] = posOf(elP('line1'), [135, 180]), [p2x, p2y] = posOf(elP('line2'), [135, 198]), [p3x, p3y] = posOf(elP('line3'), [135, 214]);
+      const [bx, by] = posOf(elP('continue'), [40, 250]);
+      const [bkx, bky] = posOf(elP('back'), [135, 362]), [lgx, lgy] = posOf(elP('logo'), [135, 382]), [cx, cy] = posOf(elP('cta'), [135, 432]);
+      return [
+        { id: 'head1', kind: 'pos', label: H1, x: h1x, y: h1y, t0: 0.6, d: 7.4, box: [h1x - 70, h1y - 10, 140, 40], dup: false, del: false },
+        { id: 'head2', kind: 'pos', label: H2, x: h2x, y: h2y, t0: 1.08, d: 6.92, box: [h2x - 70, h2y - 10, 140, 40], dup: false, del: false },
+        { id: 'line1', kind: 'pos', label: L1, x: p1x, y: p1y, t0: 1.8, d: 6.2, box: [p1x - 110, p1y - 4, 220, 16], dup: false, del: false },
+        { id: 'line2', kind: 'pos', label: L2, x: p2x, y: p2y, t0: 2.3, d: 5.7, box: [p2x - 110, p2y - 4, 220, 16], dup: false, del: false },
+        { id: 'line3', kind: 'pos', label: L3, x: p3x, y: p3y, t0: 3.1, d: 4.9, box: [p3x - 110, p3y - 4, 220, 16], dup: false, del: false },
+        { id: 'continue', kind: 'box', label: CONT, x: bx, y: by, w: 190, h: 90, t0: 3.9, d: 1.7, box: [bx, by, 190, 90], dup: false, del: false },
+        { id: 'back', kind: 'pos', label: BACK, x: bkx, y: bky, t0: 5.9, d: 2.1, box: [bkx - 110, bky - 4, 220, 16], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 5.9, d: 2.1, box: [lgx - 60, lgy, 120, 40], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CTA, x: cx, y: cy, t0: 6.6, d: 1.4, box: [cx - 80, cy - 4, 160, 28], dup: false, del: false },
+      ];
     }
     const cues = () => ({ dur: DUR, beds: [['chip', 3.9, DUR, 0.45, { style: 'chip' }]], events: [...[0, 1, 2, 3, 4, 5, 6, 7].map(i => cue('blip', 0.6 + i * 0.12, 0.4)), cue('gameover', 1.6, 0.6), cue('tick', 3.9), cue('tick', 4.5), cue('tick', 5.1), cue('select', 5.5), cue('powerup', 5.9), cue('coin', 6.6)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ BOSS FIGHT (11s)
   function pxboss() {
     const FOE = W_('foe', 'COMPETITOR', 'Rival name', 13, 'Fighters'), FOEN = W_('foe_note', 'HAS A WEBSITE', 'Rival note', 20, 'Fighters'), YOU = W_('you', 'YOU', 'Your name', 13, 'Fighters'), LOW = W_('you_low', 'NO WEBSITE - HP LOW', 'Low HP note', 24, 'Fighters');
     const POWER = W_('power', 'POWER-UP: A WEBFLIX WEBSITE', 'Power-up', 30), WIN = W_('win', 'YOU WIN!', 'Win line', 9), WINL = w_('win_line', 'Full HP. Back in the fight.', 'Win sub-line', 34), CTA = W_('cta', 'DM "START"', 'Button', 22, 'Call to action');
+    const TITLE = W_('title', 'BOSS FIGHT', 'Title', 10), RESTORED = W_('restored', 'HP RESTORED!', 'HP restored line', 16);
     const DUR = 11.0, FOEP = ['#E9B482', '#1E1E22', '#468CE6', '#1E1E28', 'short'], YOUP = ['#C6865A', '#281C16', '#F4F2F7', '#323238', 'cap'];
-    function bar(y, label, note, n, ncol, P) { txt(g, 14, y, label, { col: P.WHITE }); txt(g, 256, y - 4, note, { f: 'vt', col: ncol, a: 'r' }); rect(g, 14, y + 12, 256, y + 30, P.INK); rectO(g, 14, y + 12, 256, y + 30, P.WHITE, 2);
-      for (let i = 0; i < 12; i++) { const x = 18 + i * 20; rect(g, x, y + 16, x + 16, y + 26, i < n ? (n > 4 ? P.WHITE : P.RED) : P.BAR); } }
+    function bar(x, y, label, note, n, ncol, P) { txt(g, x, y, label, { col: P.WHITE }); txt(g, x + 242, y - 4, note, { f: 'vt', col: ncol, a: 'r' }); rect(g, x, y + 12, x + 242, y + 30, P.INK); rectO(g, x, y + 12, x + 242, y + 30, P.WHITE, 2);
+      for (let i = 0; i < 12; i++) { const bx = x + 4 + i * 20; rect(g, bx, y + 16, bx + 16, y + 26, i < n ? (n > 4 ? P.WHITE : P.RED) : P.BAR); } }
     function render(t) {
       const P = PX.begin(); scan(g); const sh = shakeAt(t, 3.0, 3.4) || shakeAt(t, 7.6, 8.0);
-      txt(g, 135 + sh, 24, 'BOSS FIGHT', { f: 'ps16', col: (t < 1 && Math.floor(t * 4) % 2 === 0) ? P.WHITE : P.RED, sh: P.DRED, a: 'm' });
+      const [tix, tiy] = posOf(elP('title'), [135, 24]); txt(g, tix + sh, tiy, TITLE, { f: 'ps16', col: (t < 1 && Math.floor(t * 4) % 2 === 0) ? P.WHITE : P.RED, sh: P.DRED, a: 'm' });
       const you = t < 3.0 ? 12 : (t < 5.4 ? 2 : Math.min(12, 2 + Math.floor((t - 5.4) * 14))), foe = t < 7.6 ? 12 : 3;
-      if (t > 0.6) { bar(56, FOE, FOEN, foe, P.GREY, P); bar(100, YOU, t >= 3.0 && t < 5.6 ? LOW : '', you, P.RED, P); }
+      if (t > 0.6) { const [fx, fy] = posOf(elP('foebar'), [14, 56]); bar(fx, fy, FOE, FOEN, foe, P.GREY, P); const [yx, yy] = posOf(elP('youbar'), [14, 100]); bar(yx, yy, YOU, t >= 3.0 && t < 5.6 ? LOW : '', you, P.RED, P); }
       rect(g, 0, 300, 269, 304, P.EDGE); for (let x = 0; x < 270; x += 12) rect(g, x, 305, x + 5, 308, P.BAR);
-      const yx = 30 + sh, fx = 196 + (t < 7.6 ? 0 : 6);
-      if (!(t > 3.0 && t < 3.4 && Math.floor(t * 20) % 2)) sprite(g, yx, 300, YOUP, t, 6, { happy: t > 5.6 });
-      if (!(t > 7.6 && t < 8.0 && Math.floor(t * 20) % 2)) { sprite(g, fx, 300, FOEP, t, 7, { happy: t < 7.6, face: -1 }); rect(g, fx - 26, 218, fx - 4, 246, P.WHITE); rectO(g, fx - 26, 218, fx - 4, 246, '#468CE6', 2); txt(g, fx - 15, 224, 'W', { f: 'ps16', col: '#468CE6', a: 'm' }); }
+      const [ysx, ysy] = posOf(elP('yousprite'), [30, 300]), [fsx, fsy] = posOf(elP('foesprite'), [196, 300]);
+      const yx = ysx + sh, fx = fsx + (t < 7.6 ? 0 : 6);
+      if (!(t > 3.0 && t < 3.4 && Math.floor(t * 20) % 2)) sprite(g, yx, ysy, YOUP, t, 6, { happy: t > 5.6 });
+      if (!(t > 7.6 && t < 8.0 && Math.floor(t * 20) % 2)) { sprite(g, fx, fsy, FOEP, t, 7, { happy: t < 7.6, face: -1 }); rect(g, fx - 26, 218, fx - 4, 246, P.WHITE); rectO(g, fx - 26, 218, fx - 4, 246, '#468CE6', 2); txt(g, fx - 15, 224, 'W', { f: 'ps16', col: '#468CE6', a: 'm' }); }
       if (t > 2.2 && t < 3.0) { const u = (t - 2.2) / 0.8, px = Math.round(fx - 40 - (fx - 40 - yx - 40) * u); rect(g, px, 226, px + 18, 238, '#468CE6'); rect(g, px + 4, 229, px + 14, 235, P.WHITE); }
       if (t > 3.0 && t < 3.25) flash(g, P.DRED);
-      if (t > 3.6 && t < 5.4) { const py = Math.round(-30 + 302 * bounce((t - 3.6) / 0.8)); rect(g, 100, py, 128, py + 26, P.RED); rectO(g, 100, py, 128, py + 26, P.WHITE, 2); txt(g, 114, py + 6, 'W', { f: 'ps16', col: P.WHITE, a: 'm' });
-        if (blink(t, 6)) [[94, py - 4], [134, py + 2], [112, py - 10]].forEach(([a, b]) => pt(g, a, b, P.YEL)); }
-      if (t > 3.8 && t < 7.0) { const msg = t < 5.6 ? POWER : 'HP RESTORED!'; rect(g, 10, 330, 260, 372, P.INK); rectO(g, 10, 330, 260, 372, P.WHITE, 2); txt(g, 135, 346, typed(msg, t - (t < 5.6 ? 3.8 : 5.6), 30), { col: t > 5.6 ? P.YEL : P.WHITE, a: 'm' }); }
+      if (t > 3.6 && t < 5.4) { const [pwx, pwy] = posOf(elP('powerup'), [114, 272]); const py = Math.round(-30 + (pwy + 30) * bounce((t - 3.6) / 0.8)); rect(g, pwx - 14, py, pwx + 14, py + 26, P.RED); rectO(g, pwx - 14, py, pwx + 14, py + 26, P.WHITE, 2); txt(g, pwx, py + 6, 'W', { f: 'ps16', col: P.WHITE, a: 'm' });
+        if (blink(t, 6)) [[pwx - 20, py - 4], [pwx + 20, py + 2], [pwx - 2, py - 10]].forEach(([a, b]) => pt(g, a, b, P.YEL)); }
+      if (t > 3.8 && t < 7.0) { const [mx, my] = posOf(elP('msg'), [10, 330]); const msg = t < 5.6 ? POWER : RESTORED; rect(g, mx, my, mx + 250, my + 42, P.INK); rectO(g, mx, my, mx + 250, my + 42, P.WHITE, 2); txt(g, mx + 125, my + 16, typed(msg, t - (t < 5.6 ? 3.8 : 5.6), 30), { col: t > 5.6 ? P.YEL : P.WHITE, a: 'm' }); }
       if (t > 5.4 && t < 5.7 && Math.floor(t * 20) % 2 === 0) flash(g, P.WHITE);
       if (t > 6.8 && t < 7.6) { const u = (t - 6.8) / 0.8, px = Math.round(yx + 50 + (fx - 50 - yx - 50) * u); for (let k = 0; k < 4; k++) rect(g, px - k * 10, 228 + (k % 2) * 5, px - k * 10 + 6, 234 + (k % 2) * 5, k ? P.DRED : P.RED); rect(g, px, 224, px + 13, 239, P.RED); rect(g, px + 4, 228, px + 9, 235, P.WHITE); }
-      if (t > 8.2) { txt(g, 135, 332, WIN, { k: 2, col: P.YEL, sh: P.DRED, a: 'm' }); txt(g, 135, 362, typed(WINL, t - 8.4, 30), { f: 'vt', col: P.WHITE, a: 'm' }); if (t > 9.0) { logoAny(LOGO, g, 135, 392, 1, false); button(g, 135, 420, CTA, blink(t)); } }
+      if (t > 8.2) { const [wx, wy] = posOf(elP('win'), [135, 332]); txt(g, wx, wy, WIN, { k: 2, col: P.YEL, sh: P.DRED, a: 'm' }); const [lx, ly] = posOf(elP('winline'), [135, 362]); txt(g, lx, ly, typed(WINL, t - 8.4, 30), { f: 'vt', col: P.WHITE, a: 'm' }); if (t > 9.0) { const [lgx, lgy] = posOf(elP('logo'), [135, 392]); logoAny(LOGO, g, lgx, lgy, 1, false); const [cx, cy] = posOf(elP('cta'), [135, 420]); button(g, cx, cy, CTA, blink(t)); } }
+    }
+    function elements() {
+      const [tix, tiy] = posOf(elP('title'), [135, 24]), [fx, fy] = posOf(elP('foebar'), [14, 56]), [yx, yy] = posOf(elP('youbar'), [14, 100]);
+      const [ysx, ysy] = posOf(elP('yousprite'), [30, 300]), [fsx, fsy] = posOf(elP('foesprite'), [196, 300]);
+      const [pwx, pwy] = posOf(elP('powerup'), [114, 272]), [mx, my] = posOf(elP('msg'), [10, 330]);
+      const [wx, wy] = posOf(elP('win'), [135, 332]), [lx, ly] = posOf(elP('winline'), [135, 362]);
+      const [lgx, lgy] = posOf(elP('logo'), [135, 392]), [cx, cy] = posOf(elP('cta'), [135, 420]);
+      return [
+        { id: 'title', kind: 'pos', label: TITLE, x: tix, y: tiy, t0: 0, d: DUR, box: [tix - 90, tiy - 8, 180, 28], dup: false, del: false },
+        { id: 'foebar', kind: 'box', label: FOE + ' HP', x: fx, y: fy, w: 242, h: 30, t0: 0.6, d: DUR - 0.6, box: [fx, fy, 242, 30], dup: false, del: false },
+        { id: 'youbar', kind: 'box', label: YOU + ' HP', x: yx, y: yy, w: 242, h: 30, t0: 0.6, d: DUR - 0.6, box: [yx, yy, 242, 30], dup: false, del: false },
+        { id: 'yousprite', kind: 'pos', label: 'You (sprite)', x: ysx, y: ysy, t0: 0, d: DUR, box: [ysx - 20, ysy - 120, 40, 120], dup: false, del: false },
+        { id: 'foesprite', kind: 'pos', label: 'Rival (sprite)', x: fsx, y: fsy, t0: 0, d: DUR, box: [fsx - 25, fsy - 140, 50, 140], dup: false, del: false },
+        { id: 'powerup', kind: 'pos', label: 'Power-up', x: pwx, y: pwy, t0: 3.6, d: 1.8, box: [pwx - 14, pwy, 28, 26], dup: false, del: false },
+        { id: 'msg', kind: 'box', label: POWER, x: mx, y: my, w: 250, h: 42, t0: 3.8, d: 3.2, box: [mx, my, 250, 42], dup: false, del: false },
+        { id: 'win', kind: 'pos', label: WIN, x: wx, y: wy, t0: 8.2, d: DUR - 8.2, box: [wx - 80, wy - 8, 160, 32], dup: false, del: false },
+        { id: 'winline', kind: 'pos', label: WINL, x: lx, y: ly, t0: 8.4, d: DUR - 8.4, box: [lx - 120, ly - 4, 240, 16], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 9.0, d: DUR - 9.0, box: [lgx - 30, lgy, 60, 20], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CTA, x: cx, y: cy, t0: 9.0, d: DUR - 9.0, box: [cx - 80, cy - 4, 160, 28], dup: false, del: false },
+      ];
     }
     const cues = () => ({ dur: DUR, beds: [bed(DUR)], events: [cue('hit', 0.0, 0.5), cue('blip', 0.6), cue('shoot', 2.2), cue('hit', 3.0, 0.6), cue('bonk', 3.0), cue('drop', 3.6), cue('powerup', 5.4, 0.6), cue('shoot', 6.8), cue('hit', 7.6, 0.6), cue('fanfare', 8.2, 0.6), cue('coin', 9.0)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   // ============================================ INSERT COIN (10s)
@@ -292,28 +366,49 @@ STUDIO_REG['pixel'] = (() => {
     const TT = [W_('title1', 'YOUR', 'Headline line 1', 16), W_('title2', 'BUSINESS', 'Headline line 2', 16), W_('title3', 'DESERVES A', 'Headline line 3', 16), W_('title4', 'WEBSITE', 'Headline line 4 (accent)', 16)].filter(Boolean);
     const LV = [[W_('lv1', 'LV1', 'Level 1 tag', 3, 'Levels'), w_('lv1t', 'Launch your website', 'Level 1', 30, 'Levels')], [W_('lv2', 'LV2', 'Level 2 tag', 3, 'Levels'), w_('lv2t', 'Get found on Google', 'Level 2', 30, 'Levels')], [W_('lv3', 'LV3', 'Level 3 tag', 3, 'Levels'), w_('lv3t', 'Turn visitors into customers', 'Level 3', 30, 'Levels')]].filter(l => l[1] && l[1].trim());
     const INS = W_('insert', 'INSERT COIN', 'Blinking line', 15), CTA = W_('cta', 'DM "START" TO PLAY', 'Button', 22, 'Call to action');
+    const NEWGAME = W_('newgame', '- NEW GAME -', 'New Game line', 15), CREDIT = W_('credit', 'CREDIT 01', 'Credit line', 12);
     const DUR = 10.0, T7 = 4.6 + LV.length * 0.9 + 0.3;
     function render(t) {
       const P = PX.begin(); stars(g, t, 9, 30); scan(g);
-      if (t < 1.6) { rect(g, 95, 220, 175, 300, P.PANEL); rectO(g, 95, 220, 175, 300, P.GREY, 2); rect(g, 131, 240, 139, 280, P.INK); rectO(g, 131, 240, 139, 280, P.RED, 1);
-        const cy = Math.round(60 + 180 * Math.pow(clamp((t - 0.2) / 0.7), 2)); if (t < 0.95) { PX.ellipse(g, 125, cy - 10, 145, cy + 10, P.YEL, '#BE8C28', 2); txt(g, 135, cy - 4, '$', { col: '#BE8C28', a: 'm' }); }
-        if (t > 0.95) txt(g, 135, 320, 'CREDIT 01', { col: P.YEL, a: 'm' }); return; }
-      txt(g, 135, 40, '- NEW GAME -', { col: P.GREY, a: 'm' });
-      const ly = Math.round(-80 + 144 * bounce((t - 1.7) / 0.6)); logoAny(LOGO, g, 135, ly, 4, false);
-      if (LOGO === 'pixel' && t > 2.3) PX.wordmark(g, 135, 148, 2, Math.min(7, Math.floor((t - 2.3) * 14) + 1));
-      TT.forEach((ln, i) => txt(g, 135, 178 + i * 20, typed(ln, t - 2.8 - i * 0.35, 20), { f: 'ps16', col: i === TT.length - 1 ? P.RED : P.WHITE, a: 'm' }));
-      LV.forEach(([lv, lab], i) => { const t0 = 4.6 + i * 0.9; if (t < t0) return; const y = 270 + i * 40, u = ease((t - t0) / 0.25), w = Math.round(242 * u);
-        rect(g, 14, y, 14 + w, y + 32, P.PANEL); rectO(g, 14, y, 14 + w, y + 32, P.EDGE, 2);
-        if (u >= 1) { rect(g, 22, y + 7, 52, y + 25, P.RED); txt(g, 37, y + 12, lv, { col: P.INK, a: 'm' }); txt(g, 60, y + 9, typed(lab, t - t0 - 0.25, 40), { f: 'vt', col: P.WHITE }); } });
-      if (t > T7 + 0.2) { if (blink(t)) txt(g, 135, 396, INS, { f: 'ps16', col: P.RED, sh: P.DRED, a: 'm' }); if (t > T7 + 0.7) button(g, 135, 424, CTA, true); }
+      if (t < 1.6) { const [sx, sy] = posOf(elP('slot'), [95, 220]); rect(g, sx, sy, sx + 80, sy + 80, P.PANEL); rectO(g, sx, sy, sx + 80, sy + 80, P.GREY, 2); rect(g, sx + 36, sy + 20, sx + 44, sy + 60, P.INK); rectO(g, sx + 36, sy + 20, sx + 44, sy + 60, P.RED, 1);
+        const cy = Math.round(60 + 180 * Math.pow(clamp((t - 0.2) / 0.7), 2)); if (t < 0.95) { PX.ellipse(g, sx + 30, cy - 10, sx + 50, cy + 10, P.YEL, '#BE8C28', 2); txt(g, sx + 40, cy - 4, '$', { col: '#BE8C28', a: 'm' }); }
+        if (t > 0.95) { const [crx, cry] = posOf(elP('credit'), [135, 320]); txt(g, crx, cry, CREDIT, { col: P.YEL, a: 'm' }); } return; }
+      const [ngx, ngy] = posOf(elP('newgame'), [135, 40]); txt(g, ngx, ngy, NEWGAME, { col: P.GREY, a: 'm' });
+      const [lgx, lgy] = posOf(elP('logo'), [135, 64]); const ly = Math.round(-80 + (lgy + 80) * bounce((t - 1.7) / 0.6)); logoAny(LOGO, g, lgx, ly, 4, false);
+      if (LOGO === 'pixel' && t > 2.3) { const [wmx, wmy] = posOf(elP('wordmark'), [135, 148]); PX.wordmark(g, wmx, wmy, 2, Math.min(7, Math.floor((t - 2.3) * 14) + 1)); }
+      TT.forEach((ln, i) => { const [tx, ty] = posOf(elP('title' + (i + 1)), [135, 178 + i * 20]); txt(g, tx, ty, typed(ln, t - 2.8 - i * 0.35, 20), { f: 'ps16', col: i === TT.length - 1 ? P.RED : P.WHITE, a: 'm' }); });
+      LV.forEach(([lv, lab], i) => { const t0 = 4.6 + i * 0.9; if (t < t0) return; const [lx, ly2] = posOf(elP('lv' + (i + 1)), [14, 270 + i * 40]); const y = ly2, u = ease((t - t0) / 0.25), w = Math.round(242 * u);
+        rect(g, lx, y, lx + w, y + 32, P.PANEL); rectO(g, lx, y, lx + w, y + 32, P.EDGE, 2);
+        if (u >= 1) { rect(g, lx + 8, y + 7, lx + 38, y + 25, P.RED); txt(g, lx + 23, y + 12, lv, { col: P.INK, a: 'm' }); txt(g, lx + 46, y + 9, typed(lab, t - t0 - 0.25, 40), { f: 'vt', col: P.WHITE }); } });
+      if (t > T7 + 0.2) { const [ix, iy] = posOf(elP('insert'), [135, 396]); if (blink(t)) txt(g, ix, iy, INS, { f: 'ps16', col: P.RED, sh: P.DRED, a: 'm' }); if (t > T7 + 0.7) { const [cx, cy] = posOf(elP('cta'), [135, 424]); button(g, cx, cy, CTA, true); } }
       if (t < 1.9) wipe(g, (t - 1.6) / 0.3);
     }
+    function elements() {
+      const [sx, sy] = posOf(elP('slot'), [95, 220]), [crx, cry] = posOf(elP('credit'), [135, 320]);
+      const [ngx, ngy] = posOf(elP('newgame'), [135, 40]), [lgx, lgy] = posOf(elP('logo'), [135, 64]), [wmx, wmy] = posOf(elP('wordmark'), [135, 148]);
+      const [ix, iy] = posOf(elP('insert'), [135, 396]), [cx, cy] = posOf(elP('cta'), [135, 424]);
+      const titles = TT.map((ln, i) => { const [tx, ty] = posOf(elP('title' + (i + 1)), [135, 178 + i * 20]);
+        return { id: 'title' + (i + 1), kind: 'pos', label: ln, x: tx, y: ty, t0: 2.8 + i * 0.35, d: DUR - (2.8 + i * 0.35), box: [tx - 110, ty - 8, 220, 28], dup: false, del: false }; });
+      const lvs = LV.map(([lv, lab], i) => { const [lx, ly] = posOf(elP('lv' + (i + 1)), [14, 270 + i * 40]); const t0 = 4.6 + i * 0.9;
+        return { id: 'lv' + (i + 1), kind: 'card', label: lv + ' ' + lab, x: lx, y: ly, w: 242, h: 32, t0, d: DUR - t0, box: [lx, ly, 242, 32], dup: false, del: false }; });
+      return [
+        { id: 'slot', kind: 'box', label: 'Coin slot', x: sx, y: sy, w: 80, h: 80, t0: 0, d: 1.6, box: [sx, sy, 80, 80], dup: false, del: false },
+        { id: 'credit', kind: 'pos', label: CREDIT, x: crx, y: cry, t0: 0.95, d: 0.65, box: [crx - 50, cry - 4, 100, 16], dup: false, del: false },
+        { id: 'newgame', kind: 'pos', label: NEWGAME, x: ngx, y: ngy, t0: 1.6, d: DUR - 1.6, box: [ngx - 70, ngy - 4, 140, 16], dup: false, del: false },
+        { id: 'logo', kind: 'pos', label: 'Logo', x: lgx, y: lgy, t0: 1.7, d: DUR - 1.7, box: [lgx - 116, lgy, 232, 72], dup: false, del: false },
+        { id: 'wordmark', kind: 'pos', label: 'WEBFLIX wordmark', x: wmx, y: wmy, t0: 2.3, d: DUR - 2.3, box: [wmx - 77, wmy, 153, 21], dup: false, del: false },
+        ...titles,
+        ...lvs,
+        { id: 'insert', kind: 'pos', label: INS, x: ix, y: iy, t0: T7 + 0.2, d: DUR - (T7 + 0.2), box: [ix - 90, iy - 8, 180, 24], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CTA, x: cx, y: cy, t0: T7 + 0.7, d: DUR - (T7 + 0.7), box: [cx - 100, cy - 4, 200, 28], dup: false, del: false },
+      ];
+    }
     const cues = () => ({ dur: DUR, beds: [['chip', 1.6, DUR, 0.5, { style: 'chip' }]], events: [cue('coindrop', 0.9, 0.6), cue('select', 1.6), cue('drop', 1.9), ...[0, 1, 2, 3, 4, 5, 6].map(i => cue('blip', 2.3 + i / 14, 0.35)), ...LV.map((_, i) => cue('coin', 4.6 + i * 0.9)), cue('fanfare', T7 + 0.2, 0.6), cue('coin', T7 + 0.7)] });
-    return { dur: DUR, render, cues };
+    return { dur: DUR, render, cues, elements };
   }
 
   const MAKE = { pxstart, pxquest, pxover, pxboss, pxcoin };
   const P = (MAKE[V] || pxstart)();
   DIR = { dur: P.dur, bg: BLK, finish: { vig: 0, grain: 0 }, edl: [], shakes: [], preload: () => PX.fontsP,
-    render(t) { if (VID.collecting) return; P.render(t); PX.blit(); }, cues: P.cues };
+    render(t) { if (VID.collecting) return; P.render(t); PX.blit(); }, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });

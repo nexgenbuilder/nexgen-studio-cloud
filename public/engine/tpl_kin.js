@@ -4,6 +4,13 @@
    Lines and service words are DPG's own ad lines and the services listed on dpgoutdoorliving.com. */
 STUDIO_REG['kin'] = (() => {
   const V = QS.get('v') || 'kitchens';
+  // Per-element model: tpl_free sets window.__NX_BLOCK_EL to the block's `el` data before calling this
+  // factory; positions below fall back to the original hardcoded values when EL is null, so rendering
+  // is byte-for-byte the old path. (Same pattern as tpl_trade.js.)
+  const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  const elP = id => (EL && EL.pos && EL.pos[id]) || null;
   const BPM = 120, bt = 0.5, bar = 2, CY = 864;
   const SPEC = {
     kitchens: { kick: 'OUTDOOR KITCHENS', key: 2, tag: "DINNER'S OUTSIDE TONIGHT",
@@ -22,8 +29,10 @@ STUDIO_REG['kin'] = (() => {
     const body = 1 - clamp((t - out) / 0.3); if (body <= 0) return body;
     K3.rail(60, W - 60, 238, t / out, { a: body });
     ctx.save(); ctx.globalAlpha = body; K3.logoBuild(185, 196, 250, 0.6, t); ctx.restore();
-    caps(`${String(i + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}`, W - 60, 214, 20, body, 0, { fam: 'Mono', w: 700, ls: 3, align: 'right', col: 'rgba(255,255,255,0.75)', ls0: 0 });
-    kicker(kick, 60, 304, clamp((t - 0.3) / 0.3) * body, { size: 22, ls: 5, maxW: 960 });
+    const [cox, coy] = posOf(elP('counter'), [W - 60, 214]);
+    caps(`${String(i + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}`, cox, coy, 20, body, 0, { fam: 'Mono', w: 700, ls: 3, align: 'right', col: 'rgba(255,255,255,0.75)', ls0: 0 });
+    const [kix, kiy] = posOf(elP('kicker'), [60, 304]);
+    kicker(kick, kix, kiy, clamp((t - 0.3) / 0.3) * body, { size: 22, ls: 5, maxW: 960 });
     return body;
   }
   function single() {
@@ -37,8 +46,22 @@ STUDIO_REG['kin'] = (() => {
       shots: P0.shots.map(([c, inn, d], i) => { const sh = SHOT('s' + (i + 1), [c, inn], { label: 'Shot ' + (i + 1), group: 'Footage', kind: 'land', d }); return [sh[0], sh[1], d]; }) });
     const S = K3.shots(P.shots), OUT = S.total, DUR = 15;
     let fA = 0, fB = 0; const sizes = () => { if (!fA) { fB = Math.min(124, fitSize(P.B.w.join(' '), 900, 960, 200, 'Mont', -3)); fA = Math.min(112, fitSize(P.A.w.join(' '), 900, 940, 200, 'Mont', -3)); } };
+    function elements() {
+      const kiP = posOf(elP('kicker'), [60, 304]), cnP = posOf(elP('counter'), [W - 60, 214]);
+      const aP = posOf(elP('line1'), [W / 2, 420]), bP = posOf(elP('line2'), [W / 2, 620]);
+      const tgP = posOf(elP('tags'), [W / 2, 1268]), ctP = posOf(elP('cta'), [W / 2, 1366]), coP = posOf(elP('contact'), [W / 2, 1456]);
+      return [
+        { id: 'kicker', kind: 'pos', label: P.kick, x: kiP[0], y: kiP[1], t0: 0.3, d: DUR - 0.3, box: [kiP[0], kiP[1] - 40, 500, 60], dup: false, del: false },
+        { id: 'counter', kind: 'pos', label: 'Shot counter', x: cnP[0], y: cnP[1], t0: 0, d: DUR, box: [cnP[0] - 200, cnP[1] - 40, 200, 60], dup: false, del: false },
+        { id: 'line1', kind: 'pos', label: P.A.w.join(' '), x: aP[0], y: aP[1], t0: P.A.t0, d: DUR - P.A.t0, box: [aP[0] - 470, aP[1] - 90, 940, 180], dup: false, del: false },
+        { id: 'line2', kind: 'pos', label: P.B.w.join(' '), x: bP[0], y: bP[1], t0: P.B.t0, d: DUR - P.B.t0, box: [bP[0] - 470, bP[1] - 90, 940, 180], dup: false, del: false },
+        { id: 'tags', kind: 'pos', label: P.chips.join(' · '), x: tgP[0], y: tgP[1], t0: 1.6, d: DUR - 1.6, box: [tgP[0] - 495, tgP[1] - 40, 990, 80], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: 2.2, d: DUR - 2.2, box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+        { id: 'contact', kind: 'pos', label: CONTACT.phone + ' · ' + CONTACT.web, x: coP[0], y: coP[1], t0: 2.5, d: DUR - 2.5, box: [coP[0] - 490, coP[1] - 40, 980, 70], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [[0, 10], [P.B.t0 + bt * (P.B.w.length - 1) * ((P.B.step || bt) / bt), 6]],
+      dur: DUR, shakes: [[0, 10], [P.B.t0 + bt * (P.B.w.length - 1) * ((P.B.step || bt) / bt), 6]], elements,
       render(t) {
         sizes(); K3.bgKinetic(t, CY, bar);
         const b = K3.band(S, t, { cy: CY, open: [0, 0.38], close: [OUT, 0.35], under: OR, drift: 8, flash: 0.55 });
@@ -46,11 +69,16 @@ STUDIO_REG['kin'] = (() => {
         const body = chrome(t, OUT, P.kick, S.length, b.i);
         if (body > 0) {
           const q = (t - (OUT - 0.25)) / 0.25;
-          K3.words(P.A.w, W / 2, 420, fA, t, P.A.t0, { hl: P.A.hl, dim: t > P.B.t0 + 1 ? 0.55 * clamp((t - P.B.t0 - 1) / 0.3) : 0, q });
-          K3.words(P.B.w, W / 2, 620, fB, t, P.B.t0, { hl: P.B.hl, shadow: true, q, step: P.B.step || bt });
-          K3.chips(P.chips, W / 2, 1268, t, 1.6, { a: body, maxW: 990 });
-          pill(CONTACT.cta, W / 2, 1366, { size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)), p: clamp((t - 2.2) / 0.4), alpha: body });
-          caps(CONTACT.phone + '   ·   ' + CONTACT.web, W / 2, 1456, 27, clamp((t - 2.5) / 0.4) * body, 0, { w: 800, ls: 2, maxW: 980 });
+          const [a1x, a1y] = posOf(elP('line1'), [W / 2, 420]);
+          K3.words(P.A.w, a1x, a1y, fA, t, P.A.t0, { hl: P.A.hl, dim: t > P.B.t0 + 1 ? 0.55 * clamp((t - P.B.t0 - 1) / 0.3) : 0, q });
+          const [b1x, b1y] = posOf(elP('line2'), [W / 2, 620]);
+          K3.words(P.B.w, b1x, b1y, fB, t, P.B.t0, { hl: P.B.hl, shadow: true, q, step: P.B.step || bt });
+          const [tgx, tgy] = posOf(elP('tags'), [W / 2, 1268]);
+          K3.chips(P.chips, tgx, tgy, t, 1.6, { a: body, maxW: 990 });
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, 1366]);
+          pill(CONTACT.cta, ct2x, ct2y, { size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)), p: clamp((t - 2.2) / 0.4), alpha: body });
+          const [cnx, cny] = posOf(elP('contact'), [W / 2, 1456]);
+          caps(CONTACT.phone + '   ·   ' + CONTACT.web, cnx, cny, 27, clamp((t - 2.5) / 0.4) * body, 0, { w: 800, ls: 2, maxW: 980 });
         }
         if (t >= OUT + 0.2) K3.outro('kinetic', t - OUT, P.tag);
       },
@@ -85,8 +113,25 @@ STUDIO_REG['kin'] = (() => {
     const HL = SHOT('s9', ['c07', 6.05], { label: 'Closing shot', group: 'Footage', kind: 'land', d: 2.9 });
     const S = K3.shots([[H0[0], H0[1], HOOK]].concat(SH.map(x => [x[0], x[1], SEG])).concat([[HL[0], HL[1], 2.5]]));
     let fw = null, fWB = 0; const sizes = () => { if (!fw) { fw = WORDS.map(w => Math.min(150, fitSize(w, 900, 940, 300, 'Mont', -3))); fWB = Math.min(124, fitSize(B1 + ' ' + B2, 900, 960, 200, 'Mont', -3)); } };
+    function elements() {
+      const kiP = posOf(elP('kicker'), [60, 304]), cnP = posOf(elP('counter'), [W - 60, 214]);
+      const o1P = posOf(elP('open1'), [W / 2, 420]), o2P = posOf(elP('open2'), [W / 2, 620]), clP = posOf(elP('close'), [W / 2, 450]);
+      const tgP = posOf(elP('tags'), [W / 2, 1268]), ctP = posOf(elP('cta'), [W / 2, 1366]), coP = posOf(elP('contact'), [W / 2, 1456]);
+      const words = WORDS.map((w, k) => { const wp = posOf(elP('word' + (k + 1)), [W / 2, 470]); return { id: 'word' + (k + 1), kind: 'pos', label: w, x: wp[0], y: wp[1], t0: HOOK + k * SEG, d: SEG, box: [wp[0] - 470, wp[1] - 100, 940, 200], dup: false, del: false }; });
+      return [
+        { id: 'kicker', kind: 'pos', label: KICK, x: kiP[0], y: kiP[1], t0: 0.3, d: DUR - 0.3, box: [kiP[0], kiP[1] - 40, 500, 60], dup: false, del: false },
+        { id: 'counter', kind: 'pos', label: 'Shot counter', x: cnP[0], y: cnP[1], t0: 0, d: DUR, box: [cnP[0] - 200, cnP[1] - 40, 200, 60], dup: false, del: false },
+        { id: 'open1', kind: 'pos', label: A1 + ' ' + A2, x: o1P[0], y: o1P[1], t0: 0, d: HOOK + 0.3, box: [o1P[0] - 470, o1P[1] - 90, 940, 180], dup: false, del: false },
+        { id: 'open2', kind: 'pos', label: B1 + ' ' + B2, x: o2P[0], y: o2P[1], t0: 1.0, d: HOOK + 0.3 - 1.0, box: [o2P[0] - 470, o2P[1] - 90, 940, 180], dup: false, del: false },
+        ...words,
+        { id: 'close', kind: 'pos', label: [E1, E2, E3].join(' '), x: clP[0], y: clP[1], t0: ALL, d: DUR - ALL, box: [clP[0] - 470, clP[1] - 90, 940, 180], dup: false, del: false },
+        { id: 'tags', kind: 'pos', label: CHIPS.join(' · '), x: tgP[0], y: tgP[1], t0: 1.6, d: DUR - 1.6, box: [tgP[0] - 495, tgP[1] - 40, 990, 80], dup: false, del: false },
+        { id: 'cta', kind: 'pos', label: CONTACT.cta, x: ctP[0], y: ctP[1], t0: 2.2, d: DUR - 2.2, box: [ctP[0] - 400, ctP[1] - 45, 800, 90], dup: false, del: false },
+        { id: 'contact', kind: 'pos', label: CONTACT.phone + ' · ' + CONTACT.web, x: coP[0], y: coP[1], t0: 2.5, d: DUR - 2.5, box: [coP[0] - 490, coP[1] - 40, 980, 70], dup: false, del: false },
+      ];
+    }
     return {
-      dur: DUR, shakes: [[0, 10], [0.5, 6]].concat(TEAM.map((x, k) => [HOOK + k * SEG, 5])).concat([[ALL + 0.5, 8]]),
+      dur: DUR, shakes: [[0, 10], [0.5, 6]].concat(TEAM.map((x, k) => [HOOK + k * SEG, 5])).concat([[ALL + 0.5, 8]]), elements,
       render(t) {
         sizes(); K3.bgKinetic(t, CY, bar);
         const b = K3.band(S, t, { cy: CY, open: [0, 0.38], close: [OUT, 0.35], under: OR, drift: 8, flash: 0.55 });
@@ -95,13 +140,22 @@ STUDIO_REG['kin'] = (() => {
         const body = chrome(t, OUT, KICK, S.length, b.i);
         if (body > 0) {
           if (t < HOOK + 0.3) { const q = (t - HOOK) / 0.25;
-            K3.words([A1, A2], W / 2, 420, Math.min(120, fitSize(A1 + ' ' + A2, 900, 960, 200, 'Mont', -3)), t, 0, { hl: 1, q }); K3.words([B1, B2], W / 2, 620, fWB, t, 1.0, { shadow: true, q }); }
+            const [a1x, a1y] = posOf(elP('open1'), [W / 2, 420]);
+            K3.words([A1, A2], a1x, a1y, Math.min(120, fitSize(A1 + ' ' + A2, 900, 960, 200, 'Mont', -3)), t, 0, { hl: 1, q });
+            const [b1x, b1y] = posOf(elP('open2'), [W / 2, 620]);
+            K3.words([B1, B2], b1x, b1y, fWB, t, 1.0, { shadow: true, q }); }
           if (inSeg) { const k = seg, lt = t - HOOK - k * SEG;
-            K3.words([WORDS[k]], W / 2, 470, fw[k], lt, 0, { hl: 0, q: (lt - (SEG - 0.22)) / 0.22, s0: 1.3 }); }
-          if (t >= ALL) { const lt = t - ALL; K3.words([E1, E2, E3], W / 2, 450, Math.min(120, fitSize([E1, E2, E3].join(' '), 900, 960, 200, 'Mont', -3)), lt, 0, { hl: 2, q: (t - (OUT - 0.25)) / 0.25 }); }
-          K3.chips(CHIPS, W / 2, 1268, t, 1.6, { a: body, maxW: 990 });
-          pill(CONTACT.cta, W / 2, 1366, { size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)), p: clamp((t - 2.2) / 0.4), alpha: body });
-          caps(CONTACT.phone + '   ·   ' + CONTACT.web, W / 2, 1456, 27, clamp((t - 2.5) / 0.4) * body, 0, { w: 800, ls: 2, maxW: 980 });
+            const [w1x, w1y] = posOf(elP('word' + (k + 1)), [W / 2, 470]);
+            K3.words([WORDS[k]], w1x, w1y, fw[k], lt, 0, { hl: 0, q: (lt - (SEG - 0.22)) / 0.22, s0: 1.3 }); }
+          if (t >= ALL) { const lt = t - ALL;
+            const [e1x, e1y] = posOf(elP('close'), [W / 2, 450]);
+            K3.words([E1, E2, E3], e1x, e1y, Math.min(120, fitSize([E1, E2, E3].join(' '), 900, 960, 200, 'Mont', -3)), lt, 0, { hl: 2, q: (t - (OUT - 0.25)) / 0.25 }); }
+          const [tgx, tgy] = posOf(elP('tags'), [W / 2, 1268]);
+          K3.chips(CHIPS, tgx, tgy, t, 1.6, { a: body, maxW: 990 });
+          const [ct2x, ct2y] = posOf(elP('cta'), [W / 2, 1366]);
+          pill(CONTACT.cta, ct2x, ct2y, { size: Math.min(30, fitSize(CONTACT.cta, 800, 900, 30, 'Mont', 2.5)), p: clamp((t - 2.2) / 0.4), alpha: body });
+          const [cnx, cny] = posOf(elP('contact'), [W / 2, 1456]);
+          caps(CONTACT.phone + '   ·   ' + CONTACT.web, cnx, cny, 27, clamp((t - 2.5) / 0.4) * body, 0, { w: 800, ls: 2, maxW: 980 });
         }
         if (t >= OUT + 0.2) K3.outro('kinetic', t - OUT, KICK);
       },
@@ -115,5 +169,5 @@ STUDIO_REG['kin'] = (() => {
     };
   }
   const P = V === 'team' ? team() : single();
-  DIR = { dur: P.dur, bg: BLK, finish: { vig: 0.2, grain: 0.22 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues };
+  DIR = { dur: P.dur, bg: BLK, finish: { vig: 0.2, grain: 0.22 }, edl: [], shakes: P.shakes, preload: () => K3.init(), render: P.render, cues: P.cues, ...(P.elements ? { elements: P.elements } : {}) };
 });
