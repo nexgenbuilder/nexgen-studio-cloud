@@ -589,7 +589,14 @@ scr.addEventListener('pointerdown', e => {
     const f = F();
     if (f && f.M.length) { const cur = f.M[f.at(Math.min(S.t, S.dur - 0.01))];
       if (cur && cur.type === 'tpl') { const els = blockEls(cur.id).filter(e => S.t >= e.t0 && S.t < e.t0 + e.d);
-        const eh = els.slice().reverse().find(e => { const b = e.box; return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
+        // ---- an element picked in the inspector wins the hit-test: big
+        // containers listed last (swatch card, pixel CTA) used to swallow the
+        // small element on top of them when its box sat inside theirs.
+        // Falls back to the plain reverse hit-test when nothing is selected
+        // or the selection is not active right now.
+        let eh = null;
+        if (ED.selEl && ED.selEl.blockId === cur.id) { const s = els.find(e => e.id === ED.selEl.elId); if (s) { const b = s.box; if (x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24) eh = s; } }
+        if (!eh) eh = els.slice().reverse().find(e => { const b = e.box; return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
         if (eh) { if (S.playing) A.pause(); select(cur.id); ED.selEl = { blockId: cur.id, elId: eh.id };
           ED.cdrag = { mode: 'el', id: cur.id, elId: eh.id, x0: x, y0: y, orig: { x: eh.x, y: eh.y }, desc: eh, before: JSON.stringify(TL()), moved: false, label: 'Move element' };
           scr.setPointerCapture(e.pointerId); renderInspector(); drawOv(); return; } } }
@@ -1009,8 +1016,16 @@ async function mixBuffer() {
       g.gain.setValueAtTime(P[0][1], P[0][0]); for (const [tt, vv] of P.slice(1)) g.gain.linearRampToValueAtTime(vv, tt);
       src.start(0); } catch (e) { console.warn(e); }
   }
+  // Holiday blocks ship their soundtrack under hol_<v>_<hol> in the packs,
+  // not under the tpl id — resolve the name from the registry (the same
+  // hol_<v>_<hol> formula HOOK.audioSrc uses for the preview), so the
+  // editor mix uses the project's holiday track instead of 404ing on
+  // audio/<tpl>.mp4. Other templates are unaffected: the name is the tpl id.
+  // (HOOK.audioSrc itself can't be used here — the wrapped version returns
+  // a pack blob URL or null, not the pack name.)
+  const sndOf = m => { const t = A.TPL(m.tpl); return (t && t.hol) ? 'hol_' + t.v + '_' + ((S.proj || {}).hol || NX.defaultHol()) : m.tpl; };
   for (const m of blocks) {
-    try { const b = NX.liveAudio && NX.liveAudio.is(m.tpl) ? await NX.liveAudio.forBlock(m) : await loadBuf(NX.apack ? await NX.apack.url(m.tpl) : 'audio/' + m.tpl + '.mp4'), src = oc.createBufferSource(), g = oc.createGain(); src.buffer = b; src.connect(g); g.connect(master);
+    try { let b; if (NX.liveAudio && NX.liveAudio.is(m.tpl)) b = await NX.liveAudio.forBlock(m); else { const n = sndOf(m); b = await loadBuf(NX.apack ? await NX.apack.url(n) : 'audio/' + n + '.mp4'); } const src = oc.createBufferSource(), g = oc.createGain(); src.buffer = b; src.connect(g); g.connect(master);
       const end = m.start + m.d; g.gain.setValueAtTime(1, m.start); if (m.d < m.dir.dur - 0.05) { g.gain.setValueAtTime(1, Math.max(m.start, end - 0.3)); g.gain.linearRampToValueAtTime(0, end); }
       src.start(m.start, 0, Math.min(b.duration, m.d + 0.05)); } catch (e) { console.warn(e); }
   }

@@ -141,16 +141,16 @@ STUDIO_REG['estate'] = (() => {
       fade(MAST + '   ·   ' + (k + 2), W / 2, H - 140, F(600, 18, SANS), WA(0.45), seg(t, t0 + 1.0, 0.6), { ls: 6, align: 'center' });
     }
     function back(t) {
-      paper(); if (VID.collecting) return; const t0 = TC, G = backGeom();
-      if (PRICE) { fade(OFFER, W / 2, G.offerY, F(500, 50, SER, 'italic'), WA(0.75), seg(t, t0 + 0.4, 0.8), { align: 'center' }); const ps = priceOr(PRICE, DEAL); const [px, py] = posOf(elP('price'), [W / 2, G.priceY]); fade(ps, px, py, F(700, Math.min(150, fitSize(ps, 700, 936, 150, SER, 0)), SER), WHT, seg(t, t0 + 0.6, 0.9), { align: 'center' }); }
-      if (FT.length) fade(K7.factStr(FT, '   ·   '), W / 2, G.factsY, F(600, 24, SANS), WA(0.7), seg(t, t0 + 0.9, 0.7), { align: 'center', ls: 4 });
-      if (ADDR) fade(ADDR + (AREA ? ', ' + AREA : ''), W / 2, G.addrY, F(500, Math.min(40, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 500, 936, 40, SER, 0, 'italic')), SER, 'italic'), WHT, seg(t, t0 + 1.0, 0.7), { align: 'center' });
-      rule(W / 2, G.agentY - 110, 160, seg(t, t0 + 1.2, 0.8), { col: OR });
-      if (AG) fade(AG, W / 2, G.agentY, F(500, 60, SER, 'italic'), WHT, seg(t, t0 + 1.4, 0.8), { align: 'center' });
-      if (AGT) fade(up(AGT), W / 2, G.titleY, F(600, 20, SANS), OR, seg(t, t0 + 1.5, 0.7), { align: 'center', ls: 5 });
-      const ph = K7.agentPhone({ agent_phone: AGP }), web = URL || CONTACT.web; fade([ph, web].filter(Boolean).join('   ·   '), W / 2, G.contactY, F(600, 26, SANS), WA(0.75), seg(t, t0 + 1.6, 0.7), { align: 'center', ls: 2 });
-      const cp = seg(t, t0 + 1.9, 0.8); if (cp > 0) { const [ex, ey] = posOf(elP('cta'), [W / 2, G.ctaY]), c = G(), f = F(600, ctaSize(END, 600, 24, SANS, 6), SANS), bw = textW(END, f, 6) + 100; c.globalAlpha = E.outC(cp); c.strokeStyle = WHT; c.lineWidth = 1.5; c.strokeRect(ex - bw / 2, ey - 36, bw, 72); setF(f, 6); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(END, ex + 3, ey + 1); D(); }
-      K7.logo(W / 2, G.logoY, 380, E.outC(seg(t, t0 + 2.1, 0.8)));
+      paper(); if (VID.collecting) return; const t0 = TC, BG = backGeom();
+      if (PRICE) { fade(OFFER, W / 2, BG.offerY, F(500, 50, SER, 'italic'), WA(0.75), seg(t, t0 + 0.4, 0.8), { align: 'center' }); const ps = priceOr(PRICE, DEAL); const [px, py] = posOf(elP('price'), [W / 2, BG.priceY]); fade(ps, px, py, F(700, Math.min(150, fitSize(ps, 700, 936, 150, SER, 0)), SER), WHT, seg(t, t0 + 0.6, 0.9), { align: 'center' }); }
+      if (FT.length) fade(K7.factStr(FT, '   ·   '), W / 2, BG.factsY, F(600, 24, SANS), WA(0.7), seg(t, t0 + 0.9, 0.7), { align: 'center', ls: 4 });
+      if (ADDR) fade(ADDR + (AREA ? ', ' + AREA : ''), W / 2, BG.addrY, F(500, Math.min(40, fitSize(ADDR + (AREA ? ', ' + AREA : ''), 500, 936, 40, SER, 0, 'italic')), SER, 'italic'), WHT, seg(t, t0 + 1.0, 0.7), { align: 'center' });
+      rule(W / 2, BG.agentY - 110, 160, seg(t, t0 + 1.2, 0.8), { col: OR });
+      if (AG) fade(AG, W / 2, BG.agentY, F(500, 60, SER, 'italic'), WHT, seg(t, t0 + 1.4, 0.8), { align: 'center' });
+      if (AGT) fade(up(AGT), W / 2, BG.titleY, F(600, 20, SANS), OR, seg(t, t0 + 1.5, 0.7), { align: 'center', ls: 5 });
+      const ph = K7.agentPhone({ agent_phone: AGP }), web = URL || CONTACT.web; fade([ph, web].filter(Boolean).join('   ·   '), W / 2, BG.contactY, F(600, 26, SANS), WA(0.75), seg(t, t0 + 1.6, 0.7), { align: 'center', ls: 2 });
+      const cp = seg(t, t0 + 1.9, 0.8); if (cp > 0) { const [ex, ey] = posOf(elP('cta'), [W / 2, BG.ctaY]), c = G(), f = F(600, ctaSize(END, 600, 24, SANS, 6), SANS), bw = textW(END, f, 6) + 100; c.globalAlpha = E.outC(cp); c.strokeStyle = WHT; c.lineWidth = 1.5; c.strokeRect(ex - bw / 2, ey - 36, bw, 72); setF(f, 6); c.fillStyle = WHT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(END, ex + 3, ey + 1); D(); }
+      K7.logo(W / 2, BG.logoY, 380, E.outC(seg(t, t0 + 2.1, 0.8)));
     }
     function turn(t, tc, A, B) {   // page turn right to left: B is revealed under the lifting page, the page's back passes over A
       const u = seg(t, tc, TD); if (u <= 0) { A(t); return; } if (u >= 1) { B(t); return; }

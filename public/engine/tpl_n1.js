@@ -283,19 +283,24 @@ STUDIO_REG['n1'] = (() => {
       setF(F(700, Math.min(16, fitSize(by, 700, 332, 16, 'Mono', 2)), 'Mono'), 2); c.fillStyle = OR; c.fillText(by, x + 24, y + 148); D();
     }
     function elements() {
-      const kiP = posOf(elP('kick'), [540, 400]), lgP = posOf(elP('wallLogo'), [540, 560]);
-      const t1P = posOf(elP('title1'), [540, 800]), t2P = posOf(elP('title2'), [540, 930]), suP = posOf(elP('sub'), [540, 1060]);
-      const frames = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), x0 = X(k) - w / 2 - 94, y0 = CYF - h / 2 - 94, W0 = w + 188, H0 = h + 188;
-        const fp = posOf(elP('frame' + (k + 1)), [x0, y0]);
-        return { id: 'frame' + (k + 1), kind: 'box', label: 'Frame ' + (k + 1) + (art.title ? ' · ' + art.title : ''), x: fp[0], y: fp[1], w: W0, h: H0, t0: Math.max(0, ARR(k) - 2.2), d: SEG, box: [fp[0], fp[1], W0, H0], dup: false, del: false }; });
-      const placards = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), pp = posOf(elP('placard' + (k + 1)), [X(k) + w / 2 - 286, CYF + h / 2 + 134]);
-        return { id: 'placard' + (k + 1), kind: 'card', label: art.title || 'Artwork ' + (k + 1), x: pp[0], y: pp[1], w: 380, h: 178, t0: ARR(k) + 0.15, d: 3.2, box: [pp[0], pp[1], 380, 178], dup: false, del: false }; });
-      const nums = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), np = posOf(elP('num' + (k + 1)), [X(k), CYF - h / 2 - 134]);
-        return { id: 'num' + (k + 1), kind: 'pos', label: 'N° 0' + (k + 1), x: np[0], y: np[1], t0: ARR(k) + 0.15, d: 3.2, box: [np[0] - 60, np[1] - 40, 200, 60], dup: false, del: false }; });
-      const f6P = posOf(elP('frame6'), [EMPTY - 439, 536]), p6P = posOf(elP('placard6'), [EMPTY + 59, 1224]);
-      const rsP = posOf(elP('reserved'), [EMPTY, CYF]), e1P = posOf(elP('empty1'), [EMPTY, 380]), e2P = posOf(elP('empty2'), [EMPTY, 452]);
-      const clP = posOf(elP('ctaLogo'), [EMPTY, 702]), ctP = posOf(elP('cta'), [EMPTY, 815]);
-      const phP = posOf(elP('phone'), [EMPTY, 918]), wbP = posOf(elP('web'), [EMPTY, 968]), ftP = posOf(elP('foot'), [EMPTY, 1032]);
+      // the wall is a moving camera: report SCREEN coords (world x minus
+      // camX at the element's t0), the same space render() draws in and
+      // stored drags are recorded in. Stored positions pass through posOf
+      // untouched — they are already absolute screen coords.
+      const sx = (wx, t0) => wx - camX(t0);
+      const kiP = posOf(elP('kick'), [sx(540, 0.1), 400]), lgP = posOf(elP('wallLogo'), [sx(540, 0.2), 560]);
+      const t1P = posOf(elP('title1'), [sx(540, 0.55), 800]), t2P = posOf(elP('title2'), [sx(540, 0.75), 930]), suP = posOf(elP('sub'), [sx(540, 1.2), 1060]);
+      const frames = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), x0 = X(k) - w / 2 - 94, y0 = CYF - h / 2 - 94, W0 = w + 188, H0 = h + 188, t0f = Math.max(0, ARR(k) - 2.2);
+        const fp = posOf(elP('frame' + (k + 1)), [sx(x0, t0f), y0]);
+        return { id: 'frame' + (k + 1), kind: 'box', label: 'Frame ' + (k + 1) + (art.title ? ' · ' + art.title : ''), x: fp[0], y: fp[1], w: W0, h: H0, t0: t0f, d: SEG, box: [fp[0], fp[1], W0, H0], dup: false, del: false }; });
+      const placards = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), t0p = ARR(k) + 0.15, pp = posOf(elP('placard' + (k + 1)), [sx(X(k) + w / 2 - 286, t0p), CYF + h / 2 + 134]);
+        return { id: 'placard' + (k + 1), kind: 'card', label: art.title || 'Artwork ' + (k + 1), x: pp[0], y: pp[1], w: 380, h: 178, t0: t0p, d: 3.2, box: [pp[0], pp[1], 380, 178], dup: false, del: false }; });
+      const nums = ART.map((art, k) => { const [w, h] = artSize(art.list[0][0]), t0p = ARR(k) + 0.15, np = posOf(elP('num' + (k + 1)), [sx(X(k), t0p), CYF - h / 2 - 134]);
+        return { id: 'num' + (k + 1), kind: 'pos', label: 'N° 0' + (k + 1), x: np[0], y: np[1], t0: t0p, d: 3.2, box: [np[0] - 60, np[1] - 40, 200, 60], dup: false, del: false }; });
+      const f6P = posOf(elP('frame6'), [sx(EMPTY - 439, LAST + MV), 536]), p6P = posOf(elP('placard6'), [sx(EMPTY + 59, LAST + MV + 0.1), 1224]);
+      const rsP = posOf(elP('reserved'), [sx(EMPTY, LAST + MV), CYF]), e1P = posOf(elP('empty1'), [sx(EMPTY, LAST + MV + 0.15), 380]), e2P = posOf(elP('empty2'), [sx(EMPTY, LAST + MV + 0.35), 452]);
+      const clP = posOf(elP('ctaLogo'), [sx(EMPTY, OUT), 702]), ctP = posOf(elP('cta'), [sx(EMPTY, OUT + 0.35), 815]);
+      const phP = posOf(elP('phone'), [sx(EMPTY, OUT + 0.6), 918]), wbP = posOf(elP('web'), [sx(EMPTY, OUT + 0.85), 968]), ftP = posOf(elP('foot'), [sx(EMPTY, OUT + 1.05), 1032]);
       return [
         { id: 'kick', kind: 'pos', label: TW.kick, x: kiP[0], y: kiP[1], t0: 0.1, d: 2.1, box: [kiP[0] - 250, kiP[1] - 40, 500, 60], dup: false, del: false },
         { id: 'wallLogo', kind: 'pos', label: 'Logo', x: lgP[0], y: lgP[1], t0: 0.2, d: 2.0, box: [lgP[0] - 220, lgP[1] - 60, 440, 120], dup: false, del: false },
