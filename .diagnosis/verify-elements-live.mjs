@@ -1,5 +1,7 @@
 // Live verification for the template unlock (chunk 1: commit fa09438c, dpl_5cRqwpMa2V4FjySaZEgKg3qkEfR6;
-// chunk 2 adds the 7 tpl_brand.js formats). For 15 template formats: Elements list appears in the inspector,
+// chunk 2 adds the 7 tpl_brand.js formats; chunk 3 adds the 16 tpl_food.js / tpl_food2.js formats;
+// chunk 5 adds the 19 tpl_trade.js / tpl_trade2.js formats (flashsale runs under Webflix: K9-gated).
+// For 15 template formats: Elements list appears in the inspector,
 // Select jumps the playhead, drag moves the element live, one undo restores, text is editable,
 // dup/del work where offered. Then regression: 5 real projects render frames.
 // Then a free-edit drag spot-check (snap guide + group drag + one undo).
@@ -94,7 +96,7 @@ const elPosOf = (el, d) => {
 };
 const clickRowBtn = async (labelSub, btnText) => {
   // find the Elements row whose label contains labelSub, click its button btnText
-  const ok = await page.evaluate((labelSub, btnText) => {
+  const ok = await page.evaluate(({ labelSub, btnText }) => {
     const secs = [...document.querySelectorAll('#einsp section.grp')];
     const g = secs.find(s => (s.querySelector('h3') || {}).textContent === 'Elements — drag on the preview');
     if (!g) return false;
@@ -106,8 +108,69 @@ const clickRowBtn = async (labelSub, btnText) => {
       }
     }
     return false;
-  }, labelSub, btnText);
+  }, { labelSub, btnText });
   return ok;
+};
+// exact row match: the DOM row label is `d.label + '  ·  ' + x + ', ' + y`.
+// Substring matching is WRONG for callouts — a duplicate shares its source's
+// label by design (dupEl stores text: d.label), so clickRowBtn('DRIVEWAYS')
+// always hits the original's row first and "delete dup" deletes the original
+// (proven by diag-probe.mjs). Match the full row label (label + coordinates),
+// which is unique per element.
+const rowLabelOf = d => d.label + '  ·  ' + Math.round(d.x) + ', ' + Math.round(d.y);
+const clickRowBtnExact = async (rowLabel, btnText) => {
+  const ok = await page.evaluate(({ rowLabel, btnText }) => {
+    const secs = [...document.querySelectorAll('#einsp section.grp')];
+    const g = secs.find(s => (s.querySelector('h3') || {}).textContent === 'Elements — drag on the preview');
+    if (!g) return false;
+    for (const r of g.querySelectorAll(':scope > div.fld')) {
+      const lab = r.querySelector('.lab');
+      if (lab && lab.textContent.trim() === rowLabel) {
+        const b = [...r.querySelectorAll('button')].find(x => x.textContent.trim() === btnText);
+        if (b) { b.click(); return true; }
+      }
+    }
+    return false;
+  }, { rowLabel, btnText });
+  return ok;
+};
+// first text input in a non-Elements field group
+const findTextField = () => page.evaluate(() => {
+  const secs = [...document.querySelectorAll('#einsp section.grp')];
+  for (const s of secs) {
+    const h = (s.querySelector('h3') || {}).textContent || '';
+    if (h === 'Elements — drag on the preview' || h === 'Footage in the block' || h === 'Length') continue;
+    const inp = s.querySelector('input[type="text"]');
+    if (inp) return { id: inp.id, label: ((s.querySelector('label') || {}).textContent || '').trim(), value: inp.value };
+  }
+  return null;
+});
+// open the inspector sheet the real user way: tap Edit in #mbar. The bar
+// re-renders on selection/sync changes, so a locator resolved once can detach
+// mid-scroll (run 2c: wipex/ringx/mapx sheetErr). Re-resolve the button fresh
+// on every attempt; fall back to the exact code path the button runs.
+const openSheet = async () => {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const coords = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#mbar button')].find(x => (x.textContent || '').trim() === 'Edit');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    if (coords) {
+      await page.touchscreen.tap(coords.x, coords.y);
+      try {
+        await page.waitForFunction(() => document.body.classList.contains('sheet-insp'), null, { timeout: 3000 });
+        await page.waitForTimeout(600);
+        return { via: 'button', attempt };
+      } catch (e) { /* tap missed or sheet did not open; retry */ }
+    }
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => { NX.editor.api.renderInspector(); NX.touch.sheet('insp', 'Edit'); });
+  await page.waitForTimeout(600);
+  const open = await page.evaluate(() => document.body.classList.contains('sheet-insp'));
+  return { via: open ? 'api-fallback' : 'FAILED', attempt: 3 };
 };
 
 const scratchIds = [];
@@ -142,8 +205,27 @@ async function testFormat(tplId) {
     await page.waitForTimeout(4000);
     await page.locator('.ti').first().click();
     await page.waitForTimeout(900);
-    const els = await getEls(setup.bid);
+    let els = await getEls(setup.bid);
     if (els.err) { out.err = els.err; return out; }
+    // Duration patch (chunk 3): the block is created with d: 15, but most food
+    // formats run 15–21s, so the largest-t0 target (usually 'end'/'cta') falls
+    // outside a 15s block and Select/drag can never reach it. Stretch the
+    // block to the template's own dur, persist, reopen, re-fetch.
+    if (els.dur > 15) {
+      out.durPatched = els.dur;
+      await page.evaluate(({ bid, dur }) => {
+        const it = NX.app.S.proj.tl.main.find(x => x.id === bid);
+        it.d = dur; NX.app.edited(true);
+      }, { bid: setup.bid, dur: els.dur });
+      await page.waitForTimeout(2500); // flush -> persist
+      await page.evaluate(() => { NX.app.openProject(NX.app.S.proj); });
+      await page.waitForTimeout(4000);
+      await page.locator('.ti').first().click();
+      await page.waitForTimeout(900);
+      const els2 = await getEls(setup.bid);
+      if (els2.err) { out.err = els2.err; return out; }
+      els = els2;
+    }
     out.nElements = els.list.length;
     out.elements = els.list.map(d => d.id + '(' + d.kind + ')').join(',');
     const rows = await domRows();
@@ -195,49 +277,69 @@ async function testFormat(tplId) {
     const undoEl = await blockEl(setup.bid);
     const undoPos = elPosOf(undoEl, target);
     out.undoRestored = JSON.stringify(undoPos) === JSON.stringify(prePos);
-    // text edit: first text input in a non-Elements field group
-    const field = await page.evaluate(() => {
-      const secs = [...document.querySelectorAll('#einsp section.grp')];
-      for (const s of secs) {
-        const h = (s.querySelector('h3') || {}).textContent || '';
-        if (h === 'Elements — drag on the preview' || h === 'Footage in the block' || h === 'Length') continue;
-        const inp = s.querySelector('input[type="text"]');
-        if (inp) return { id: inp.id, label: ((s.querySelector('label') || {}).textContent || '').trim(), value: inp.value };
-      }
-      return null;
-    });
+    // On mobile the inspector is a bottom sheet (visibility:hidden until opened
+    // via Edit in #mbar — nx-touch.js). The harness must open it the real user
+    // way first; filling a closed-sheet input fails "element is not visible"
+    // (proven harness artifact, diag-text-vis.mjs — NOT a product bug).
+    // openSheet retries the real tap and falls back to the button's own code path.
+    const sheet = await openSheet();
+    out.sheetVia = sheet.via + '/attempt' + sheet.attempt;
+    let field = await findTextField();
     if (field) {
       const textBefore = await page.evaluate((bid) => JSON.stringify(NX.app.S.proj.tl.main.find(x => x.id === bid).text || {}), setup.bid);
-      const loc = page.locator('#' + field.id);
-      try {
+      const tryFill = async (fid) => {
+        const loc = page.locator('#' + fid);
         await loc.scrollIntoViewIfNeeded({ timeout: 5000 });
         await loc.fill('TEST 123', { timeout: 8000 });
+      };
+      try {
+        await tryFill(field.id);
       } catch (e1) {
-        // fall back to click + type (the input can sit below the fold in the inspector)
-        try { await loc.click({ timeout: 5000 }); await page.keyboard.type('TEST 123', { delay: 20 }); }
-        catch (e2) { out.textErr = String((e2 && e2.message) || e2).slice(0, 200); }
+        // flake guard (mapx run 2d): #einsp can rebuild between the field
+        // lookup and the fill, so the id goes stale — re-open the sheet and
+        // re-resolve the field fresh, then try once more.
+        try {
+          await openSheet();
+          const field2 = await findTextField();
+          if (!field2) throw new Error('no field on retry');
+          field = field2;
+          await tryFill(field.id);
+        } catch (e2) {
+          // fall back to click + type (the input can sit below the fold in the inspector)
+          try { const loc = page.locator('#' + field.id); await loc.click({ timeout: 5000 }); await page.keyboard.type('TEST 123', { delay: 20 }); }
+          catch (e3) { out.textErr = String((e3 && e3.message) || e3).slice(0, 200); }
+        }
       }
       await page.waitForTimeout(900);
       const textAfter = await page.evaluate((bid) => JSON.stringify(NX.app.S.proj.tl.main.find(x => x.id === bid).text || {}), setup.bid);
       out.textField = field.label;
       out.textEdited = textBefore !== textAfter && textAfter.includes('TEST 123');
     } else out.textEdited = 'no-field';
-    // dup/del (walkx callouts only)
+    // The text edit leaves the input focused; renderInspector() refuses to
+    // rebuild while a text input has focus ("don't rebuild under the cursor"),
+    // so the Elements DOM goes stale and row clicks hit stale rows (run 2d:
+    // delDup/delOrig false). A real tap blurs first; synthetic clicks don't —
+    // blur + rebuild explicitly (proven by diag-probe2.mjs).
+    await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); NX.editor.api.renderInspector(); });
+    await page.waitForTimeout(600);
+    // dup/del (walkx callouts only). Rows are matched by FULL label (label +
+    // coordinates): a duplicate shares its source's label, so substring
+    // matching deletes the wrong row (diag-probe.mjs).
     if (tplId === 'walkx_h') {
       const callout = els.list.find(d => d.kind === 'callout');
       if (callout) {
         const n0 = (await getEls(setup.bid)).list.length;
-        const dupOk = await clickRowBtn(callout.label, 'Duplicate');
+        const dupOk = await clickRowBtnExact(rowLabelOf(callout), 'Duplicate');
         await page.waitForTimeout(900);
         const afterDup = await getEls(setup.bid);
         const dupRow = afterDup.list.find(d => String(d.id).startsWith('x'));
         out.dupOk = dupOk && afterDup.list.length === n0 + 1 && !!dupRow;
         if (dupRow) {
-          await clickRowBtn(dupRow.label, 'Delete');
+          await clickRowBtnExact(rowLabelOf(dupRow), 'Delete');
           await page.waitForTimeout(900);
           out.delDupOk = (await getEls(setup.bid)).list.length === n0;
         }
-        await clickRowBtn(callout.label, 'Delete');
+        await clickRowBtnExact(rowLabelOf(callout), 'Delete');
         await page.waitForTimeout(900);
         out.delOrigOk = (await getEls(setup.bid)).list.length === n0 - 1;
         await page.evaluate(() => {
@@ -256,11 +358,27 @@ async function testFormat(tplId) {
   return out;
 }
 
-const FORMATS = ['walkx_h', 'wipex_h', 'lensx', 'listx', 'ringx', 'showx', 'searchx', 'mapx', 'bo_frame', 'bo_headline', 'bo_contact', 'bo_message', 'bo_side', 'bo_special', 'bo_offer'];
+const FORMATS = ['fire', 'chef', 'rush', 'ticket', 'icons', 'afterhours', 'burger', 'sushi', 'cheese', 'pour', 'menuedit', 'street', 'latenight', 'fresh', 'catering', 'brunch',
+  'blueprint', 'salon', 'barber', 'vreveal', 'event', 'pdrop', 'expert',
+  'crew', 'timeline', 'glowup', 'swatch', 'shine', 'garage', 'party', 'venue', 'arrivals', 'flashsale', 'tips', 'clientstory'];
+// flashsale is K9-gated to non-DPG brands (discount): run it under Webflix, then switch back to DPG.
+const switchBrand = async (name) => {
+  await boot();
+  await page.evaluate(() => { document.querySelector('#brandBtn').click(); });
+  await page.waitForTimeout(800);
+  await page.evaluate((name) => {
+    const menu = document.querySelector('#brandMenu');
+    const it = [...menu.querySelectorAll('button, [role="menuitemradio"]')].find(e => (e.textContent || '').toLowerCase().includes(name));
+    if (it) it.click();
+  }, name);
+  await page.waitForTimeout(4000);
+};
 for (const f of FORMATS) {
+  if (f === 'flashsale') await switchBrand('webflix');
   const r = await testFormat(f);
+  if (f === 'flashsale') await switchBrand('dpg');
   results[f] = r;
-  console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' els=' + (r.nElements ?? '?') + ' rows=' + (r.nRows ?? '?') + ' match=' + r.rowsMatch + ' selJump=' + r.selectJumped + ' drag=' + r.dragMoved + ' undo=' + r.undoRestored + ' text=' + r.textEdited + (r.dupOk !== undefined ? ' dup=' + r.dupOk + ' delDup=' + r.delDupOk + ' delOrig=' + r.delOrigOk + ' reset=' + r.resetOk : '') + (r.err ? ' ERR=' + r.err : ''));
+  console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' els=' + (r.nElements ?? '?') + ' rows=' + (r.nRows ?? '?') + ' match=' + r.rowsMatch + ' durPatch=' + (r.durPatched ?? '-') + ' selJump=' + r.selectJumped + ' drag=' + r.dragMoved + ' undo=' + r.undoRestored + ' text=' + r.textEdited + ' sheet=' + (r.sheetVia ?? '?') + (r.dupOk !== undefined ? ' dup=' + r.dupOk + ' delDup=' + r.delDupOk + ' delOrig=' + r.delOrigOk + ' reset=' + r.resetOk : '') + (r.err ? ' ERR=' + r.err : ''));
 }
 
 // ---- regression: 5 real projects, frames at 3 timestamps ----
@@ -323,9 +441,13 @@ try {
   dragRes.scratchId = dragScratch;
   await page.evaluate(() => {
     const p = NX.app.S.proj;
+    // layers kept far apart (A ~250, B ~830) so their bboxes can never overlap
+    // after the snap drag — the old geometry (A 400 / B 700, size 80) let the
+    // two text boxes overlap, so the Shift+click hit the wrong layer and the
+    // multi-select never formed (run 2 groupMovedBoth=false, harness artifact).
     p.tl.layers = [
-      { id: 'layerA', kind: 'text', style: 'caps', text: 'DRAG A', x: 400, y: 960, size: 80, color: 'white', font: 'grotesk', t0: 0, d: 2.6 },
-      { id: 'layerB', kind: 'text', style: 'caps', text: 'DRAG B', x: 700, y: 960, size: 80, color: 'white', font: 'grotesk', t0: 0, d: 2.6 },
+      { id: 'layerA', kind: 'text', style: 'caps', text: 'DRAG A', x: 250, y: 960, size: 60, color: 'white', font: 'grotesk', t0: 0, d: 2.6 },
+      { id: 'layerB', kind: 'text', style: 'caps', text: 'DRAG B', x: 830, y: 960, size: 60, color: 'white', font: 'grotesk', t0: 0, d: 2.6 },
     ];
     NX.app.edited(true);
   });
@@ -369,11 +491,13 @@ try {
   await page.waitForTimeout(1200);
   const afterA = await layerPos();
   dragRes.snapGuide = !!guideSeen;
-  dragRes.dragAMoved = afterA.layerA.x !== 400;
+  dragRes.dragAMoved = afterA.layerA.x !== 250;
   // multi-select + group drag + one undo
   const pB = await toScreen((await boxOf('layerB')).cx, (await boxOf('layerB')).cy);
   await page.mouse.click(pB.x, pB.y);
   await page.waitForTimeout(600);
+  const selAfterB = await page.evaluate(() => ({ sel: NX.editor.ED.sel, multi: [...NX.editor.ED.multi] }));
+  dragRes.selAfterBClick = selAfterB;
   const boxA2 = await boxOf('layerA');
   const pA = await toScreen(boxA2.cx, boxA2.cy);
   await page.keyboard.down('Shift');
@@ -383,6 +507,10 @@ try {
   await page.mouse.up();
   await page.keyboard.up('Shift');
   await page.waitForTimeout(500);
+  // decisive: the multi-selection must contain BOTH layers before dragging
+  const multiState = await page.evaluate(() => ({ sel: NX.editor.ED.sel, multi: [...NX.editor.ED.multi] }));
+  dragRes.multiAfterShift = multiState;
+  dragRes.multiFormed = multiState.multi.includes('layerA') && multiState.multi.includes('layerB');
   const pre = await layerPos();
   const boxA3 = await boxOf('layerA');
   const sA = await toScreen(boxA3.cx, boxA3.cy);
@@ -403,7 +531,7 @@ try {
   const postUndo = await layerPos();
   dragRes.oneUndoRestoredBoth = postUndo.layerA.x === pre.layerA.x && postUndo.layerA.y === pre.layerA.y
     && postUndo.layerB.x === pre.layerB.x && postUndo.layerB.y === pre.layerB.y;
-  console.log('DRAG: snapGuide=' + dragRes.snapGuide + ' dragAMoved=' + dragRes.dragAMoved + ' groupMovedBoth=' + dragRes.groupMovedBoth + ' oneUndoRestoredBoth=' + dragRes.oneUndoRestoredBoth);
+  console.log('DRAG: snapGuide=' + dragRes.snapGuide + ' dragAMoved=' + dragRes.dragAMoved + ' multiFormed=' + dragRes.multiFormed + ' multi=' + JSON.stringify(dragRes.multiAfterShift) + ' groupMovedBoth=' + dragRes.groupMovedBoth + ' oneUndoRestoredBoth=' + dragRes.oneUndoRestoredBoth);
 } catch (e) { dragRes.err = String(e).slice(0, 300); console.log('DRAG ERR: ' + dragRes.err); }
 
 // ---- cleanup: delete every scratch project via the app's single-doc delete ----
