@@ -60,6 +60,81 @@ STUDIO_REG['free'] = (() => {
   const LAY = (Array.isArray(TL.layers) ? TL.layers : []).filter(L => L && L.d > 0).map(L => Object.assign({}, L));
   const DUR = Math.max(0.5, M.length ? s : Math.max(3, ...LAY.map(L => L.t0 + L.d)));
 
+  // ---------------- element motion, sync groups, in/out transitions ----------------
+  // Motion is keyframes on an item, evaluated by K8.xf. A layer's own motion lives in L.kf; a main-track item's in
+  // it.motion.kf. Motion SYNC: tl.motionGroups = [{id, name, base:{x,y}, kf}] — an item with mgroup set plays the group's
+  // keyframes instead of its own. The group's x/y keys are absolute positions for an element sitting at group.base, so
+  // each member shifts them by (its own base - group.base): a row of elements drifts together, each from where it is.
+  // Scale, rotation, opacity and blur are shared absolutely. The editor (js/nx-motion.js) keeps the same convention.
+  const motionGroups = () => (Array.isArray(TL.motionGroups) ? TL.motionGroups : []);
+  const groupOf = id => motionGroups().find(g => g && g.id === id) || null;
+  function effKf(item, base) {   // the keyframes an item actually plays: its group's (shifted to its base) or its own
+    const own = item.kf || (item.motion && item.motion.kf) || null;
+    const g = item.mgroup ? groupOf(item.mgroup) : null;
+    if (!g || !g.kf) return own;
+    const bx = +base.x || 540, by = +base.y || 960, gx = +(g.base && g.base.x) || 540, gy = +(g.base && g.base.y) || 960;
+    const out = {};
+    for (const [p, ks] of Object.entries(g.kf)) {
+      if (!Array.isArray(ks)) continue;
+      if (p === 'x') out[p] = ks.map(k => Object.assign({}, k, { v: k.v + (bx - gx) }));
+      else if (p === 'y') out[p] = ks.map(k => Object.assign({}, k, { v: k.v + (by - gy) }));
+      else out[p] = ks;
+    }
+    return out;
+  }
+  // a layer's full state at local time lt: group-resolved keyframes, then its in/out transition folded in (see ioState)
+  function layerStateAt(L, lt, io) {
+    if (io === undefined) io = ioState(L, lt);
+    const s = K8.xf({ x: L.x, y: L.y, sx: L.sx, sy: L.sy, rot: L.rot, opacity: L.opacity, blur: L.blur, kf: effKf(L, { x: +L.x || 540, y: +L.y || 960 }) }, lt);
+    if (io) { s.x += io.dx; s.y += io.dy; s.sx *= io.sc; s.sy *= io.sc; s.op = clamp(s.op * io.op); if (io.rot) s.rot += io.rot; if (io.blur) s.blur = (s.blur || 0) + io.blur; if (io.mask !== undefined) s.mask = io.mask; }
+    return s;
+  }
+  // a main-track item's motion at local time lt: {dx, dy, sx, sy, rot, op}, or null when it sits still. The base is always
+  // the frame centre (540, 960); blur and mask keyframes don't move a whole scene, so presets that use them keep only
+  // their position/scale/rotation/opacity here.
+  function itemMotion(it, lt) {
+    const kf = effKf(it, { x: 540, y: 960 });
+    if (!kf || !Object.keys(kf).length) return null;
+    const s = K8.xf({ x: 540, y: 960, kf }, lt);
+    if (Math.abs(s.x - 540) < 1e-3 && Math.abs(s.y - 960) < 1e-3 && Math.abs(s.sx - 1) < 1e-4 && Math.abs(s.sy - 1) < 1e-4 && Math.abs(s.rot) < 1e-5 && Math.abs(s.op - 1) < 1e-3) return null;
+    return { dx: s.x - 540, dy: s.y - 960, sx: s.sx, sy: s.sy, rot: s.rot, op: s.op };
+  }
+  // in/out transitions on a layer: L.tin / L.tout = {type:'fade'|'slide'|'wipe'|'zoom'|'blur'|'spin', d, dir, amt}. Folded into
+  // the layer's state (position, scale, rotation, opacity, blur, mask reveal) so they ride the same path as motion —
+  // preview and export identical. Slide in comes FROM dir; slide out goes TOWARDS dir; wipe reveals from dir in, and
+  // leaves towards dir out. amt scales the slide distance / spin amount (a gentle rise is a short slide from below).
+  const IO_DIRS = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+  function ioState(L, lt) {
+    const tin = L.tin, tout = L.tout;
+    if ((!tin || !tin.type || tin.type === 'none') && (!tout || !tout.type || tout.type === 'none')) return null;
+    let dx = 0, dy = 0, sc = 1, op = 1, rot = 0, blur = 0, mask, maskDir;
+    const SLIDE = 700;
+    if (tin && tin.type && tin.type !== 'none') {
+      const d = clamp(+(tin.d || 0.5), 0.1, 2), u = clamp(lt / d, 0, 1), amt = clamp(+(tin.amt || 1), 0.1, 1.5);
+      if (u < 1) {
+        if (tin.type === 'fade') op *= u;
+        else if (tin.type === 'slide') { const [sx, sy] = IO_DIRS[tin.dir] || IO_DIRS.left; const k = (1 - E.outC(u)) * SLIDE * amt; dx += sx * k; dy += sy * k; op *= clamp(u * 1.5); }
+        else if (tin.type === 'zoom') { sc *= 0.75 + 0.25 * E.outC(u); op *= u; }
+        else if (tin.type === 'wipe') { mask = E.outC(u); maskDir = tin.dir || 'left'; }
+        else if (tin.type === 'blur') { blur += (1 - E.outC(u)) * 24; op *= u; }
+        else if (tin.type === 'spin') { rot += (1 - E.outBack(u)) * (-200 * Math.PI / 180) * amt; op *= clamp(u * 1.5); }
+      }
+    }
+    if (tout && tout.type && tout.type !== 'none') {
+      const d = clamp(+(tout.d || 0.4), 0.1, 2), v = clamp((lt - (L.d - d)) / d, 0, 1), amt = clamp(+(tout.amt || 1), 0.1, 1.5);
+      if (v > 0) {
+        if (tout.type === 'fade') op *= (1 - v);
+        else if (tout.type === 'slide') { const [sx, sy] = IO_DIRS[tout.dir] || IO_DIRS.right; const k = E.inC(v) * SLIDE * amt; dx += sx * k; dy += sy * k; op *= clamp((1 - v) * 1.5); }
+        else if (tout.type === 'zoom') { sc *= 1 + 0.25 * E.inC(v); op *= (1 - v); }
+        else if (tout.type === 'wipe') { mask = 1 - E.inC(v); maskDir = tout.dir || 'right'; }
+        else if (tout.type === 'blur') { blur += E.inC(v) * 24; op *= (1 - v); }
+        else if (tout.type === 'spin') { rot += E.inC(v) * (200 * Math.PI / 180) * amt; op *= clamp((1 - v) * 1.5); }
+      }
+    }
+    if (dx === 0 && dy === 0 && sc === 1 && op === 1 && rot === 0 && blur === 0 && mask === undefined) return null;
+    return { dx, dy, sc, op, rot, blur, mask, maskDir };
+  }
+
   // ---------------- split screen ----------------
   // ratio: the top section's share of the height; main: the section the main track fills ('bottom' puts the section layers on
   // top, the talking-head layout); line: 'none' | 'line' | 'bar' | 'gap' (inset panels with rounded corners on a colour);
@@ -179,7 +254,63 @@ STUDIO_REG['free'] = (() => {
     if (slot.frame === 'rounded') { ctx.fillStyle = c0; rrect(R[0], R[1], R[2], R[3], 18); ctx.fill(); return; }
     ctx.fillStyle = c0; ctx.fillRect(R[0], R[1], R[2], R[3]);
   }
+  // a zone's shape, reusing the PiP frame paths (drawPip): rectangle, rounded, circle, arch. Circle is an ellipse so any
+  // zone rect works; arch clamps its radius so short zones get flat shoulders instead of a broken path.
+  function zoneShapePath(R, shape) {
+    const [x, y, w, h] = R, cx = x + w / 2;
+    ctx.beginPath();
+    if (shape === 'circle') ctx.ellipse(cx, y + h / 2, w / 2, h / 2, 0, 0, 7);
+    else if (shape === 'arch') { const ar = Math.min(w / 2, h / 2); ctx.moveTo(x, y + h); ctx.lineTo(x, y + ar); ctx.arc(cx, y + ar, ar, Math.PI, 0); ctx.lineTo(x + w, y + h); ctx.closePath(); }
+    else if (shape === 'round') ctx.roundRect(x, y, w, h, Math.min(28, w * 0.12, h * 0.12));
+    else ctx.rect(x, y, w, h);
+  }
+  // grid cell cycling: a zone's `alts` rotate through over time — [zone, ...alts], each shown `cycle` seconds in turn.
+  // The overlay and shape belong to the zone, not the frame showing, so they stay put while the picture cycles.
+  function cycleSlot(zone, lt) {
+    if (!zone || !Array.isArray(zone.alts) || !zone.alts.length) return zone;
+    const seq = [zone].concat(zone.alts.filter(a => a && a.kind));
+    if (seq.length < 2) return zone;
+    const per = clamp(+zone.cycle || 3, 0.5, 30);
+    return seq[Math.floor(Math.max(0, lt) / per) % seq.length];
+  }
+  // a per-cell info overlay: a label (price, dish name, property or car info) over the cell's footage, top or bottom,
+  // as a chip (dark pill) or a scrim (gradient band) so it stays legible over footage.
+  function drawZoneOverlay(R, ov) {
+    if (VID.collecting) return;
+    const txt = String(ov.text || '').trim(); if (!txt) return;
+    const size = clamp(R[2] * 0.052, 20, 44), f0 = F(800, size, 'Mont');
+    const s2 = Math.max(14, Math.min(size, size * (R[2] * 0.86) / Math.max(1, textW(txt.toUpperCase(), f0, 2))));
+    const f2 = F(800, s2, 'Mont'), w2 = textW(txt.toUpperCase(), f2, 2);
+    const pad = Math.max(16, R[2] * 0.03), top = (ov.pos || 'bottom') !== 'bottom';
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if ((ov.style || 'chip') === 'scrim') {
+      const bh = s2 * 2.1 + pad, y0 = top ? R[1] : R[1] + R[3] - bh;
+      const g = ctx.createLinearGradient(0, y0, 0, y0 + bh);
+      if (top) { g.addColorStop(0, 'rgba(0,0,0,0.78)'); g.addColorStop(1, 'rgba(0,0,0,0)'); }
+      else { g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.78)'); }
+      ctx.fillStyle = g; ctx.fillRect(R[0], y0, R[2], bh);
+      setF(f2, 2); ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(txt.toUpperCase(), R[0] + pad * 1.2, y0 + bh / 2 + 1);
+    } else {
+      const bw = w2 + pad * 2.2, bh = s2 * 1.9, bx = R[0] + (R[2] - bw) / 2, by = top ? R[1] + pad : R[1] + R[3] - pad - bh;
+      ctx.fillStyle = 'rgba(8,8,8,0.72)'; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, bh / 2); ctx.fill();
+      setF(f2, 2); ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(txt.toUpperCase(), bx + bw / 2, by + bh / 2 + 1);
+    }
+    ctx.restore();
+  }
   function drawZone(slot, R, lt) {
+    if (R[2] < 2 || R[3] < 2) return;
+    // the collect pass must see every clip a zone can show, not just the frame playing right now
+    if (VID.collecting && slot && Array.isArray(slot.alts)) for (const a of slot.alts) if (a && a.kind === 'clip' && a.c && VID.meta(a.c)) footageSrc(a.c, 0, { rect: [0, 0, W, H], fit: 'cover' });
+    const shape = slot && slot.shape && slot.shape !== 'rect' ? slot.shape : null;
+    const live = cycleSlot(slot, lt);
+    if (shape && !VID.collecting) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); zoneShapePath(R, shape); ctx.clip(); try { drawZoneInner(live, R, lt); } finally { ctx.restore(); } }
+    else drawZoneInner(live, R, lt);
+    const ov = slot && slot.overlay && slot.overlay.on && slot.overlay.text;
+    if (ov && live && live.kind && live.kind !== 'none' && (live.kind !== 'clip' || live.c)) drawZoneOverlay(R, slot.overlay);
+  }
+  function drawZoneInner(slot, R, lt) {
     if (R[2] < 2 || R[3] < 2) return;
     if (!slot || !slot.kind || slot.kind === 'none') { zonePlaceholder(R, 'ADD CONTENT'); return; }
     if (slot.kind === 'card') { if (!VID.collecting) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); cardFill(slot, R); ctx.restore(); } return; }
@@ -371,6 +502,16 @@ STUDIO_REG['free'] = (() => {
   function drawItem(it, t) {
     if (MAINR && (it.type === 'tpl' || it.type === 'end' || it.type === 'container')) { const R = MAINR; MAINR = null; let sc; try { sc = K4.into('splitItem', () => drawItem(it, t)); } finally { MAINR = R; } if (!VID.collecting) blitMain(sc, R, false); return; }   // a template, an ending or a container: its whole frame, framed into the half
     const lt = t - it.start; t0g = t;
+    // a moving scene renders whole into an offscreen, then the offscreen is placed under the motion — so the move applies
+    // to the entire item, whatever it is, in preview and export alike. The collect pass draws direct (it registers sources).
+    const ms = itemMotion(it, lt);
+    if (!ms || VID.collecting) { drawItemBody(it, lt, t); return; }
+    const sc = K4.into('freeItem', () => drawItemBody(it, lt, t));
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha *= ms.op;
+    ctx.translate(540 + ms.dx, 960 + ms.dy); if (ms.rot) ctx.rotate(ms.rot); if (ms.sx !== 1 || ms.sy !== 1) ctx.scale(ms.sx, ms.sy); ctx.translate(-540, -960);
+    ctx.drawImage(sc, 0, 0); ctx.restore();
+  }
+  function drawItemBody(it, lt, t) {
     if (it.type === 'clip') drawClip(it, lt);
     else if (it.type === 'tpl') { if (!VID.collecting) fillScreen(it.dir.bg || BLK); it.dir.render(clamp(lt, 0, it.dir.dur - 1 / 30)); }
     else if (it.type === 'end') drawEnd(it, lt, t);
@@ -441,7 +582,7 @@ STUDIO_REG['free'] = (() => {
   function bbox(L, t) {
     if (L.kind === 'seg') return splitRects(t === undefined ? 1 : Math.max(splitK(t), t >= L.t0 && t < L.t0 + L.d ? 1e-3 : 0)).sec.slice();
     const b = rawBox(L); if (t === undefined) return b;
-    const s = K8.xf(L, clamp(t - L.t0, 0, L.d)); if (K8.plain(L, s)) return b;
+    const s = layerStateAt(L, clamp(t - L.t0, 0, L.d)); if (K8.plain(L, s)) return b;
     const ax = +L.x || 540, ay = +L.y || 960, cs = Math.cos(s.rot), sn = Math.sin(s.rot); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const [cx, cy] of [[b[0], b[1]], [b[0] + b[2], b[1]], [b[0], b[1] + b[3]], [b[0] + b[2], b[1] + b[3]]]) {
       const dx = (cx - ax) * s.sx, dy = (cy - ay) * s.sy, rx = s.x + dx * cs - dy * sn, ry = s.y + dx * sn + dy * cs; x0 = Math.min(x0, rx); y0 = Math.min(y0, ry); x1 = Math.max(x1, rx); y1 = Math.max(y1, ry); }
@@ -485,11 +626,18 @@ STUDIO_REG['free'] = (() => {
     g.beginPath(); g.rect(x0 - 20, y - size * 1.3, (tw + 40) * E.inOutS(clamp(p)), size * 1.9); g.clip(); setF(f, 0); g.textAlign = 'left'; g.globalAlpha = 1 - E.inC(q);
     g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 14; g.fillStyle = c; g.fillText(str, x0, y); K3.D();
   }
-  // footage in the letters: the frame darkens around a giant word, then the word grows until it is the whole frame
+  // footage in the letters: the frame darkens around a giant word, then the word grows until it is the whole frame.
+  // L.fill names a clip to play inside the letters instead of the frame behind; L.zoomD sets how long the zoom into the
+  // full shot takes (L.zoom === false turns it off). The fill is registered on the collect pass like any other footage.
   function maskWord(L, txt, fam, t) {
-    if (VID.collecting || !txt.trim()) return; const lt = t - L.t0, lines = txt.toUpperCase().split('\n').filter(Boolean);
+    const lt = t - L.t0, lines = txt.toUpperCase().split('\n').filter(Boolean);
+    const fill = L.fill && VID.meta(L.fill) ? L.fill : null, fts = fill ? clamp((+L.fillIn || 0) + Math.max(0, lt), 0, (VID.meta(fill).n - 1.5) / 30) : 0;
+    if (VID.collecting) { if (fill) footageSrc(fill, fts, { rect: [0, 0, W, H], fit: 'cover', q: 'h' }); return; }
+    if (!txt.trim()) return;
+    if (fill) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); footageSrc(fill, fts, { rect: [0, 0, W, H], fit: 'cover', q: 'h' }); ctx.restore(); }
     const sz = Math.min(L.size || 360, ...lines.map(l => fitSize(l, fam === 'Bebas' ? 400 : 900, 990, 900, fam, 4))), lh = sz * 0.92;
-    const grow = clamp((lt - (L.d - 0.8)) / 0.75), s = lerp(1, 20, E.inExpo(grow)) * lerp(1.12, 1, E.outC(clamp(lt / 0.7))), a = clamp(lt / 0.35);
+    const zd = L.zoom === false ? 0 : clamp(+(L.zoomD || 0.8), 0.2, Math.max(0.2, L.d));
+    const grow = zd ? clamp((lt - (L.d - zd)) / Math.max(0.15, zd * 0.94)) : 0, s = lerp(1, 20, E.inExpo(grow)) * lerp(1.12, 1, E.outC(clamp(lt / 0.7))), a = clamp(lt / 0.35);
     const m = scratch('mwM'), g = m.g; g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, W, H);
     g.fillStyle = L.color === 'paper' ? PAPER : L.color === 'accent' ? OR : L.color === 'white' ? '#FFFFFF' : BLK; g.fillRect(0, 0, W, H);
     g.globalCompositeOperation = 'destination-out'; g.translate(L.x, L.y); g.scale(s, s); g.font = F(fam === 'Bebas' ? 400 : 900, sz, fam); g.letterSpacing = '4px'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -613,9 +761,10 @@ STUDIO_REG['free'] = (() => {
   // older layers render as before and are placed under it, so an old project with no motion renders exactly as it did.
   function drawLayer(L, t) {
     const lt = t - L.t0; if (lt < 0 || lt >= L.d) return;
+    const io = ioState(L, lt);   // the in/out transition rides the same state as motion (see layerStateAt)
     if (L.kind === 'gif') { if (VID.collecting) { if (window.NX && NX.gif) NX.gif.touch(L); return; }
-      const s = K8.xf(L, lt); if (K8.plain(L, s)) drawGif(L, t); else K8.legacy(L, s, () => drawGif(L, t), gifBox(L)); return; }
-    const s = K8.xf(L, lt), o = { maskDir: L.maskDir };
+      const s = layerStateAt(L, lt, io); if (K8.plain(L, s)) drawGif(L, t); else K8.legacy(L, s, () => drawGif(L, t), gifBox(L)); return; }
+    const s = layerStateAt(L, lt, io), o = { maskDir: (io && io.maskDir) || L.maskDir };
     if (L.kind === 'text' && L.style === 'type') { K8.withLayer(s, K8.box(L), () => K8.type(L, t, s), o); return; }
     if (L.kind === 'mg') { const e = K9.EL[L.type]; if (!e) return;
       if (e.full) { if (VID.collecting) return; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha *= s.op; K9.draw(L, t, s); ctx.restore(); }

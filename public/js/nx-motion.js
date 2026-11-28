@@ -195,6 +195,186 @@ function typeStyle(box, o) {
   g3.appendChild(segRow('Behind or under the text', K8.DECOS, fx.deco || 'none', v => set('deco', v)));
   if (fx.deco && fx.deco !== 'none') { g3.appendChild(colorRow('Decoration colour', fx.dcol || 'accent', v => set('dcol', v, 'dc'))); g3.appendChild(el('p', 'hint', 'It draws on with the entrance and leaves with the exit.')); }
 }
+// ---------------- motion sync: several elements sharing one motion ----------------
+// tl.motionGroups = [{id, name, base:{x,y}, kf}]. An item with mgroup set plays its group's keyframes instead of its
+// own; the group's x/y keys are absolute positions for an element at group.base, so each member shifts them by (its own
+// base - group.base) — a row drifts together, each from where it is. Scale, rotation and opacity are shared absolutely.
+// The engine (tpl_free.js: effKf) keeps the same convention.
+const groupsOf = tl => (tl && Array.isArray(tl.motionGroups) ? tl.motionGroups : []);
+const groupById = (tl, id) => groupsOf(tl).find(g => g && g.id === id) || null;
+const itemBase = (o, isMain) => isMain ? { x: 540, y: 960 } : { x: +o.x || 540, y: +o.y || 960 };
+const itemKf = (o, isMain) => isMain ? (o.motion && o.motion.kf) || null : o.kf || null;
+const groupMembers = (tl, gid) => {
+  const out = [];
+  for (const L of tl.layers || []) if (L.mgroup === gid) out.push({ o: L, main: false });
+  for (const m of tl.main || []) if (m.mgroup === gid) out.push({ o: m, main: true });
+  return out;
+};
+const nextGroupName = tl => { const n = groupsOf(tl).length; return 'Group ' + String.fromCharCode(65 + (n % 26)) + (n >= 26 ? ' ' + (Math.floor(n / 26) + 1) : ''); };
+function createGroup(tl, o, isMain) {
+  const g = { id: 'mg' + A.uid8().slice(0, 6), name: nextGroupName(tl), base: itemBase(o, isMain), kf: clone(itemKf(o, isMain)) || {} };
+  tl.motionGroups = groupsOf(tl).concat([g]);
+  return g;
+}
+// the keyframes an item actually plays (group-resolved, for copy/paste and unlink)
+function effKfOf(o, isMain, tl) {
+  const g = o.mgroup ? groupById(tl, o.mgroup) : null, own = itemKf(o, isMain);
+  if (!g || !g.kf) return own ? clone(own) : null;
+  const b = itemBase(o, isMain), out = {};
+  for (const [p, ks] of Object.entries(g.kf)) {
+    if (!Array.isArray(ks)) continue;
+    if (p === 'x') out[p] = ks.map(k => Object.assign({}, k, { v: k.v + (b.x - (+(g.base && g.base.x) || 540)) }));
+    else if (p === 'y') out[p] = ks.map(k => Object.assign({}, k, { v: k.v + (b.y - (+(g.base && g.base.y) || 960)) }));
+    else out[p] = clone(ks);
+  }
+  return out;
+}
+function unlinkGroup(tl, o, isMain) {
+  const kf = effKfOf(o, isMain, tl), gid = o.mgroup;
+  change(t => {
+    const it = isMain ? t.main.find(x => x.id === o.id) : t.layers.find(x => x.id === o.id); if (!it) return;
+    delete it.mgroup;
+    if (kf && Object.keys(kf).length) { if (isMain) it.motion = { kf }; else it.kf = kf; }
+    else { if (isMain) delete it.motion; else delete it.kf; }
+    if (gid && !groupMembers(t, gid).length) t.motionGroups = groupsOf(t).filter(g => g.id !== gid);
+  }, { label: 'Unlink motion' });
+}
+// the Sync row: individual motion, or in sync with a group. Used by the Animate tab (layers) and main-item inspectors.
+function syncRow(box, o, isMain) {
+  const tl = TL(), g = o.mgroup ? groupById(tl, o.mgroup) : null;
+  const gg = grp(box, 'Motion sync');
+  if (!g) {
+    gg.appendChild(el('p', 'note', 'This element moves on its own. Put it in a sync group and every element in the group moves together — a row or a grid drifting as one.'));
+    const gs = groupsOf(tl);
+    if (gs.length) gg.appendChild(selRow('Sync with', [['', 'Just this one']].concat(gs.map(x => [x.id, x.name + ' (' + groupMembers(tl, x.id).length + ')'])), '', v => {
+      if (!v) return;
+      change(t => { const it = isMain ? t.main.find(x => x.id === o.id) : t.layers.find(x => x.id === o.id); if (!it) return; it.mgroup = v; if (isMain) delete it.motion; else delete it.kf; });
+      renderInspector();
+    }));
+    acts(gg, [['New sync group', () => { change(t => { const it = isMain ? t.main.find(x => x.id === o.id) : t.layers.find(x => x.id === o.id); if (!it || it.mgroup) return; const ng = createGroup(t, it, isMain); it.mgroup = ng.id; if (isMain) delete it.motion; else delete it.kf; }, { label: 'New sync group' }); renderInspector(); }]]);
+  } else {
+    const members = groupMembers(tl, g.id);
+    gg.appendChild(el('p', 'note', 'In sync with ' + g.name + ' — ' + members.length + ' element' + (members.length === 1 ? '' : 's') + ' move together: ' + members.map(m => api.labelOf(m.o)).join(', ') + '. A preset moves them all; the keyframes live on the group.'));
+    gg.appendChild(selRow('Group', groupsOf(tl).map(x => [x.id, x.name + ' (' + groupMembers(tl, x.id).length + ')']), g.id, v => {
+      change(t => { const it = isMain ? t.main.find(x => x.id === o.id) : t.layers.find(x => x.id === o.id); if (!it) return; it.mgroup = v; if (isMain) delete it.motion; else delete it.kf; });
+      renderInspector();
+    }));
+    acts(gg, [['Unlink (keep this motion)', () => { unlinkGroup(TL(), o, isMain); renderInspector(); }]]);
+  }
+  return gg;
+}
+// Motion for a main-track item (clip, card, template block, ending, container): presets move the whole scene, and the
+// item can join a sync group. Keyframes stay on layers; presets are the simple keyframe model for scenes.
+function applyMainMotion(id, k, gen) {
+  const tl = TL(), it = tl && tl.main.find(x => x.id === id); if (!it) return;
+  if (it.mgroup) {
+    const g = groupById(tl, it.mgroup);
+    change(t => { const gg = groupById(t, it.mgroup); if (!gg) return;
+      if (k === 'none') { gg.kf = {}; return; }
+      const kf = gen(gg.base, it.d); gg.kf = {};
+      for (const [p, ks] of Object.entries(kf)) gg.kf[p] = ks.map(q => ({ t: r3(clamp(q.t, 0, it.d)), v: Math.round(q.v * 1000) / 1000, e: q.e || 'smooth' }));
+    }, { label: 'Motion (group)' });
+    A.toast(k === 'none' ? 'Group motion removed.' : 'Group motion added — every element in the group moves together.');
+    return;
+  }
+  change(t => { const m = t.main.find(x => x.id === id); if (!m) return;
+    if (k === 'none') { delete m.motion; return; }
+    const kf = gen({ x: 540, y: 960 }, m.d); m.motion = { kf: {} };
+    for (const [p, ks] of Object.entries(kf)) m.motion.kf[p] = ks.map(q => ({ t: r3(clamp(q.t, 0, m.d)), v: Math.round(q.v * 1000) / 1000, e: q.e || 'smooth' }));
+  });
+  A.toast(k === 'none' ? 'Motion removed.' : 'Motion added. Play it to see the whole scene move.');
+}
+function mainMotion(box, o) {
+  const g = grp(box, 'Motion');
+  g.appendChild(el('p', 'note', 'Moves the whole scene — a slow push in, a drift, a float. ' + (o.motion && o.motion.kf ? 'It has motion now.' : 'Pick a preset; No motion takes it off.')));
+  const mw = el('div', 'mx-motions'); g.appendChild(mw);
+  for (const [k, n, gen] of K8.MOTIONS) { const b = el('button', '', n); b.type = 'button'; b.onclick = () => applyMainMotion(o.id, k, gen); mw.appendChild(b); }
+  syncRow(box, o, true);
+  return g;
+}
+// in / out transitions for one layer: L.tin / L.tout = {type, d, dir}. The whole layer arrives and leaves —
+// crossfade, slide, wipe or zoom — on top of whatever entrance its own content has.
+const IO_TYPES = [['none', 'None'], ['fade', 'Fade'], ['slide', 'Slide'], ['wipe', 'Wipe'], ['zoom', 'Zoom'], ['blur', 'Blur'], ['spin', 'Spin']];
+const IO_DIRS = [['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']];
+function inOutGrp(box, o, refresh) {
+  refresh = refresh || renderInspector;
+  const g = grp(box, 'Whole layer — in / out');
+  g.appendChild(el('p', 'note', 'How the whole layer arrives and leaves. An entrance above animates what is inside the layer; this moves the layer itself.'));
+  const setIO = (which, patch, redraw) => { upd(o.id, x => { const cur = Object.assign({}, x[which] || {}); Object.assign(cur, patch);
+    if (!cur.type || cur.type === 'none') delete x[which]; else x[which] = cur; }); if (redraw) refresh(); };
+  const tin = o.tin || {}, tout = o.tout || {};
+  g.appendChild(selRow('In', IO_TYPES, tin.type || 'none', v => setIO('tin', { type: v }, true)));
+  if (tin.type === 'slide' || tin.type === 'wipe') g.appendChild(segRow(tin.type === 'slide' ? 'From' : 'Reveal from', IO_DIRS, tin.dir || 'left', v => setIO('tin', { dir: v })));
+  if (tin.type === 'slide') g.appendChild(rangeRow('Swoop distance', 0.1, 1.5, 0.05, tin.amt || 1, v => setIO('tin', { amt: Math.round(v * 100) / 100 }), v => Math.round(v * 100) + '%'));
+  if (tin.type === 'spin') g.appendChild(rangeRow('Spin amount', 0.1, 1.5, 0.05, tin.amt || 1, v => setIO('tin', { amt: Math.round(v * 100) / 100 }), v => Math.round(v * 100) + '%'));
+  if (tin.type && tin.type !== 'none') g.appendChild(rangeRow('In length', 0.15, 1.2, 0.05, tin.d || 0.5, v => setIO('tin', { d: Math.round(v * 100) / 100 }), v => v.toFixed(2) + ' s'));
+  g.appendChild(selRow('Out', IO_TYPES, tout.type || 'none', v => setIO('tout', { type: v }, true)));
+  if (tout.type === 'slide' || tout.type === 'wipe') g.appendChild(segRow(tout.type === 'slide' ? 'Towards' : 'Leaves towards', IO_DIRS, tout.dir || 'right', v => setIO('tout', { dir: v })));
+  if (tout.type === 'slide') g.appendChild(rangeRow('Swoop distance', 0.1, 1.5, 0.05, tout.amt || 1, v => setIO('tout', { amt: Math.round(v * 100) / 100 }), v => Math.round(v * 100) + '%'));
+  if (tout.type === 'spin') g.appendChild(rangeRow('Spin amount', 0.1, 1.5, 0.05, tout.amt || 1, v => setIO('tout', { amt: Math.round(v * 100) / 100 }), v => Math.round(v * 100) + '%'));
+  if (tout.type && tout.type !== 'none') g.appendChild(rangeRow('Out length', 0.15, 1.2, 0.05, tout.d || 0.4, v => setIO('tout', { d: Math.round(v * 100) / 100 }), v => v.toFixed(2) + ' s'));
+  return g;
+}
+
+// ---------------- text entrances: one preset list any text element can pick ----------------
+// Classic text layers get the entrance as a whole-layer in-transition (tin) — or, for Typed, the 'typed' style itself,
+// which writes the line on character by character. Kinetic ('type') text gets the matching K8 entrance (anim.in).
+// The length slider under the buttons sets the in-transition's duration (classic) — kinetic text uses its own Duration
+// row below. What already existed, reused rather than rebuilt: K8.IN (typewriter, letters, words, bounce, blur, spin…),
+// the 'typed' style, and the K8.MOTIONS presets.
+const TEXT_ENTRANCES = [
+  { id: 'typed', name: 'Typed', classic: 'typed', type: { in: 'typewriter' } },
+  { id: 'fade', name: 'Fade in', classic: { type: 'fade' }, type: { in: 'fade' } },
+  { id: 'swoopl', name: 'Swoop from left', classic: { type: 'slide', dir: 'left', amt: 1 }, type: { in: 'slide', dir: 'left' } },
+  { id: 'swoopr', name: 'Swoop from right', classic: { type: 'slide', dir: 'right', amt: 1 }, type: { in: 'slide', dir: 'right' } },
+  { id: 'rise', name: 'Rise', classic: { type: 'slide', dir: 'bottom', amt: 0.35 }, type: { in: 'rise' } },
+  { id: 'drop', name: 'Drop in', classic: { type: 'slide', dir: 'top', amt: 1 }, type: { in: 'slide', dir: 'top' } },
+  { id: 'pop', name: 'Pop in', classic: { type: 'zoom' }, type: { in: 'pop' } },
+  { id: 'blur', name: 'Blur in', classic: { type: 'blur' }, type: { in: 'blur' } },
+  { id: 'wipe', name: 'Wipe in', classic: { type: 'wipe', dir: 'left' }, type: { in: 'wipe', dir: 'left' } },
+  { id: 'spin', name: 'Spin in', classic: { type: 'spin' }, type: { in: 'spin' } },
+  { id: 'letters', name: 'Letter by letter', classic: null, type: { in: 'letters' } },
+  { id: 'words', name: 'Word by word', classic: null, type: { in: 'words' } },
+  { id: 'bounce', name: 'Bounce in', classic: null, type: { in: 'bounce' } },
+];
+function applyTextEntrance(o, kind, p) {
+  if (kind === 'type') {
+    if (!p.type) return;
+    upd(o.id, x => { x.anim = x.anim || {}; x.anim.in = p.type.in; if (p.type.dir) x.anim.dir = p.type.dir; else delete x.anim.dir; delete x.anim.inD; });
+  } else {
+    if (p.classic === 'typed') { upd(o.id, x => { x.style = 'typed'; delete x.tin; }); }
+    else if (p.classic) { const t = Object.assign({ d: (o.tin && o.tin.d) || 0.5 }, p.classic); upd(o.id, x => { x.tin = t; }); }
+  }
+  renderInspector();
+}
+function textEntranceGrp(box, o, kind) {
+  const g = grp(box, 'Entrance');
+  const list = TEXT_ENTRANCES.filter(p => kind === 'type' ? !!p.type : !!p.classic);
+  const mw = el('div', 'mx-motions'); g.appendChild(mw);
+  for (const p of list) { const b = el('button', '', p.name); b.type = 'button'; b.onclick = () => applyTextEntrance(o, kind, p); mw.appendChild(b); }
+  if (kind !== 'type' && o.tin && o.tin.type && o.tin.type !== 'none') g.appendChild(rangeRow('Entrance length', 0.15, 1.2, 0.05, o.tin.d || 0.5, v => upd(o.id, x => { if (x.tin) x.tin.d = Math.round(v * 100) / 100; }, 'entd'), v => v.toFixed(2) + ' s'));
+  if (kind === 'type') g.appendChild(el('p', 'hint', 'Fine-tune the entrance below (duration, stagger, easing). The exit lives there too.'));
+  else g.appendChild(el('p', 'hint', 'Typed switches the style itself; the rest arrive as a whole-layer entrance. The out-transition is in “Whole layer — in / out” below.'));
+  return g;
+}
+// in/out for a multi-selection: the SAME settings on every element, but each keeps its own clock — the transition runs
+// from when that element starts and ends. Stagger their starts and they reveal one by one; line their ends up (End
+// together, below) and they leave at the same moment.
+function multiInOutGrp(box, layers) {
+  const g = grp(box, 'In / out for all ' + layers.length);
+  g.appendChild(el('p', 'note', 'Same settings, independent timing: each element’s in/out runs on its own start and end.'));
+  const first = layers[0];
+  const setAll = (which, patch, redraw) => { change(t => { for (const L0 of layers) { const L = t.layers.find(x => x.id === L0.id); if (!L) continue; const cur = Object.assign({}, L[which] || {}); Object.assign(cur, patch); if (!cur.type || cur.type === 'none') delete L[which]; else L[which] = cur; } }); if (redraw) renderInspector(); };
+  const tin = first.tin || {}, tout = first.tout || {};
+  g.appendChild(selRow('In', IO_TYPES, tin.type || 'none', v => setAll('tin', { type: v }, true)));
+  if (tin.type === 'slide' || tin.type === 'wipe') g.appendChild(segRow(tin.type === 'slide' ? 'From' : 'Reveal from', IO_DIRS, tin.dir || 'left', v => setAll('tin', { dir: v })));
+  if (tin.type && tin.type !== 'none') g.appendChild(rangeRow('In length', 0.15, 1.2, 0.05, tin.d || 0.5, v => setAll('tin', { d: Math.round(v * 100) / 100 }), v => v.toFixed(2) + ' s'));
+  g.appendChild(selRow('Out', IO_TYPES, tout.type || 'none', v => setAll('tout', { type: v }, true)));
+  if (tout.type === 'slide' || tout.type === 'wipe') g.appendChild(segRow(tout.type === 'slide' ? 'Towards' : 'Leaves towards', IO_DIRS, tout.dir || 'right', v => setAll('tout', { dir: v })));
+  if (tout.type && tout.type !== 'none') g.appendChild(rangeRow('Out length', 0.15, 1.2, 0.05, tout.d || 0.4, v => setAll('tout', { d: Math.round(v * 100) / 100 }), v => v.toFixed(2) + ' s'));
+  return g;
+}
+
 // ---------------- animate
 function easeRow(label, val, on) {
   const w = el('div', 'fld'), id = 'mx-' + A.uid8(), lab = el('label', '', label); lab.htmlFor = id; w.appendChild(lab); const s = el('select'); s.id = id;
@@ -208,6 +388,7 @@ function easeRow(label, val, on) {
 const DIRS = { rise: 1, slide: 1, stagger: 1, wipe: 1, charup: 2, wordup: 2 };
 function animTab(box, o, kind) {
   if (kind === 'type') {
+    textEntranceGrp(box, o, 'type');
     const A0 = Object.assign({}, o.anim || {}), set = (k, v, key) => upd(o.id, x => { x.anim = x.anim || {}; if (v === '' || v === undefined || v === null) delete x.anim[k]; else x.anim[k] = v; }, key);
     const P = K8.IN[A0.in || 'rise'] || K8.IN.rise;
     const g = grp(box, 'Entrance');
@@ -231,23 +412,45 @@ function animTab(box, o, kind) {
     const g3 = grp(box, 'While it holds');
     g3.appendChild(selRow('Loop', Object.entries(K8.LOOP).map(([k, p]) => [k, p.name]), A0.loop || 'none', v => set('loop', v === 'none' ? '' : v)));
     if (A0.loop && A0.loop !== 'none') { g3.appendChild(rangeRow('Amount', 0, 3, 0.05, A0.loopAmt === undefined ? 1 : A0.loopAmt, v => set('loopAmt', v, 'la'), v => Math.round(v * 100) + '%')); g3.appendChild(rangeRow('Speed', 0.2, 3, 0.05, A0.loopSp || 1, v => set('loopSp', v, 'ls'), v => v.toFixed(2) + '×')); }
-  } else if (kind === 'mg') { box.appendChild(el('p', 'note', (K9.EL[o.type] || {}).desc || '')); box.appendChild(el('p', 'hint', 'This graphic has its own entrance and exit built in. Add movement on top with a motion preset, or set keyframes.')); }
-  else box.appendChild(el('p', 'hint', 'This element keeps its own entrance. Add movement on top with a motion preset, or set keyframes.'));
+    inOutGrp(box, o);
+    syncRow(box, o, false);
+  } else if (kind === 'mg') { box.appendChild(el('p', 'note', (K9.EL[o.type] || {}).desc || '')); box.appendChild(el('p', 'hint', 'This graphic has its own entrance and exit built in. Add movement on top with a motion preset, or set keyframes.'));
+    inOutGrp(box, o);
+    syncRow(box, o, false); }
+  else { box.appendChild(el('p', 'hint', 'This element keeps its own entrance. Add movement on top with a motion preset, or set keyframes.'));
+    if (o.kind === 'text') textEntranceGrp(box, o, 'legacy');
+    inOutGrp(box, o);
+    const gFx = grp(box, 'Effects');
+    gFx.appendChild(rangeRow('Glow', 0, 2, 0.05, o.fxGlow || 0, v => upd(o.id, x => { if (v) x.fxGlow = v; else delete x.fxGlow; }, 'gl'), v => Math.round(v * 100) + '%'));
+    gFx.appendChild(rangeRow('Drop shadow', 0, 2, 0.05, o.fxShadow || 0, v => upd(o.id, x => { if (v) x.fxShadow = v; else delete x.fxShadow; }, 'sh'), v => Math.round(v * 100) + '%'));
+    gFx.appendChild(el('p', 'hint', 'Glow is the brand accent around the element; shadow drops it off the background. Both draw in the preview and the export.'));
+    syncRow(box, o, false); }
   const g4 = grp(box, 'Move the whole layer'); g4.appendChild(el('p', 'hint', 'A motion preset writes keyframes from where the layer is now. Fine-tune them in Keyframes.'));
   const mw = el('div', 'mx-motions'); g4.appendChild(mw);
   for (const [k, n, gen] of K8.MOTIONS) { const b = el('button', '', n); b.type = 'button'; b.onclick = () => applyMotion([o.id], k, gen); mw.appendChild(b); }
   const g5 = grp(box, 'Reuse'); acts(g5, [['Copy animation', () => copyAnim(o)], ['Paste animation', () => pasteAnim([o.id])]]);
 }
 function applyMotion(ids, k, gen) {
-  change(t => { for (const id of ids) { const L = t.layers.find(x => x.id === id); if (!L) continue; if (k === 'none') { delete L.kf; continue; }
+  const tl = TL(), done = new Set(); let grouped = false;
+  change(t => { for (const id of ids) { const L = t.layers.find(x => x.id === id); if (!L) continue;
+    if (L.mgroup) { grouped = true; if (done.has(L.mgroup)) continue; done.add(L.mgroup);
+      const g = groupById(t, L.mgroup); if (!g) continue;
+      if (k === 'none') { g.kf = {}; continue; }
+      const kf = gen(g.base, L.d); g.kf = {};
+      for (const [p, ks] of Object.entries(kf)) g.kf[p] = ks.map(q => ({ t: r3(clamp(q.t, 0, L.d)), v: Math.round(q.v * 1000) / 1000, e: q.e || 'smooth' }));
+      continue; }
+    if (k === 'none') { delete L.kf; continue; }
     const kf = gen({ x: +L.x || 540, y: +L.y || 960 }, L.d); L.kf = L.kf || {}; for (const [p, ks] of Object.entries(kf)) L.kf[p] = ks.map(q => ({ t: r3(clamp(q.t, 0, L.d)), v: Math.round(q.v * 1000) / 1000, e: q.e || 'smooth' })); } });
-  A.toast(k === 'none' ? 'Motion removed.' : 'Motion added. Play it, or fine-tune the keyframes.');
+  A.toast(k === 'none' ? 'Motion removed.' : grouped ? 'Motion added to the sync group — every element in it moves together. Each element keeps its own in/out.' : 'Motion added. Play it, or fine-tune the keyframes.');
 }
-function copyAnim(o) { ED.animClip = { anim: o.anim ? clone(o.anim) : null, kf: o.kf ? clone(o.kf) : null, x: +o.x || 540, y: +o.y || 960, d: o.d }; try { sessionStorage.setItem('nx-anim', JSON.stringify(ED.animClip)); } catch (e) {} A.toast('Animation copied. Select another layer and paste.'); }
+function copyAnim(o) { ED.animClip = { anim: o.anim ? clone(o.anim) : null, kf: effKfOf(o, false, TL()), x: +o.x || 540, y: +o.y || 960, d: o.d }; try { sessionStorage.setItem('nx-anim', JSON.stringify(ED.animClip)); } catch (e) {} A.toast('Animation copied. Select another layer and paste.'); }
 function pasteAnim(ids) {
   let c = ED.animClip; if (!c) { try { c = JSON.parse(sessionStorage.getItem('nx-anim') || 'null'); } catch (e) {} } if (!c) { A.toast('Copy an animation first.'); return; }
   change(t => { for (const id of ids) { const L = t.layers.find(x => x.id === id); if (!L) continue; if (c.anim && L.kind === 'text' && L.style === 'type') L.anim = clone(c.anim);
-    if (c.kf) { const k = L.d / Math.max(0.1, c.d), dx = (+L.x || 540) - c.x, dy = (+L.y || 960) - c.y; L.kf = {}; for (const [p, ks] of Object.entries(c.kf)) L.kf[p] = ks.map(q => ({ t: r3(clamp(q.t * k, 0, L.d)), v: p === 'x' ? q.v + dx : p === 'y' ? q.v + dy : q.v, e: q.e })); } else if (L.kind !== 'text' || L.style !== 'type') delete L.kf; } });
+    if (c.kf) { const k = L.d / Math.max(0.1, c.d);
+      if (L.mgroup) { const g = groupById(t, L.mgroup); if (g) { const dx = (+(g.base && g.base.x) || 540) - c.x, dy = (+(g.base && g.base.y) || 960) - c.y; g.kf = {}; for (const [p, ks] of Object.entries(c.kf)) g.kf[p] = ks.map(q => ({ t: r3(clamp(q.t * k, 0, L.d)), v: p === 'x' ? q.v + dx : p === 'y' ? q.v + dy : q.v, e: q.e })); } }
+      else { const dx = (+L.x || 540) - c.x, dy = (+L.y || 960) - c.y; L.kf = {}; for (const [p, ks] of Object.entries(c.kf)) L.kf[p] = ks.map(q => ({ t: r3(clamp(q.t * k, 0, L.d)), v: p === 'x' ? q.v + dx : p === 'y' ? q.v + dy : q.v, e: q.e })); } }
+    else if (!L.mgroup && (L.kind !== 'text' || L.style !== 'type')) delete L.kf; } });
   A.toast('Animation pasted' + (ids.length > 1 ? ' on ' + ids.length + ' layers.' : '.'));
 }
 // ---------------- keyframes
@@ -280,6 +483,7 @@ function toggleKey(o, p) {
 function keysTab(box, o, kind) {
   const lt = ltOf(o), inside = S.t >= o.t0 && S.t <= o.t0 + o.d;
   box.appendChild(el('p', 'hint', inside ? 'Playhead at ' + fmtT(S.t) + ' (' + lt.toFixed(2) + ' s into the layer). ◆ adds or removes a key here. Changing a value adds a key here once the property has keys.' : 'Move the playhead inside this layer to set keyframes.'));
+  if (o.mgroup) { const g = groupById(TL(), o.mgroup); box.appendChild(el('p', 'warn', 'This layer moves with ' + (g ? g.name : 'a sync group') + ' — presets in Animate move the whole group. Unlink it to edit keyframes here.')); acts(box, [['Unlink (keep this motion)', () => { unlinkGroup(TL(), o, false); renderInspector(); }]]); return; }
   const g = grp(box, 'Properties');
   for (const p of propsOf(kind)) {
     const [name, mn, mx, st, fmt] = KPROPS[p], ks = keysOf(o, p), onKey = ks.some(k => Math.abs(k.t - lt) < 0.017), v = curVal(o, p, lt);
@@ -339,7 +543,8 @@ XT.inspect.multi = (box, ids) => {
     const g = grp(box, 'Animation for all ' + layers.length); const mw = el('div', 'mx-motions'); g.appendChild(mw);
     for (const [k, n, gen] of K8.MOTIONS) { const b = el('button', '', n); b.type = 'button'; b.onclick = () => applyMotion(layers.map(x => x.id), k, gen); mw.appendChild(b); }
     acts(g, [['Paste animation on all', () => pasteAnim(layers.map(x => x.id))]]);
-    const g2 = grp(box, 'Timing'); acts(g2, [['Stagger them 0.2 s apart', () => change(tl => { const ls = layers.map(L => tl.layers.find(x => x.id === L.id)).filter(Boolean).sort((a, b) => a.t0 - b.t0), t0 = ls[0].t0; ls.forEach((L, i) => { L.t0 = r3(t0 + i * 0.2); }); })], ['Start together', () => change(tl => { const ls = layers.map(L => tl.layers.find(x => x.id === L.id)).filter(Boolean), t0 = Math.min(...ls.map(L => L.t0)); ls.forEach(L => { L.t0 = r3(t0); }); })]]);
+    multiInOutGrp(box, layers);
+    const g2 = grp(box, 'Timing'); acts(g2, [['Stagger them 0.2 s apart', () => change(tl => { const ls = layers.map(L => tl.layers.find(x => x.id === L.id)).filter(Boolean).sort((a, b) => a.t0 - b.t0), t0 = ls[0].t0; ls.forEach((L, i) => { L.t0 = r3(t0 + i * 0.2); }); })], ['Start together', () => change(tl => { const ls = layers.map(L => tl.layers.find(x => x.id === L.id)).filter(Boolean), t0 = Math.min(...ls.map(L => L.t0)); ls.forEach(L => { L.t0 = r3(t0); }); })], ['End together', () => change(tl => { const ls = layers.map(L => tl.layers.find(x => x.id === L.id)).filter(Boolean), end = Math.max(...ls.map(L => L.t0 + L.d)); ls.forEach(L => { L.t0 = r3(end - L.d); }); })]]);
   }
   acts(box, [['Delete all ' + items.length, () => { change(tl => { tl.layers = tl.layers.filter(x => !ids.includes(x.id)); tl.main = tl.main.filter(x => !ids.includes(x.id)); if (tl.main[0]) tl.main[0].tr = null; }); ED.multi.clear(); ED.sel = null; renderInspector(); }, 'danger']]);
 };
@@ -392,6 +597,8 @@ XT.panels.trans = (box, h) => {
     if (!list.length) g.appendChild(el('p', 'ep-note', cat === 'fav' ? 'Tap ★ on a transition to keep it here.' : cat === 'recent' ? 'Transitions you use show up here.' : 'Nothing matches. Try another word.')); };
   q.oninput = () => { ED.tq = q.value; paint(); }; paint();
   if (tg.length && tg[0].tr) trControls(box, ids, tg[0].tr);
+  // a selected layer's own in/out lives here too, so the transition panel is the one place for all stitching
+  const lo = findAny(ED.sel); if (lo && TL().layers.includes(lo) && !ED.multi.size) inOutGrp(box, lo, renderPanel);
   const g2 = grp(box, 'Every cut in the edit');
   const all = () => TL().main.filter((m, i) => i > 0).map(m => m.id);
   acts(g2, (tg.length && tg[0].tr ? [['Use this on every cut', () => { const src = clone(tg[0].tr); change(t => t.main.forEach((m, i) => { if (i > 0) m.tr = clone(src); })); A.toast('Applied to every cut.'); renderPanel(); }]] : []).concat([['Remove all transitions', () => change(t => t.main.forEach(m => { m.tr = null; }))]]));
@@ -417,5 +624,5 @@ XT.transMulti = (box, mains) => {
 };
 // the Keyframes tab shows values at the playhead: refresh it when the playhead moves (not while playing)
 let kT = 0; A.onTime.push(() => { if (!ED.on || S.playing || ED.itab !== 'keys' || !ED.sel) return; clearTimeout(kT); kT = setTimeout(() => { const a = document.activeElement; if (!(a && a.closest && a.closest('#einsp'))) renderInspector(); }, 120); });
-NX.motion = { addType, addMg, applyMotion, copyAnim, pasteAnim, colorRow, tile, chips };
+NX.motion = { addType, addMg, applyMotion, copyAnim, pasteAnim, colorRow, tile, chips, applyMainMotion, mainMotion, syncRow, inOutGrp, textEntranceGrp, applyTextEntrance, multiInOutGrp, createGroup, groupMembers, effKfOf, unlinkGroup };
 })();

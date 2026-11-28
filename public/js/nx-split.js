@@ -156,6 +156,7 @@
     if (lay === 'grid') api.acts(gz, [['Add a cell', () => { if ((o.zones || []).length >= 16) { A.toast('16 cells is the most a grid holds.'); return; } api.upd(o.id, x => { x.zones = x.zones || []; x.zones.push(CLIP_DEF()); }); ED.selZone = (o.zones || []).length; api.renderInspector(); }], ['Remove this cell', () => { if ((o.zones || []).length <= 1) return; api.upd(o.id, x => { x.zones.splice(zi, 1); }); ED.selZone = Math.max(0, zi - 1); api.renderInspector(); }, 'danger']]);
     const gl = api.grp(box, 'Length');
     gl.appendChild(api.rangeRow('Plays for', 0.5, 30, 0.1, o.d, v => api.upd(o.id, x => { x.d = Math.round(v * 10) / 10; }, 'cd'), v => v.toFixed(1) + ' s'));
+    if (NX.motion) NX.motion.mainMotion(box, o);
     if (i > 0) api.trRow(box, o);
     api.acts(box, [['Split', api.split], ['Duplicate', api.duplicate], ['Delete', api.del, 'danger']]);
   }
@@ -165,6 +166,8 @@
       api.upd(o.id, x => { const s = x.zones[zi]; s.kind = v; if (v === 'card' && !s.card) s.card = 'accent'; if (v === 'graphic' && s.headline === undefined) Object.assign(s, { bg: 'paper', headline: 'YOUR HEADLINE', hi: '', badge: '', label: '', art: 'none' }); });
       api.renderInspector();
     }));
+    g.appendChild(api.segRow('Shape', [['rect', 'Rectangle'], ['round', 'Rounded'], ['circle', 'Circle'], ['arch', 'Arch']], z.shape || 'rect', v => api.upd(o.id, x => { x.zones[zi].shape = v; })));
+    if (z.shape === 'circle' || z.shape === 'arch') g.appendChild(el('p', 'hint', 'A circle or arch shape crops the edges of what is inside.'));
     if (kind === 'clip') {
       const r = z.c && NX.CLIPS.get(z.c);
       if (z.c) {
@@ -179,6 +182,13 @@
         if (m) g.appendChild(api.rangeRow('Starts in the clip at', 0, Math.max(0, m.n / 30 - 0.3), 0.05, +z.in || 0, v => api.upd(o.id, x => { x.zones[zi].in = api.r3(v); }, 'zin' + zi), v => v.toFixed(2) + ' s'));
         if (r && r.audio) g.appendChild(api.segRow('Clip sound', [['on', 'On'], ['off', 'Off']], z.sound === false ? 'off' : 'on', v => api.upd(o.id, x => { if (v === 'off') x.zones[zi].sound = false; else delete x.zones[zi].sound; })));
         api.acts(g, [['Replace footage', () => { ED.replace = { cid: o.id, zone: zi }; ED.panel = 'media'; api.renderPanel(); A.toast('Pick the new footage on the left.'); }], ['Remove footage', () => api.upd(o.id, x => { delete x.zones[zi].c; delete x.zones[zi].in; })]]);
+        if (lay === 'grid') {
+          const gc = api.grp(g, 'Image rotation');
+          gc.appendChild(el('p', 'note', 'This cell cycles through its images over time — the one above, then each added image in turn.'));
+          gc.appendChild(api.rangeRow('Each image for', 1, 10, 0.5, z.cycle || 3, v => api.upd(o.id, x => { x.zones[zi].cycle = v; }, 'cy' + zi), v => v.toFixed(1) + ' s'));
+          (z.alts || []).forEach((a, ai) => { const r2 = a.c && NX.CLIPS.get(a.c); gc.appendChild(el('p', 'note', (ai + 2) + '. ' + (r2 ? r2.name : 'Removed footage'))); });
+          api.acts(gc, [['Add image to the rotation', () => { ED.replace = { cid: o.id, zone: zi, alt: true }; ED.panel = 'media'; api.renderPanel(); A.toast('Pick the next image for this cell.'); }]].concat((z.alts || []).length ? [['Remove last image', () => api.upd(o.id, x => { x.zones[zi].alts.pop(); if (!x.zones[zi].alts.length) delete x.zones[zi].alts; })]] : []));
+        }
       } else {
         g.appendChild(el('p', 'note', 'Nothing here yet — this zone shows “ADD FOOTAGE” until you pick a clip.'));
         api.acts(g, [['Pick footage', () => { ED.replace = { cid: o.id, zone: zi }; ED.panel = 'media'; api.renderPanel(); A.toast('Pick the footage on the left.'); }]]);
@@ -199,6 +209,19 @@
         g.appendChild(api.rangeRow('Width', 120, 1080, 5, z.w || 600, v => api.upd(o.id, x => { x.zones[zi].w = v; }, 'cw'), v => v + ' px'));
         g.appendChild(api.rangeRow('Height', 80, 1920, 5, z.h || 300, v => api.upd(o.id, x => { x.zones[zi].h = v; }, 'ch'), v => v + ' px'));
         g.appendChild(el('p', 'hint', 'Or drag the card on the preview to move it; drag a corner to resize it.'));
+      }
+    }
+    if (lay === 'grid') {
+      // cell label: optional per cell, off by default — a cell with it off shows just its video or image, nothing else
+      const ov = z.overlay || {};
+      const go = api.grp(g, 'Cell label');
+      go.appendChild(api.segRow('Label on this cell', [['on', 'On'], ['off', 'Off']], ov.on ? 'on' : 'off', v => { api.upd(o.id, x => { const s = x.zones[zi]; s.overlay = s.overlay || {}; s.overlay.on = v === 'on'; if (v === 'on') { s.overlay.pos = s.overlay.pos || 'bottom'; s.overlay.style = s.overlay.style || 'chip'; } }); api.renderInspector(); }));
+      if (ov.on) {
+        go.appendChild(api.textRow('Label', ov.text || '', v => api.upd(o.id, x => { x.zones[zi].overlay = x.zones[zi].overlay || {}; x.zones[zi].overlay.text = v; }, 'ovt'), { max: 60, lint: true, hint: 'Price, dish name, property or car info — anything that identifies this cell.' }));
+        go.appendChild(api.segRow('Position', [['bottom', 'Bottom'], ['top', 'Top']], ov.pos || 'bottom', v => api.upd(o.id, x => { x.zones[zi].overlay = x.zones[zi].overlay || {}; x.zones[zi].overlay.pos = v; })));
+        go.appendChild(api.segRow('Style', [['chip', 'Chip'], ['scrim', 'Scrim']], ov.style || 'chip', v => api.upd(o.id, x => { x.zones[zi].overlay = x.zones[zi].overlay || {}; x.zones[zi].overlay.style = v; })));
+      } else {
+        go.appendChild(el('p', 'hint', 'Off: the cell shows just its video or image, nothing else.'));
       }
     }
   }

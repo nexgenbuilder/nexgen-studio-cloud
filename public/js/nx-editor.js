@@ -213,6 +213,23 @@ function findAny(id) { const t = TL(); if (!t) return null; if (id === 'music') 
 const kindOf = o => (!o ? null : o.kind === 'music' ? 'music' : o.type && !o.kind && TL().main.includes(o) ? 'main' : TL().sfx.includes(o) ? 'sfx' : 'layer');
 const builtOf = id => (F() ? F().M.find(m => m.id === id) : null);
 function select(id, keepMulti) { const was = ED.sel; ED.sel = id; ED.selEl = null; ED.selZone = 0; ED.replace = null; if (!keepMulti) ED.multi.clear(); paintSel(); renderInspector(); drawOv(); if (was !== id && (ED.panel === 'trans' || ED.panel === 'text')) renderPanel(); }
+// Selector mode: click elements to add them to the selection (click again to drop one) — the net is the backup, not
+// the only way in. Dragging on empty preview space casts a net (marquee) over the screen and selects every visible
+// element whose centre falls inside it — then the panel on the right applies one motion or effect to them all in one
+// go (the same multi-selection Shift/Cmd-click builds). Esc or the toolbar button exits the mode.
+function toggleSelector() {
+  ED.selectMode = !ED.selectMode; ED.marquee = null; paintBar(); drawOv();
+  A.toast(ED.selectMode ? 'Selector on: click elements to select them, or drag a net over the preview. Esc exits.' : 'Selector off.');
+}
+function selectMarquee(r) {
+  const [rx, ry, rw, rh] = r;
+  const hits = visibleLayers().filter(L => { if (L.type === 'progress' || L.type === 'scrim' || isFull(L)) return false; const b = boxOf(L), cx = b[0] + b[2] / 2, cy = b[1] + b[3] / 2; return cx >= rx && cx <= rx + rw && cy >= ry && cy <= ry + rh; });
+  if (!hits.length) { select(null); A.toast('Nothing inside the net.'); return; }
+  ED.multi.clear(); if (hits.length > 1) hits.forEach(L => ED.multi.add(L.id));
+  ED.sel = hits[hits.length - 1].id;
+  paintSel(); renderInspector(); drawOv();
+  A.toast(hits.length > 1 ? hits.length + ' elements selected. Give them one motion or effect from the panel on the right.' : 'Selected.');
+}
 
 // ------------------------------------------------------------------------------------------------ adding things
 function insertIndex() {
@@ -224,9 +241,11 @@ function insertIndex() {
 function addMain(item) { item.id = item.id || uid(); ED.multi.clear(); change(t => t.main.splice(insertIndex(), 0, item), { label: 'Add to timeline' }); ED.sel = item.id; ED.seekTo = item.id; }
 function addClip(r) {
   if (ED.replace) {
-    if (typeof ED.replace === 'object') {   // a container zone is waiting for footage: {cid, zone}
+    if (typeof ED.replace === 'object') {   // a container zone is waiting for footage: {cid, zone} (+alt: append to the cell's rotation)
       const z = ED.replace; ED.replace = null;
-      change(t => { const it = t.main.find(x => x.id === z.cid), slot = it && it.zones && it.zones[z.zone]; if (slot) { slot.kind = 'clip'; slot.c = r.id; slot.in = 0; delete slot.card; } }, { label: 'Add footage to zone' });
+      change(t => { const it = t.main.find(x => x.id === z.cid), slot = it && it.zones && it.zones[z.zone]; if (!slot) return;
+        if (z.alt) { if (slot.kind === 'none' || !slot.c) { slot.kind = 'clip'; slot.c = r.id; slot.in = 0; delete slot.card; } else { slot.alts = slot.alts || []; slot.alts.push({ kind: 'clip', c: r.id, in: 0, fit: 'fill' }); } }
+        else { slot.kind = 'clip'; slot.c = r.id; slot.in = 0; delete slot.card; } }, { label: z.alt ? 'Add an image to the cell rotation' : 'Add footage to zone' });
       select(z.cid); return;
     }
     const id = ED.replace; ED.replace = null; change(t => { const it = t.main.find(x => x.id === id) || t.layers.find(x => x.id === id); if (it) { it.c = r.id; it.in = 0; if (it.type === 'clip') it.d = Math.min(it.d, r.dur); } }); select(id); return; }
@@ -290,6 +309,7 @@ function buildBar() {
   b('Split', split, 'Split at the playhead (S)', 'edSplit'); b('Duplicate', duplicate, 'Duplicate', 'edDup'); b('Delete', del, 'Delete (Del)', 'edDel');
   b('Bring front', () => moveSel('front'), 'Bring the selected layer to the front', 'edFront'); b('Forward', () => moveSel('fwd'), 'Bring the selected layer one step forward', 'edFwd');
   b('Backward', () => moveSel('bwd'), 'Send the selected layer one step back', 'edBwd'); b('Send back', () => moveSel('back'), 'Send the selected layer to the back', 'edBack');
+  b('Selector', toggleSelector, 'Click elements to select them, or drag a net over the preview (Esc to exit)', 'edSelector');
   const sp = el('span', 'sp'); bar.appendChild(sp);
   b('−', () => { ED.userZoom = true; zoom(ED.pxs / 1.4); }, 'Zoom out'); const z = el('input', 'zoom'); z.type = 'range'; z.min = 8; z.max = 300; z.step = 1; z.value = ED.pxs; z.setAttribute('aria-label', 'Timeline zoom'); z.id = 'edZoom'; z.oninput = () => { ED.userZoom = true; zoom(+z.value); }; bar.appendChild(z);
   b('+', () => { ED.userZoom = true; zoom(ED.pxs * 1.4); }, 'Zoom in'); b('Fit', () => { ED.userZoom = false; fitZoom(); renderTimeline(); }, 'Fit the whole edit');
@@ -314,6 +334,7 @@ function paintBar() {
   else for (const [id, t] of [['edFront', 'Bring the selected layer to the front'], ['edFwd', 'Bring the selected layer one step forward'], ['edBwd', 'Send the selected layer one step back'], ['edBack', 'Send the selected layer to the back']]) { const x = document.getElementById(id); if (x) x.title = t; }
   if (isSeg) for (const id of ['edFront', 'edFwd', 'edBwd', 'edBack']) { const x = document.getElementById(id); if (x) x.title = 'Split-screen halves stack by time, not by layer order'; };
   const u = document.getElementById('edUndo'), r = document.getElementById('edRedo');
+  const selB = document.getElementById('edSelector'); if (selB) selB.setAttribute('aria-pressed', String(!!ED.selectMode));
   if (u) u.title = ED.undo.length ? 'Undo: ' + ED.undo[ED.undo.length - 1].label + ' (Ctrl/Cmd+Z)' : 'Undo (Ctrl/Cmd+Z)';
   if (r) r.title = ED.redo.length ? 'Redo: ' + ED.redo[ED.redo.length - 1].label + ' (Shift+Ctrl/Cmd+Z)' : 'Redo (Shift+Ctrl/Cmd+Z)';
 }
@@ -588,6 +609,7 @@ document.addEventListener('keydown', e => {
   else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && ED.sel) { e.preventDefault(); del(); }
   else if (!mod && e.key.toLowerCase() === 's') { e.preventDefault(); split(); }
+  else if (e.key === 'Escape' && ED.selectMode) { ED.selectMode = false; ED.marquee = null; paintBar(); drawOv(); }
   else if (e.key === 'Escape' && ED.sel) select(null);
 }, true);
 
@@ -637,6 +659,9 @@ function drawOv() {
   const L = TL().layers.find(x => x.id === ED.sel);
   const g = ED.cdrag;
   if (g && g.guides) { og.strokeStyle = 'rgba(255,255,255,.6)'; og.lineWidth = 2; og.setLineDash([10, 8]); if (g.guides.v) for (const gx of g.guides.v) { og.beginPath(); og.moveTo(gx, 0); og.lineTo(gx, 1920); og.stroke(); } if (g.guides.h) for (const gy of g.guides.h) { og.beginPath(); og.moveTo(0, gy); og.lineTo(1080, gy); og.stroke(); } og.setLineDash([]); }
+  if (ED.marquee) { const [mx, my, mw, mh] = ED.marquee, ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
+    og.fillStyle = 'rgba(255,255,255,.08)'; og.fillRect(mx, my, mw, mh);
+    og.strokeStyle = ac; og.lineWidth = 3; og.setLineDash([10, 8]); og.strokeRect(mx, my, mw, mh); og.setLineDash([]); }
   const ed = elDesc();
   if (ed) { const b = ed.box, ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
     og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]); og.strokeRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24); og.setLineDash([]);
@@ -681,12 +706,13 @@ const toCanvas = e => { const r = C.getBoundingClientRect(); return [(e.clientX 
 scr.addEventListener('pointerdown', e => {
   if (!ED.on || e.button !== 0) return;
   const [x, y] = toCanvas(e), sel = TL().layers.find(L => L.id === ED.sel);
-  if (sel && rotatable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel), [hx, hy] = rotHandle(b); if (Math.hypot(hx - x, hy - y) < 40) {
+  if (!ED.selectMode && sel && rotatable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel), [hx, hy] = rotHandle(b); if (Math.hypot(hx - x, hy - y) < 40) {
     ED.cdrag = { mode: 'rotate', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], a0: Math.atan2(y - (b[1] + b[3] / 2), x - (b[0] + b[2] / 2)), before: JSON.stringify(TL()), label: 'Rotate layer' }; scr.setPointerCapture(e.pointerId); return; } }
-  if (sel && resizable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel); if (corners(b).some(([cx, cy]) => Math.abs(cx - x) < 34 && Math.abs(cy - y) < 34)) {
+  if (!ED.selectMode && sel && resizable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel); if (corners(b).some(([cx, cy]) => Math.abs(cx - x) < 34 && Math.abs(cy - y) < 34)) {
     ED.cdrag = { mode: 'resize', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], d0: Math.hypot(x - (b[0] + b[2] / 2), y - (b[1] + b[3] / 2)), before: JSON.stringify(TL()), label: 'Resize layer' }; scr.setPointerCapture(e.pointerId); return; } }
   const hit = visibleLayers().slice().reverse().sort((a, b) => (a.kind === 'seg') - (b.kind === 'seg')).find(L => { if (L.type === 'progress' || L.type === 'scrim' || isFull(L)) return false; const b = boxOf(L); return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
   if (!hit) {   // no layer hit: the selected container's seam, card, or a zone?
+    if (ED.selectMode) { ED.cdrag = { mode: 'marquee', x0: x, y0: y, x1: x, y1: y, moved: false, label: 'Select' }; scr.setPointerCapture(e.pointerId); return; }
     const f0 = F();
     if (f0 && f0.containerZones && ED.sel) {
       const co = TL().main.find(x => x.id === ED.sel), b0 = co && co.type === 'container' ? builtOf(co.id) : null;
@@ -720,10 +746,18 @@ scr.addEventListener('pointerdown', e => {
         if (ED.selEl && ED.selEl.blockId === cur.id) { const s = els.find(e => e.id === ED.selEl.elId); if (s) { const b = s.box; if (x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24) eh = s; } }
         if (!eh) eh = els.slice().reverse().find(e => { const b = e.box; return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
         if (eh) { if (S.playing) A.pause(); select(cur.id); ED.selEl = { blockId: cur.id, elId: eh.id };
+          if (ED.selectMode) { renderInspector(); drawOv(); paintBar(); return; }   // selector mode: click selects, no drag
           ED.cdrag = { mode: 'el', id: cur.id, elId: eh.id, x0: x, y0: y, orig: { x: eh.x, y: eh.y }, desc: eh, before: JSON.stringify(TL()), moved: false, label: 'Move element' };
           scr.setPointerCapture(e.pointerId); renderInspector(); drawOv(); paintBar(); return; } } }
     if (f && f.M.length) select(f.M[f.at(Math.min(S.t, S.dur - 0.01))].id); else select(null); return; }
   if (S.playing) A.pause();
+  // ---- selector mode: a plain click adds the element to the selection (click again to drop it) — no move drag here,
+  // clicks only select; dragging on empty space is what casts the net ----
+  if (ED.selectMode) {
+    if (ED.multi.has(hit.id)) { ED.multi.delete(hit.id); if (ED.sel === hit.id) ED.sel = [...ED.multi].pop() || null; }
+    else { if (ED.sel && !ED.multi.has(ED.sel)) ED.multi.add(ED.sel); ED.multi.add(hit.id); ED.sel = hit.id; }
+    paintSel(); renderInspector(); drawOv(); return;
+  }
   // ---- drag polish: shift/ctrl/cmd-click toggles a layer in the multi-selection ----
   if (e.shiftKey || e.metaKey || e.ctrlKey) {
     if (ED.multi.has(hit.id)) { ED.multi.delete(hit.id); if (ED.sel === hit.id) ED.sel = [...ED.multi].pop() || null; }
@@ -739,6 +773,7 @@ scr.addEventListener('pointerdown', e => {
 let cRaf = 0;
 scr.addEventListener('pointermove', e => {
   const g = ED.cdrag; if (!g) return; const [x, y] = toCanvas(e);
+  if (g.mode === 'marquee') { g.x1 = clamp(x, 0, 1080); g.y1 = clamp(y, 0, 1920); if (Math.abs(g.x1 - g.x0) + Math.abs(g.y1 - g.y0) > 8) g.moved = true; ED.marquee = [Math.min(g.x0, g.x1), Math.min(g.y0, g.y1), Math.abs(g.x1 - g.x0), Math.abs(g.y1 - g.y0)]; drawOv(); return; }
   if (g.mode === 'el') {   // dragging a template-block element: preview live, commit one undo entry on release (cUp)
     if (Math.abs(x - g.x0) + Math.abs(y - g.y0) > 6) g.moved = true; if (!g.moved) return;
     let nx = g.orig.x + (x - g.x0), ny = g.orig.y + (y - g.y0);
@@ -808,7 +843,9 @@ scr.addEventListener('pointermove', e => {
     else L.size = Math.round(clamp((o.size || 80) * k, 12, L.style === 'type' ? 900 : 320)); }
   cancelAnimationFrame(cRaf); cRaf = requestAnimationFrame(() => { A.refresh(true); drawOv(); });
 });
-const cUp = () => { const g = ED.cdrag; ED.cdrag = null; if (!g) return; if (g.moved) { ED.undo.push({ label: g.label || 'Drag', before: g.before, after: JSON.stringify(TL()) }); if (ED.undo.length > 150) ED.undo.shift(); ED.redo = []; ED.lastKey = ''; A.markDirty(); scheduleMix(); renderInspector(); paintBar(); } drawOv(); };
+const cUp = () => { const g = ED.cdrag; ED.cdrag = null; if (!g) return;
+  if (g.mode === 'marquee') { ED.marquee = null; if (g.moved) selectMarquee([Math.min(g.x0, g.x1), Math.min(g.y0, g.y1), Math.abs(g.x1 - g.x0), Math.abs(g.y1 - g.y0)]); else select(null); drawOv(); return; }
+  if (g.moved) { ED.undo.push({ label: g.label || 'Drag', before: g.before, after: JSON.stringify(TL()) }); if (ED.undo.length > 150) ED.undo.shift(); ED.redo = []; ED.lastKey = ''; A.markDirty(); scheduleMix(); renderInspector(); paintBar(); } drawOv(); };
 scr.addEventListener('pointerup', cUp); scr.addEventListener('pointercancel', cUp);
 scr.addEventListener('dblclick', () => { if (!ED.on) return; const ta = einsp.querySelector('textarea, input[type=text]'); if (ta) { ta.focus(); ta.select(); } });
 
@@ -965,6 +1002,7 @@ function renderInspector() {
       if (m) { const dur = m.n / 30; g2.appendChild(rangeRow('Starts in the clip at', 0, Math.max(0, dur - 0.3), 0.05, o.in || 0, v => upd(o.id, x => { x.in = r3(v); x.d = r3(Math.min(x.d, K13.maxLen(x, dur - v))); }, 'in'), v => v.toFixed(2) + ' s'));
         g2.appendChild(rangeRow('Length', 0.3, Math.max(0.3, K13.maxLen(o, dur - (o.in || 0))), 0.05, b ? b.d : o.d, v => upd(o.id, x => { x.d = r3(v); }, 'cd'), v => v.toFixed(1) + ' s')); }
       if (XT.mainClip) XT.mainClip(box, o, r);
+      if (NX.motion) NX.motion.mainMotion(box, o);
       soundGrp(box, o, r);
       if (i > 0) trRow(box, o);
       acts(box, [['Replace footage', () => { ED.replace = o.id; ED.panel = 'media'; renderPanel(); A.toast('Pick the new footage on the left.'); }], ['Split', split], ['Duplicate', duplicate], ['Delete', del, 'danger']]);
@@ -972,6 +1010,7 @@ function renderInspector() {
       const T = A.TPL(o.tpl), blk = f && f.BLOCKS[o.id]; head(box, (T ? T.name : o.tpl) + ' block', 'Plays the whole template with its own music and effects');
       if (blk) {
         const full = blk.dir.dur; const g0 = grp(box, 'Length'); g0.appendChild(rangeRow('Plays for', Math.min(2, full), full, 0.1, b ? b.d : full, v => upd(o.id, x => { x.d = r3(v); }, 'bd'), v => v.toFixed(1) + ' s of ' + full.toFixed(1)));
+        if (NX.motion) NX.motion.mainMotion(box, o);
         const groups = new Map(); blk.fields.forEach(fl => { if (fl.type === 'shot') return; const gname = fl.group || 'Copy'; if (!groups.has(gname)) groups.set(gname, []); groups.get(gname).push(fl); });
         for (const [gname, fs] of groups) { const g = grp(box, gname); for (const fl of fs) {
           const cur = o.text && o.text[fl.key] !== undefined ? o.text[fl.key] : (blk.pack[fl.key] !== undefined ? blk.pack[fl.key] : fl.def);
@@ -1015,12 +1054,14 @@ function renderInspector() {
       head(box, 'Colour card', 'A plain background for text');
       const g = grp(box, 'Card'); g.appendChild(segRow('Background', CARDS, o.bg || 'ink', v => upd(o.id, x => { x.bg = v; })));
       g.appendChild(rangeRow('Length', 0.4, 10, 0.1, o.d, v => upd(o.id, x => { x.d = r3(v); }, 'kd'), v => v.toFixed(1) + ' s'));
+      if (NX.motion) NX.motion.mainMotion(box, o);
       if (i > 0) trRow(box, o); acts(box, [['Add text on it', () => { ED.panel = 'text'; renderPanel(); }], ['Split', split], ['Duplicate', duplicate], ['Delete', del, 'danger']]);
     } else if (o.type === 'end') {
       head(box, 'Ending', 'Logo, call to action, phone, website' + (A.B().builtin ? ', licence' : '') + ' from the brand kit');
       const g = grp(box, 'Ending'); g.appendChild(segRow('Style', ENDS.map(e => [e[0], e[1]]), o.style || 'kinetic', v => upd(o.id, x => { x.style = v; })));
       g.appendChild(textRow('Line under the logo', o.tag || '', v => upd(o.id, x => { if (v.trim()) x.tag = v; else delete x.tag; }, 'tag'), { ph: o.style === 'editorial' ? (A.B().contact.tagline || '') : ((A.B().contact.tagline || '').replace(/[.!]+$/, '').toUpperCase()), max: 44, lint: true, hint: 'Empty uses the brand tagline.' }));
       g.appendChild(rangeRow('Length', 2.5, 7, 0.1, o.d, v => upd(o.id, x => { x.d = r3(v); }, 'ed'), v => v.toFixed(1) + ' s'));
+      if (NX.motion) NX.motion.mainMotion(box, o);
       if (i > 0) trRow(box, o); acts(box, [['Delete', del, 'danger']]);
     }
     return;
@@ -1055,7 +1096,12 @@ function legacyLayerInsp(box, o, opts) {
     g2.appendChild(segRow(o.style === 'maskword' ? 'Around the word' : 'Colour', COLORS.map(c => [c[0], c[1], swatchOf(c[0])]), o.color || (o.style === 'maskword' ? 'ink' : 'white'), v => upd(o.id, x => { x.color = v; })));
     if (['headline', 'slam', 'caption'].includes(o.style)) g2.appendChild(segRow('Highlight', [['off', 'None'], ['on', o.style === 'caption' ? 'Last word' : o.style === 'slam' ? 'Last word' : 'Last line']], o.hl ? 'on' : 'off', v => upd(o.id, x => { x.hl = v === 'on'; })));
     g2.appendChild(rangeRow('Size', 16, o.style === 'maskword' ? 700 : 260, 1, o.size || 80, v => upd(o.id, x => { x.size = v; }, 'sz'), v => v + ' px'));
-    if (o.style === 'maskword') g2.appendChild(el('p', 'hint', 'The footage shows through the letters, then the word opens up into the full shot at the end of the layer.'));
+    if (o.style === 'maskword') { g2.appendChild(el('p', 'hint', 'The footage shows through the letters, then the word opens up into the full shot at the end of the layer.'));
+      const pool = NX.brandClips();
+      g2.appendChild(selRow('Fill footage', [['', 'The frame behind']].concat(pool.map(r => [r.id, r.name])), o.fill || '', v => { upd(o.id, x => { if (v) x.fill = v; else delete x.fill; }); renderInspector(); }));
+      if (o.fill) g2.appendChild(rangeRow('Fill starts at', 0, 10, 0.05, o.fillIn || 0, v => upd(o.id, x => { x.fillIn = r3(v); }, 'fi'), v => v.toFixed(2) + ' s'));
+      g2.appendChild(segRow('Zoom into the footage', [['on', 'On'], ['off', 'Off']], o.zoom === false ? 'off' : 'on', v => { upd(o.id, x => { x.zoom = v === 'on'; }); renderInspector(); }));
+      if (o.zoom !== false) g2.appendChild(rangeRow('Zoom length', 0.3, 2, 0.05, o.zoomD || 0.8, v => upd(o.id, x => { x.zoomD = r3(v); }, 'zd'), v => v.toFixed(2) + ' s')); }
     posRow(g2, o);
     const g3 = grp(box, 'Timing'); timing(g3, o);
     acts(box, [['Split', split], ['Duplicate', duplicate], ...layerOrderActs(), ['Delete', del, 'danger']]); return;

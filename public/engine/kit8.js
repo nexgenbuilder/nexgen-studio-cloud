@@ -72,8 +72,8 @@ const K8 = (() => {
       blur: Math.max(0, val(L, 'blur', lt)), track: val(L, 'track', lt), mask: clamp(val(L, 'mask', lt)), glow: val(L, 'glow', lt), shadow: val(L, 'shadow', lt), color: val(L, 'color', lt), crop: clamp(val(L, 'crop', lt), 0, 0.45) };
   }
   const hasKf = L => !!(L.kf && Object.values(L.kf).some(a => Array.isArray(a) && a.length));
-  // true when the layer sits exactly where its legacy renderer puts it
-  const plain = (L, s) => Math.abs(s.x - (+L.x || 540)) < 1e-3 && Math.abs(s.y - (+L.y || 960)) < 1e-3 && Math.abs(s.sx - 1) < 1e-4 && Math.abs(s.sy - 1) < 1e-4 && Math.abs(s.rot) < 1e-5 && s.blur < 0.3 && s.mask >= 1;
+  // true when the layer sits exactly where its legacy renderer puts it (no motion, no in/out, no effects)
+  const plain = (L, s) => Math.abs(s.x - (+L.x || 540)) < 1e-3 && Math.abs(s.y - (+L.y || 960)) < 1e-3 && Math.abs(s.sx - 1) < 1e-4 && Math.abs(s.sy - 1) < 1e-4 && Math.abs(s.rot) < 1e-5 && s.blur < 0.3 && s.mask >= 1 && (s.glow == null || s.glow < 0.01) && (s.shadow == null || s.shadow < 0.01) && !L.fxGlow && !L.fxShadow;
 
   // portable blur for a full-frame canvas: downsample in steps and scale back up (no ctx.filter, so it matches everywhere)
   function blurred(src, px) {
@@ -99,12 +99,17 @@ const K8 = (() => {
     }
     ctx.save(); setT(ctx); clipM(ctx); ctx.globalAlpha *= s.op; try { fn(); } finally { ctx.restore(); }
   }
-  // a legacy layer (its renderer draws in absolute canvas coordinates): render it whole, then place the result under s
+  // a legacy layer (its renderer draws in absolute canvas coordinates): render it whole, then place the result under s.
+  // Effects on legacy layers live here too: a glow (brand accent) and a drop shadow, from keyframes (s) or the layer's
+  // static fxGlow / fxShadow. Type and motion-graphics layers keep their own richer fx and never come through here.
   function legacy(L, s, draw, box) {
     if (VID.collecting) { draw(); return; }
     const sc = K4.into('k8Leg', draw), ax = +L.x || 540, ay = +L.y || 960;
     const loc = box ? [box[0] - ax, box[1] - ay, box[2], box[3]] : null;
-    withLayer(s, loc, () => { const c = ctx; c.translate(-ax, -ay); c.translate(-SH.x, -SH.y); c.drawImage(sc, 0, 0); });
+    const gl = s.glow == null ? (+L.fxGlow || 0) : s.glow, sh = s.shadow == null ? (+L.fxShadow || 0) : s.shadow;
+    withLayer(s, loc, () => { const c = ctx; c.translate(-ax, -ay); c.translate(-SH.x, -SH.y);
+      if (gl > 0.01 || sh > 0.01) { c.shadowColor = gl > 0.01 ? 'rgba(232,24,48,0.6)' : 'rgba(0,0,0,0.55)'; c.shadowBlur = Math.max(gl * 36, sh * 28); c.shadowOffsetY = sh > 0.01 ? sh * 10 : 0; }
+      c.drawImage(sc, 0, 0); });
   }
 
   // ------------------------------------------------------------------ type: layout
