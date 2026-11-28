@@ -71,6 +71,7 @@ body.mode-edit #einsp { display: block; }
 .ti.sel .h { background: var(--accent); opacity: .9; }
 .ti.sel .h::after { content: ""; position: absolute; left: 3px; top: 35%; bottom: 35%; width: 3px; border-radius: 2px; background: var(--accent-ink); opacity: .6; }
 .ti.m-clip { background-color: #2c2622; background-repeat: repeat-x; background-size: auto 100%; }
+.ti.m-container { background-color: #4a3a6d; background-repeat: repeat-x; background-size: auto 100%; }
 .ti.m-tpl { background-color: #3a2f27; background-repeat: repeat-x; background-size: auto 100%; }
 .ti.m-tpl::before { content: "TEMPLATE"; position: absolute; right: 6px; bottom: 3px; font: 700 8.5px/1 var(--f-mono); letter-spacing: .1em; color: rgba(255,255,255,.75); }
 .ti.m-end { background: repeating-linear-gradient(135deg, var(--accent) 0 10px, color-mix(in srgb, var(--accent) 70%, #000) 10px 20px); }
@@ -181,7 +182,7 @@ const swatchOf = k => (k === 'accent' ? OR : k === 'ink' ? BLK : k === 'paper' ?
 // extension points (V10): nx-motion.js adds the typography and graphics panels, the motion inspector and keyframes
 const XT = { panels: {}, inspect: {}, textTop: null, trans: null, checks: [], tabs: [] };
 // ------------------------------------------------------------------------------------------------ state + edits
-const ED = { on: false, userZoom: false, sel: null, selEl: null, multi: new Set(), itab: 'edit', pxs: 60, undo: [], redo: [], drag: null, panel: 'media', lastKey: '', lastAt: 0, replace: null, seekTo: null, fitNext: true };
+const ED = { on: false, userZoom: false, sel: null, selEl: null, selZone: 0, multi: new Set(), itab: 'edit', pxs: 60, undo: [], redo: [], drag: null, panel: 'media', lastKey: '', lastAt: 0, replace: null, seekTo: null, fitNext: true };
 const TL = () => S.proj && S.proj.tl;
 const F = () => window.FREE;
 function blankTL() { return { v: 1, main: [{ id: uid(), type: 'end', style: 'kinetic', d: 4 }], layers: [], sfx: [], music: { bed: 'lounge', vol: 0.7 }, autoSfx: true }; }
@@ -211,7 +212,7 @@ function afterHistory() { ED.lastKey = ''; if (ED.sel && !findAny(ED.sel)) ED.se
 function findAny(id) { const t = TL(); if (!t) return null; if (id === 'music') return { kind: 'music' }; return t.main.find(x => x.id === id) || t.layers.find(x => x.id === id) || t.sfx.find(x => x.id === id) || null; }
 const kindOf = o => (!o ? null : o.kind === 'music' ? 'music' : o.type && !o.kind && TL().main.includes(o) ? 'main' : TL().sfx.includes(o) ? 'sfx' : 'layer');
 const builtOf = id => (F() ? F().M.find(m => m.id === id) : null);
-function select(id, keepMulti) { const was = ED.sel; ED.sel = id; ED.selEl = null; ED.replace = null; if (!keepMulti) ED.multi.clear(); paintSel(); renderInspector(); drawOv(); if (was !== id && (ED.panel === 'trans' || ED.panel === 'text')) renderPanel(); }
+function select(id, keepMulti) { const was = ED.sel; ED.sel = id; ED.selEl = null; ED.selZone = 0; ED.replace = null; if (!keepMulti) ED.multi.clear(); paintSel(); renderInspector(); drawOv(); if (was !== id && (ED.panel === 'trans' || ED.panel === 'text')) renderPanel(); }
 
 // ------------------------------------------------------------------------------------------------ adding things
 function insertIndex() {
@@ -222,7 +223,13 @@ function insertIndex() {
 }
 function addMain(item) { item.id = item.id || uid(); ED.multi.clear(); change(t => t.main.splice(insertIndex(), 0, item), { label: 'Add to timeline' }); ED.sel = item.id; ED.seekTo = item.id; }
 function addClip(r) {
-  if (ED.replace) { const id = ED.replace; ED.replace = null; change(t => { const it = t.main.find(x => x.id === id) || t.layers.find(x => x.id === id); if (it) { it.c = r.id; it.in = 0; if (it.type === 'clip') it.d = Math.min(it.d, r.dur); } }); select(id); return; }
+  if (ED.replace) {
+    if (typeof ED.replace === 'object') {   // a container zone is waiting for footage: {cid, zone}
+      const z = ED.replace; ED.replace = null;
+      change(t => { const it = t.main.find(x => x.id === z.cid), slot = it && it.zones && it.zones[z.zone]; if (slot) { slot.kind = 'clip'; slot.c = r.id; slot.in = 0; delete slot.card; } }, { label: 'Add footage to zone' });
+      select(z.cid); return;
+    }
+    const id = ED.replace; ED.replace = null; change(t => { const it = t.main.find(x => x.id === id) || t.layers.find(x => x.id === id); if (it) { it.c = r.id; it.in = 0; if (it.type === 'clip') it.d = Math.min(it.d, r.dur); } }); select(id); return; }
   addMain({ type: 'clip', c: r.id, in: 0, d: r3(TL().split && !TL().main.length ? Math.min(60, r.dur) : Math.min(4, r.dur)), layout: 'fit', pos: 'center', tr: TL().main.length > 1 ? { type: 'dissolve', d: 0.45 } : null });
 }
 function layerTimes(d) { const t0 = Math.max(0, Math.min(S.t, S.dur - 0.5)); return { t0: r3(t0), d: r3(Math.max(0.6, Math.min(d, Math.max(1, S.dur - t0)))) }; }
@@ -281,6 +288,8 @@ function buildBar() {
   b('Undo', undo, 'Undo (Ctrl/Cmd+Z)', 'edUndo'); b('Redo', redo, 'Redo (Shift+Ctrl/Cmd+Z)', 'edRedo');
   bar.appendChild(el('span', 'sp'));
   b('Split', split, 'Split at the playhead (S)', 'edSplit'); b('Duplicate', duplicate, 'Duplicate', 'edDup'); b('Delete', del, 'Delete (Del)', 'edDel');
+  b('Bring front', () => moveSel('front'), 'Bring the selected layer to the front', 'edFront'); b('Forward', () => moveSel('fwd'), 'Bring the selected layer one step forward', 'edFwd');
+  b('Backward', () => moveSel('bwd'), 'Send the selected layer one step back', 'edBwd'); b('Send back', () => moveSel('back'), 'Send the selected layer to the back', 'edBack');
   const sp = el('span', 'sp'); bar.appendChild(sp);
   b('−', () => { ED.userZoom = true; zoom(ED.pxs / 1.4); }, 'Zoom out'); const z = el('input', 'zoom'); z.type = 'range'; z.min = 8; z.max = 300; z.step = 1; z.value = ED.pxs; z.setAttribute('aria-label', 'Timeline zoom'); z.id = 'edZoom'; z.oninput = () => { ED.userZoom = true; zoom(+z.value); }; bar.appendChild(z);
   b('+', () => { ED.userZoom = true; zoom(ED.pxs * 1.4); }, 'Zoom in'); b('Fit', () => { ED.userZoom = false; fitZoom(); renderTimeline(); }, 'Fit the whole edit');
@@ -293,6 +302,17 @@ function paintBar() {
   if (!bar) return; const o = findAny(ED.sel), k = o ? kindOf(o) : null;
   const set = (id, on) => { const x = document.getElementById(id); if (x) x.disabled = !on; };
   set('edUndo', ED.undo.length); set('edRedo', ED.redo.length); set('edSplit', o && (k === 'layer' || (k === 'main' && o.type !== 'tpl'))); set('edDup', o && (k === 'main' || k === 'layer')); set('edDel', o && k !== 'music');
+  // layer order: only for a selected layer that isn't a split-screen half;
+  // already-on-top disables the forward buttons, already-at-back the back ones.
+  // A selected block element reorders inside its block instead: same four
+  // buttons, enabled by its place among that block's elements.
+  const layers = TL() ? TL().layers : [], li = o && k === 'layer' ? layers.findIndex(x => x.id === o.id) : -1, isSeg = li >= 0 && layers[li].kind === 'seg';
+  const elIds = ED.selEl ? elOrderOf(ED.selEl.blockId) : [], ei = ED.selEl ? elIds.indexOf(ED.selEl.elId) : -1;
+  set('edFront', (li >= 0 && !isSeg && li < layers.length - 1) || (ei >= 0 && ei < elIds.length - 1)); set('edFwd', (li >= 0 && !isSeg && li < layers.length - 1) || (ei >= 0 && ei < elIds.length - 1));
+  set('edBwd', (li >= 0 && !isSeg && li > 0) || ei > 0); set('edBack', (li >= 0 && !isSeg && li > 0) || ei > 0);
+  if (ED.selEl && ei >= 0) for (const [id, t] of [['edFront', 'Bring the selected element to the front of its block'], ['edFwd', 'Bring the selected element one step forward'], ['edBwd', 'Send the selected element one step back'], ['edBack', 'Send the selected element to the back of its block']]) { const x = document.getElementById(id); if (x) x.title = t; }
+  else for (const [id, t] of [['edFront', 'Bring the selected layer to the front'], ['edFwd', 'Bring the selected layer one step forward'], ['edBwd', 'Send the selected layer one step back'], ['edBack', 'Send the selected layer to the back']]) { const x = document.getElementById(id); if (x) x.title = t; }
+  if (isSeg) for (const id of ['edFront', 'edFwd', 'edBwd', 'edBack']) { const x = document.getElementById(id); if (x) x.title = 'Split-screen halves stack by time, not by layer order'; };
   const u = document.getElementById('edUndo'), r = document.getElementById('edRedo');
   if (u) u.title = ED.undo.length ? 'Undo: ' + ED.undo[ED.undo.length - 1].label + ' (Ctrl/Cmd+Z)' : 'Undo (Ctrl/Cmd+Z)';
   if (r) r.title = ED.redo.length ? 'Redo: ' + ED.redo[ED.redo.length - 1].label + ' (Shift+Ctrl/Cmd+Z)' : 'Redo (Shift+Ctrl/Cmd+Z)';
@@ -312,6 +332,7 @@ function labelOf(it) {
   if (it.type === 'tpl') { const T = A.TPL(it.tpl); return T ? T.name : it.tpl; }
   if (it.type === 'end') return 'Ending · ' + (it.style || 'kinetic');
   if (it.type === 'card') return 'Card · ' + ((CARDS.find(c => c[0] === it.bg) || [0, 'Ink'])[1]);
+  if (it.type === 'container') { const l = it.layout || 'vsplit'; if (l === 'grid') return 'Grid · ' + (it.cols || 2) + '×' + (it.rows || 2); if (l === 'hsplit') return 'Side-by-side'; if (l === 'overlay') return 'Overlay card'; return 'Split container'; }
   if (it.kind === 'text' && it.style === 'type') return (it.text || 'Text').replace(/\n/g, ' ');
   if (it.kind === 'mg') { const e = K9.EL[it.type]; return e ? e.name + (it.text && typeof it.text === 'string' ? ' · ' + it.text : '') : it.type; }
   if (it.kind === 'text') return (it.text || (TEXTS.find(x => x.style === it.style) || TEXTS[0]).name).replace(/\n/g, ' ');
@@ -501,6 +522,60 @@ function duplicate() {
   else if (k === 'main') change(tl => { const i = tl.main.findIndex(x => x.id === o.id); tl.main.splice(i + 1, 0, n); }, { label: 'Duplicate' });
   else return; ED.sel = n.id;
 }
+// ---- layer order (z-order): layers draw in tl.layers order, later = on top.
+// Reordering the array is the whole mechanism — the preview, the click
+// hit-test and the export all read the same order, and change() saves it
+// like any other edit (undoable, persisted with the project).
+// Split-screen halves (kind 'seg') stack by time, not by array order, so
+// they have no front/back: the toolbar disables the buttons for them.
+const LAYER_ORDER = { front: 'Bring to front', fwd: 'Bring forward', bwd: 'Send backward', back: 'Send to back' };
+function moveLayer(id, where) {
+  const t = TL(); if (!t) return;
+  const i = t.layers.findIndex(x => x.id === id); if (i < 0 || t.layers[i].kind === 'seg') return;
+  change(tl => {
+    const j = tl.layers.findIndex(x => x.id === id); if (j < 0) return;
+    const [L] = tl.layers.splice(j, 1);
+    if (where === 'front') tl.layers.push(L);
+    else if (where === 'back') tl.layers.unshift(L);
+    else if (where === 'fwd') tl.layers.splice(Math.min(j + 1, tl.layers.length), 0, L);
+    else tl.layers.splice(Math.max(j - 1, 0), 0, L);
+  }, { label: LAYER_ORDER[where] || 'Move layer' });
+}
+function layerOrderActs() {   // the four buttons, for a selected layer's inspector row
+  return [['Bring to front', () => moveLayer(ED.sel, 'front')], ['Bring forward', () => moveLayer(ED.sel, 'fwd')], ['Send backward', () => moveLayer(ED.sel, 'bwd')], ['Send to back', () => moveLayer(ED.sel, 'back')]];
+}
+// ---- in-block element order: the same four moves, inside one template block.
+// A block's elements draw in dir.elements() order (bottom -> top); el.order on
+// the block item persists a reordering, absent = the template's own order.
+// Same rules as layers: undoable via change(), persists with the project,
+// flows into preview, hit-test and export. A single-element block has nothing
+// to reorder, so the buttons disable.
+const EL_ORDER = { front: 'Bring element to front', fwd: 'Bring element forward', bwd: 'Send element backward', back: 'Send element to back' };
+function elOrderOf(blockId) {   // element ids in draw order, bottom -> top
+  const els = blockEls(blockId); if (!els.length) return [];
+  const it = TL() ? TL().main.find(x => x.id === blockId) : null;
+  const ord = it && it.el && Array.isArray(it.el.order) ? it.el.order : [];
+  const pos = new Map(ord.map((id, i) => [id, i]));
+  return els.map(e => e.id).sort((a, b) => {
+    const pa = pos.has(a) ? pos.get(a) : 1e9, pb = pos.has(b) ? pos.get(b) : 1e9;
+    return pa - pb;
+  });
+}
+function moveEl(where) {
+  if (!ED.selEl) return;
+  const { blockId, elId } = ED.selEl, ids = elOrderOf(blockId), i = ids.indexOf(elId);
+  if (i < 0 || ids.length < 2) return;
+  const next = ids.slice(); next.splice(i, 1);
+  if (where === 'front') next.push(elId);
+  else if (where === 'back') next.unshift(elId);
+  else if (where === 'fwd') next.splice(Math.min(i + 1, next.length), 0, elId);
+  else next.splice(Math.max(i - 1, 0), 0, elId);
+  change(t => { const it = t.main.find(x => x.id === blockId); if (!it) return; it.el = it.el || {}; it.el.order = next; }, { label: EL_ORDER[where] || 'Move element' });
+  A.refresh(true); renderInspector(); drawOv();
+}
+function moveSel(where) {   // toolbar order buttons: a selected block element wins over a layer
+  if (ED.selEl) moveEl(where); else moveLayer(ED.sel, where);
+}
 function del() {
   const o = findAny(ED.sel); if (!o) return; const k = kindOf(o);
   change(tl => { if (k === 'layer') tl.layers = tl.layers.filter(x => x.id !== o.id); else if (k === 'sfx') tl.sfx = tl.sfx.filter(x => x.id !== o.id); else if (k === 'main') { tl.main = tl.main.filter(x => x.id !== o.id); if (tl.main[0]) tl.main[0].tr = null; } }, { label: 'Delete' });
@@ -543,14 +618,14 @@ function dupEl(o, d) {   // duplicate a callout: a concurrent copy, offset down-
   const nid = A.uid8().slice(0, 6);
   change(t => { const it = t.main.find(x => x.id === o.id); if (!it) return; it.el = it.el || {}; it.el.extra = it.el.extra || [];
     it.el.extra.push({ id: nid, text: d.label, x: Math.round(clamp(d.x + 90, 0, 1080)), y: Math.round(clamp(d.y + 90, 0, 1920)), t0: d.t0 }); });
-  ED.selEl = { blockId: o.id, elId: 'x' + nid }; A.refresh(true); renderInspector(); drawOv(); A.toast('Callout duplicated. Drag it to its new spot.');
+  ED.selEl = { blockId: o.id, elId: 'x' + nid }; A.refresh(true); renderInspector(); drawOv(); paintBar(); A.toast('Callout duplicated. Drag it to its new spot.');
 }
 function delEl(o, d) {   // delete a callout: an original is hidden (reset brings it back), a duplicate is removed
   if (d.kind !== 'callout') return;
   change(t => { const it = t.main.find(x => x.id === o.id); if (!it) return; it.el = it.el || {};
     if (String(d.id).startsWith('x')) it.el.extra = (it.el.extra || []).filter(e => 'x' + e.id !== d.id);
     else { it.el.hide = it.el.hide || []; if (!it.el.hide.includes(d.id)) it.el.hide.push(d.id); } });
-  ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); A.toast('Callout removed. “Reset all element positions” brings it back.');
+  ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); paintBar(); A.toast('Callout removed. “Reset all element positions” brings it back.');
 }
 const resizable = L => L.kind === 'text' || L.kind === 'pip' || L.kind === 'gif' || (L.kind === 'mg' && !isFull(L)) || ['logo', 'badge', 'brackets', 'label', 'cta'].includes(L.type);
 const rotatable = L => !isFull(L) && L.kind !== 'seg' && !['progress', 'scrim', 'banner', 'logobug'].includes(L.type);
@@ -567,6 +642,32 @@ function drawOv() {
     og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]); og.strokeRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24); og.setLineDash([]);
     og.fillStyle = ac; og.beginPath(); og.arc(ed.x, ed.y, 12, 0, 7); og.fill();
     og.fillStyle = '#fff'; og.font = '700 22px Mont, sans-serif'; og.textAlign = 'left'; og.textBaseline = 'top'; og.fillText(ed.label, b[0] - 12, b[1] - 44); return; }
+  // ---- a selected container: its seam handle, its overlay card, or its picked grid cell ----
+  const co = TL().main.find(x => x.id === ED.sel);
+  if (co && co.type === 'container' && window.FREE && FREE.containerZones) {
+    const cb = builtOf(co.id);
+    if (cb && S.t >= cb.start && S.t < cb.start + cb.d) {
+      const cz = FREE.containerZones(co, S.t - cb.start), ac = ED.ac || (ED.ac = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff6500');
+      og.strokeStyle = ac; og.lineWidth = 4; og.setLineDash([16, 10]);
+      if ((co.layout || 'vsplit') === 'overlay') {
+        const card = cz.zones.find(z => z.key === 'card');
+        if (card) { const r = card.rect; og.strokeRect(r[0] - 12, r[1] - 12, r[2] + 24, r[3] + 24); og.setLineDash([]);
+          og.fillStyle = ac; for (const [x, y] of corners([r[0], r[1], r[2], r[3]])) og.fillRect(x - 14, y - 14, 28, 28);
+          og.fillStyle = '#fff'; og.font = '700 22px Mont, sans-serif'; og.textAlign = 'center'; og.textBaseline = 'top'; og.fillText('CARD — drag to move, corner to resize', r[0] + r[2] / 2, r[1] - 46); }
+      } else if (cz.seam) {
+        if (cz.seam.horiz) { og.beginPath(); og.moveTo(0, cz.seam.y); og.lineTo(1080, cz.seam.y); og.stroke(); og.setLineDash([]);
+          og.fillStyle = ac; og.beginPath(); og.arc(540, cz.seam.y, 20, 0, 7); og.fill();
+          og.strokeStyle = '#fff'; og.lineWidth = 3; og.beginPath(); og.moveTo(528, cz.seam.y - 9); og.lineTo(552, cz.seam.y - 9); og.moveTo(528, cz.seam.y + 9); og.lineTo(552, cz.seam.y + 9); og.stroke(); }
+        else { og.beginPath(); og.moveTo(cz.seam.x, 0); og.lineTo(cz.seam.x, 1920); og.stroke(); og.setLineDash([]);
+          og.fillStyle = ac; og.beginPath(); og.arc(cz.seam.x, 960, 20, 0, 7); og.fill();
+          og.strokeStyle = '#fff'; og.lineWidth = 3; og.beginPath(); og.moveTo(cz.seam.x - 9, 948); og.lineTo(cz.seam.x - 9, 972); og.moveTo(cz.seam.x + 9, 948); og.lineTo(cz.seam.x + 9, 972); og.stroke(); }
+        og.fillStyle = '#fff'; og.font = '700 22px Mont, sans-serif'; og.textAlign = 'left'; og.textBaseline = 'top';
+        og.fillText('DRAG THE SEAM TO RESIZE', 24, cz.seam.horiz ? cz.seam.y + 30 : 24);
+      }
+      if ((co.layout || 'vsplit') === 'grid') { const z = cz.zones.find(z => z.cell === ED.selZone); if (z) { og.strokeRect(z.rect[0] - 8, z.rect[1] - 8, z.rect[2] + 16, z.rect[3] + 16); og.setLineDash([]); } }
+      return;
+    }
+  }
   if (!L || !(S.t >= L.t0 && S.t < L.t0 + L.d) || L.type === 'progress') return;
   // ---- drag polish: the rest of a multi-selection gets a dashed outline ----
   if (ED.multi.size > 1) { og.strokeStyle = 'rgba(255,255,255,.75)'; og.lineWidth = 3; og.setLineDash([6, 8]); for (const mid of ED.multi) { if (mid === ED.sel) continue; const M = TL().layers.find(x => x.id === mid); if (!M || !(S.t >= M.t0 && S.t < M.t0 + M.d)) continue; const mb = boxOf(M); og.strokeRect(mb[0] - 8, mb[1] - 8, mb[2] + 16, mb[3] + 16); } og.setLineDash([]); }
@@ -585,7 +686,28 @@ scr.addEventListener('pointerdown', e => {
   if (sel && resizable(sel) && S.t >= sel.t0 && S.t < sel.t0 + sel.d) { const b = boxOf(sel); if (corners(b).some(([cx, cy]) => Math.abs(cx - x) < 34 && Math.abs(cy - y) < 34)) {
     ED.cdrag = { mode: 'resize', id: sel.id, orig: clone(sel), c: [b[0] + b[2] / 2, b[1] + b[3] / 2], d0: Math.hypot(x - (b[0] + b[2] / 2), y - (b[1] + b[3] / 2)), before: JSON.stringify(TL()), label: 'Resize layer' }; scr.setPointerCapture(e.pointerId); return; } }
   const hit = visibleLayers().slice().reverse().sort((a, b) => (a.kind === 'seg') - (b.kind === 'seg')).find(L => { if (L.type === 'progress' || L.type === 'scrim' || isFull(L)) return false; const b = boxOf(L); return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
-  if (!hit) {   // no layer hit: an element of the template block under the playhead, active right now?
+  if (!hit) {   // no layer hit: the selected container's seam, card, or a zone?
+    const f0 = F();
+    if (f0 && f0.containerZones && ED.sel) {
+      const co = TL().main.find(x => x.id === ED.sel), b0 = co && co.type === 'container' ? builtOf(co.id) : null;
+      if (co && b0 && S.t >= b0.start && S.t < b0.start + b0.d) {
+        const cz = f0.containerZones(co, S.t - b0.start), lay = co.layout || 'vsplit';
+        if (lay === 'overlay') {
+          const card = cz.zones.find(z => z.key === 'card');
+          if (card) { const r = card.rect;
+            if (corners([r[0], r[1], r[2], r[3]]).some(([cx, cy]) => Math.abs(cx - x) < 34 && Math.abs(cy - y) < 34)) {
+              ED.cdrag = { mode: 'ccard-resize', id: co.id, orig: clone(co.zones[1] || {}), before: JSON.stringify(TL()), moved: false, label: 'Resize overlay card' }; scr.setPointerCapture(e.pointerId); return; }
+            if (x >= r[0] - 24 && x <= r[0] + r[2] + 24 && y >= r[1] - 24 && y <= r[1] + r[3] + 24) {
+              ED.cdrag = { mode: 'ccard', id: co.id, x0: x, y0: y, orig: clone(co.zones[1] || {}), before: JSON.stringify(TL()), moved: false, label: 'Move overlay card' }; scr.setPointerCapture(e.pointerId); return; } }
+        } else if (cz.seam) {
+          const d = cz.seam.horiz ? Math.abs(y - cz.seam.y) : Math.abs(x - cz.seam.x);
+          if (d < 30) { ED.cdrag = { mode: 'cseam', id: co.id, orig: { ratio: co.ratio || 0.5 }, before: JSON.stringify(TL()), moved: false, label: 'Move split' }; scr.setPointerCapture(e.pointerId); return; }
+        }
+        const zhit = cz.zones.find(z => x >= z.rect[0] && x <= z.rect[0] + z.rect[2] && y >= z.rect[1] && y <= z.rect[1] + z.rect[3]);
+        if (zhit) { ED.selZone = zhit.cell !== undefined ? zhit.cell : (zhit.key === 'top' || zhit.key === 'left' || zhit.key === 'base' ? 0 : 1); renderInspector(); drawOv(); return; }
+      }
+    }
+    // no layer hit: an element of the template block under the playhead, active right now?
     const f = F();
     if (f && f.M.length) { const cur = f.M[f.at(Math.min(S.t, S.dur - 0.01))];
       if (cur && cur.type === 'tpl') { const els = blockEls(cur.id).filter(e => S.t >= e.t0 && S.t < e.t0 + e.d);
@@ -599,7 +721,7 @@ scr.addEventListener('pointerdown', e => {
         if (!eh) eh = els.slice().reverse().find(e => { const b = e.box; return x >= b[0] - 24 && x <= b[0] + b[2] + 24 && y >= b[1] - 24 && y <= b[1] + b[3] + 24; });
         if (eh) { if (S.playing) A.pause(); select(cur.id); ED.selEl = { blockId: cur.id, elId: eh.id };
           ED.cdrag = { mode: 'el', id: cur.id, elId: eh.id, x0: x, y0: y, orig: { x: eh.x, y: eh.y }, desc: eh, before: JSON.stringify(TL()), moved: false, label: 'Move element' };
-          scr.setPointerCapture(e.pointerId); renderInspector(); drawOv(); return; } } }
+          scr.setPointerCapture(e.pointerId); renderInspector(); drawOv(); paintBar(); return; } } }
     if (f && f.M.length) select(f.M[f.at(Math.min(S.t, S.dur - 0.01))].id); else select(null); return; }
   if (S.playing) A.pause();
   // ---- drag polish: shift/ctrl/cmd-click toggles a layer in the multi-selection ----
@@ -625,6 +747,30 @@ scr.addEventListener('pointermove', e => {
     else { nx = clamp(nx, 40, 1040); ny = clamp(ny, 40, 1880); }
     elApply(g.desc, Math.round(nx), Math.round(ny));
     cancelAnimationFrame(cRaf); cRaf = requestAnimationFrame(() => { A.refresh(true); drawOv(); }); return;
+  }
+  if (g.mode === 'cseam' || g.mode === 'ccard' || g.mode === 'ccard-resize') {   // a container's seam or overlay card: live on the model, one undo entry on release (cUp)
+    const it = TL().main.find(x => x.id === g.id); if (!it) return;
+    if (g.mode === 'cseam') {
+      const v = (it.layout || 'vsplit') === 'hsplit' ? x / 1080 : y / 1920;
+      if (Math.abs(v - g.orig.ratio) > 0.004) g.moved = true; if (!g.moved) return;
+      it.ratio = Math.round(clamp(v, 0.2, 0.8) * 100) / 100;
+    } else if (g.mode === 'ccard') {
+      if (Math.abs(x - g.x0) + Math.abs(y - g.y0) > 6) g.moved = true; if (!g.moved) return;
+      const z = it.zones[1] || (it.zones[1] = {});
+      z.x = Math.round(clamp((g.orig.x || 0) + (x - g.x0), 0, 1080 - (z.w || 600)));
+      z.y = Math.round(clamp((g.orig.y || 0) + (y - g.y0), 0, 1920 - (z.h || 300)));
+    } else {
+      g.moved = true;
+      const z = it.zones[1] || (it.zones[1] = {});
+      const cx0 = (g.orig.x || 0) + (g.orig.w || 600) / 2, cy0 = (g.orig.y || 0) + (g.orig.h || 300) / 2;
+      const k = clamp(Math.hypot(x - cx0, y - cy0) / Math.max(10, Math.hypot((g.orig.w || 600) / 2, (g.orig.h || 300) / 2)), 0.25, 4);
+      z.w = Math.round(clamp((g.orig.w || 600) * k, 120, 1080));
+      z.h = Math.round(clamp((g.orig.h || 300) * k, 80, 1920));
+      z.x = Math.round(clamp(cx0 - z.w / 2, 0, 1080 - z.w));
+      z.y = Math.round(clamp(cy0 - z.h / 2, 0, 1920 - z.h));
+    }
+    cancelAnimationFrame(cRaf); cRaf = requestAnimationFrame(() => { A.refresh(true); drawOv(); });
+    return;
   }
   const L = TL().layers.find(l => l.id === g.id); if (!L) return;
   if (g.mode === 'move' && L.kind === 'seg') { if (Math.abs(x - g.x0) + Math.abs(y - g.y0) > 6) g.moved = true; if (!g.moved || !L.c || (L.fit || 'fill') !== 'fill') return;
@@ -836,21 +982,35 @@ function renderInspector() {
         acts(gs, [['Fill with my footage', () => fillBlock(o, shots)], ['Use the template’s footage', () => upd(o.id, x => { x.shot = {}; })]]);
         const els = blk.dir && typeof blk.dir.elements === 'function' ? (() => { try { return blk.dir.elements() || []; } catch (e) { return []; } })() : [];
         if (els.length) { const ge = grp(box, 'Elements — drag on the preview');
-          ge.appendChild(el('p', 'note', 'Each element can be moved by dragging it on the preview (or tap Select, then drag). Callouts can also be duplicated or deleted. Moving one never changes how the rest of the block looks.'));
+          ge.appendChild(el('p', 'note', 'Each element can be moved by dragging it on the preview (or tap Select, then drag). Callouts can also be duplicated or deleted. Moving one never changes how the rest of the block looks. The order buttons on a selected element bring it in front of or behind the others in the block.'));
           for (const d of els) { const row = el('div', 'fld');
+            row.classList.toggle('sel', !!(ED.selEl && ED.selEl.blockId === o.id && ED.selEl.elId === d.id));
             row.appendChild(el('span', 'lab', d.label + '  ·  ' + Math.round(d.x) + ', ' + Math.round(d.y)));
             const a = el('div', 'ei-acts');
             const sb = el('button', 'btn sm', 'Select'); sb.type = 'button';
-            sb.onclick = () => { ED.sel = o.id; ED.selEl = { blockId: o.id, elId: d.id }; if (S.t < d.t0 || S.t >= d.t0 + d.d) A.setT(d.t0 + Math.min(0.3, d.d / 3)); renderInspector(); drawOv(); };
+            sb.onclick = () => { ED.sel = o.id; ED.selEl = { blockId: o.id, elId: d.id }; if (S.t < d.t0 || S.t >= d.t0 + d.d) A.setT(d.t0 + Math.min(0.3, d.d / 3)); renderInspector(); drawOv(); paintBar(); };
             a.appendChild(sb);
             if (d.dup) { const du = el('button', 'btn sm', 'Duplicate'); du.type = 'button'; du.onclick = () => dupEl(o, d); a.appendChild(du); }
             if (d.del) { const de = el('button', 'btn sm danger', 'Delete'); de.type = 'button'; de.onclick = () => delEl(o, d); a.appendChild(de); }
             row.appendChild(a); ge.appendChild(row); }
-          acts(ge, [['Reset all element positions', () => { upd(o.id, x => { delete x.el; }); ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); }]]);
+          // order buttons for the selected element in this block (same four
+          // moves as layers, within the block only; they disable at the ends)
+          if (ED.selEl && ED.selEl.blockId === o.id) { const sd = els.find(e => e.id === ED.selEl.elId);
+            if (sd) { const ids = elOrderOf(o.id), ei = ids.indexOf(sd.id), row = el('div', 'ei-acts');
+              const ob = (txt, w, dis, title) => { const b = el('button', 'btn sm', txt); b.type = 'button'; b.disabled = dis; b.title = title; b.onclick = () => moveEl(w); row.appendChild(b); };
+              ob('Bring front', 'front', ei < 0 || ei >= ids.length - 1, 'Bring this element to the front of the block');
+              ob('Forward', 'fwd', ei < 0 || ei >= ids.length - 1, 'Bring this element one step forward');
+              ob('Backward', 'bwd', ei <= 0, 'Send this element one step back');
+              ob('Send back', 'back', ei <= 0, 'Send this element to the back of the block');
+              ge.appendChild(row); } }
+          acts(ge, [['Reset all element positions', () => { upd(o.id, x => { delete x.el; }); ED.selEl = null; A.refresh(true); renderInspector(); drawOv(); paintBar(); }]]);
         }
       }
       if (i > 0) trRow(box, o);
       acts(box, [['Duplicate', duplicate], ['Delete', del, 'danger']]);
+    } else if (o.type === 'container') {
+      if (XT.containerInsp) XT.containerInsp(box, o);
+      else { head(box, 'Container', 'Zones of footage, colour or graphic cards'); box.appendChild(el('p', 'note', 'The container panel did not load. Reload the page.')); }
     } else if (o.type === 'card') {
       head(box, 'Colour card', 'A plain background for text');
       const g = grp(box, 'Card'); g.appendChild(segRow('Background', CARDS, o.bg || 'ink', v => upd(o.id, x => { x.bg = v; })));
@@ -898,7 +1058,7 @@ function legacyLayerInsp(box, o, opts) {
     if (o.style === 'maskword') g2.appendChild(el('p', 'hint', 'The footage shows through the letters, then the word opens up into the full shot at the end of the layer.'));
     posRow(g2, o);
     const g3 = grp(box, 'Timing'); timing(g3, o);
-    acts(box, [['Split', split], ['Duplicate', duplicate], ['Delete', del, 'danger']]); return;
+    acts(box, [['Split', split], ['Duplicate', duplicate], ...layerOrderActs(), ['Delete', del, 'danger']]); return;
   }
   if (o.kind === 'sticker') {
     const st = STICKERS.find(x => x.type === o.type) || { name: o.type }; hd(box, st.name, 'Sticker · ' + fmtT(o.t0) + ' to ' + fmtT(o.t0 + o.d));
@@ -925,7 +1085,7 @@ function legacyLayerInsp(box, o, opts) {
     if (o.type === 'brackets') { g.appendChild(rangeRow('Width', 120, 1080, 10, o.w || 700, v => upd(o.id, x => { x.w = v; }, 'w'), v => v + ' px')); g.appendChild(rangeRow('Height', 80, 1800, 10, o.h || 420, v => upd(o.id, x => { x.h = v; }, 'h'), v => v + ' px')); }
     if (o.type === 'banner') {} else if (o.type === 'scrim') g.appendChild(segRow('Where', [['top', 'Top'], ['low', 'Bottom']], o.y > 960 ? 'low' : 'top', v => upd(o.id, x => { x.y = v === 'low' ? 1500 : 400; })));
     else if (o.type !== 'progress' && o.type !== 'steps') posRow(g, o);
-    const g3 = grp(box, 'Timing'); timing(g3, o); acts(box, [['Duplicate', duplicate], ['Delete', del, 'danger']]); return;
+    const g3 = grp(box, 'Timing'); timing(g3, o); acts(box, [['Duplicate', duplicate], ...layerOrderActs(), ['Delete', del, 'danger']]); return;
   }
   if (o.kind === 'gif') {
     const G = window.NX && NX.gif, ref = G && G.refOf(o), st = ref && G.state(ref);
@@ -936,7 +1096,7 @@ function legacyLayerInsp(box, o, opts) {
     g.appendChild(segRow('Play', [['loop', 'Loop'], ['once', 'Play once, hold last frame']], o.loop === false ? 'once' : 'loop', v => upd(o.id, x => { x.loop = v === 'loop'; })));
     posRow(g, o);
     const g3 = grp(box, 'Timing'); timing(g3, o);
-    acts(box, [['Duplicate', duplicate], ['Delete', del, 'danger']]); return;
+    acts(box, [['Duplicate', duplicate], ...layerOrderActs(), ['Delete', del, 'danger']]); return;
   }
   if (o.kind === 'pip') {
     const r = NX.CLIPS.get(o.c), m = NX.META[o.c]; hd(box, 'Picture-in-picture', r ? r.name : 'Removed footage');
@@ -946,7 +1106,7 @@ function legacyLayerInsp(box, o, opts) {
     g.appendChild(rangeRow('Width', 160, 1080, 10, o.w || 600, v => upd(o.id, x => { x.w = v; }, 'w'), v => v + ' px'));
     if (m) g.appendChild(rangeRow('Starts in the clip at', 0, Math.max(0, m.n / 30 - 0.5), 0.05, o.in || 0, v => upd(o.id, x => { x.in = r3(v); }, 'in'), v => v.toFixed(2) + ' s'));
     posRow(g, o); const g3 = grp(box, 'Timing'); timing(g3, o);
-    acts(box, [['Replace footage', () => { ED.replace = o.id; ED.panel = 'media'; renderPanel(); }], ['Duplicate', duplicate], ['Delete', del, 'danger']]);
+    acts(box, [['Replace footage', () => { ED.replace = o.id; ED.panel = 'media'; renderPanel(); }], ['Duplicate', duplicate], ...layerOrderActs(), ['Delete', del, 'danger']]);
   }
 }
 function trRow(box, o) {
@@ -991,6 +1151,7 @@ function clipBuf(id) {   // a clip's own soundtrack, decoded once (null when it 
 function voiceOf(t, f, dur) {   // clips playing their own sound: [start, offset in the clip, length, volume, clip]
   const out = [], has = (c, o) => { const r = NX.CLIPS.get(c); return r && r.audio && o.sound !== false && !K13.timed(o); };   // a clip whose speed was changed plays silent
   if (f) for (const m of f.M) if (m.type === 'clip' && !m.missing && has(m.c, m)) out.push([m.start, +m.in || 0, m.d, m.vol === undefined ? 1 : +m.vol, m.c]);
+  if (f) for (const m of f.M) if (m.type === 'container' && Array.isArray(m.zones)) for (const z of m.zones) if (z && z.kind === 'clip' && has(z.c, z)) out.push([m.start, +z.in || 0, m.d, z.vol === undefined ? 1 : +z.vol, z.c]);   // a container zone's footage speaks for the container's length
   for (const L of t.layers) if (L.kind === 'seg' && L.c && has(L.c, L) && L.t0 < dur) out.push([L.t0, +L.in || 0, Math.min(L.d, dur - L.t0), L.vol === undefined ? 1 : +L.vol, L.c]);
   for (const L of t.layers) if (L.kind === 'pip' && L.sound === true && L.c && has(L.c, L) && L.t0 < dur) out.push([L.t0, +L.in || 0, Math.min(L.d, dur - L.t0), L.vol === undefined ? 1 : +L.vol, L.c]);   // V22: an avatar or presenter speaks
   return out;
@@ -1082,6 +1243,8 @@ A.XHOOK.check = () => {
   if (!S.proj || S.proj.tpl !== 'free') return '';
   const t = TL(), f = F(); if (!t.main.length && !t.layers.length) return 'This edit is empty. Add footage, text or a template first.';
   const miss = f ? f.M.filter(m => m.type === 'clip' && m.missing).length : 0; if (miss) return miss + ' clip' + (miss > 1 ? 's use' : ' uses') + ' footage that was removed. Export anyway, or replace it first.';
+  let zmiss = 0; if (f) for (const m of f.M) if (m.type === 'container') for (const z of m.zones || []) if (z && z.kind === 'clip' && z.c && !NX.META[z.c]) zmiss++;
+  if (zmiss) return zmiss + ' container zone' + (zmiss > 1 ? 's use' : ' uses') + ' footage that was removed. Export anyway, or replace it first.';
   const lastM = t.main[t.main.length - 1];
   if (A.B().builtin && !(lastM && (lastM.type === 'end' || lastM.type === 'tpl'))) return 'DPG videos end with the contact and licence card. Add an ending (Templates → Ending), or export anyway.';
   let ph = 0; if (f) for (const m of f.M) if (m.type === 'tpl' && f.BLOCKS[m.id]) ph += f.BLOCKS[m.id].fields.filter(fl => fl.type === 'shot' && NX.isPh(fl.def[0]) && !(m.shot && m.shot[fl.key] && NX.meta(m.shot[fl.key].c))).length;
@@ -1091,5 +1254,5 @@ A.XHOOK.check = () => {
   return '';
 };
 NX.editor = { open: openInEditor, blank: blankEdit, mixBuffer, ED, XT,
-  api: { soundGrp, clipBuf, loadBuf, wavOf, suggest: suggestRow, addSfx, BEDS, ENDS, TL, F, change, upd, select, findAny, kindOf, labelOf, renderPanel, renderInspector, renderTimeline, drawOv, addLayer, addMain, layerTimes, uid, r3, rangeRow, segRow, textRow, selRow, fontRow, grp, head, acts, timing, posRow, trRow, del, duplicate, split, scheduleMix, stickerGrid, previewSfx, TEXTS, STICKERS, TRANS, SFX, SFX_CATS, CARDS, COLORS, swatchOf, isFull } };
+  api: { soundGrp, clipBuf, loadBuf, wavOf, suggest: suggestRow, addSfx, BEDS, ENDS, TL, F, change, upd, select, findAny, kindOf, labelOf, renderPanel, renderInspector, renderTimeline, drawOv, addLayer, addMain, layerTimes, uid, r3, rangeRow, segRow, textRow, selRow, fontRow, grp, head, acts, timing, posRow, trRow, del, duplicate, split, moveLayer, layerOrderActs, moveEl, elOrderOf, scheduleMix, stickerGrid, previewSfx, TEXTS, STICKERS, TRANS, SFX, SFX_CATS, CARDS, COLORS, swatchOf, isFull } };
 })();

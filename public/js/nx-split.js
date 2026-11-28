@@ -97,6 +97,113 @@
   }
   function removeSplit() { api.change(t => { t.layers = t.layers.filter(L => L.kind !== 'seg'); if (t.capPos === 'seam') delete t.capPos; }); ED.sel = null; api.renderPanel(); api.renderInspector(); }
 
+  // ------------------------------------------------------------------ containers
+  // One model for every container: a main-track item {type:'container', layout, zones}.
+  // A zone is a slot: {kind:'clip'} (footage or a still) | {kind:'card'} (solid colour)
+  // | {kind:'graphic'} (headline + highlight + badge + label + vector picture).
+  // vsplit: graphic on top, footage below (the reference). hsplit: the same, left/right.
+  // grid: rows x cols of cells, each a slot, scrolling as one time-driven loop.
+  // overlay: footage with a graphic card on top of it.
+  const GRAPHIC_DEF = () => ({ kind: 'graphic', bg: 'paper', headline: 'WITH THE PROPERTY DEED', hi: 'PROPERTY DEED', badge: '3D MODELS', label: 'PROPERTY DEED', art: 'house' });
+  const CLIP_DEF = () => ({ kind: 'clip', fit: 'fill', fx: 0.5, fy: 0.5 });
+  const CARD_DEF = () => ({ kind: 'graphic', bg: 'paper', headline: 'YOUR HEADLINE', hi: '', badge: '', label: 'PROPERTY DEED', art: 'none', x: 90, y: 1250, w: 900, h: 420, frame: 'rounded' });
+  function addContainer(layout) {
+    const t = TL(); if (!t) return;
+    const base = { type: 'container', layout, d: 4, tr: t.main.length > 1 ? { type: 'dissolve', d: 0.45 } : null };
+    if (layout === 'vsplit') Object.assign(base, { ratio: 0.5, line: 'none', lc: 'accent', zones: [GRAPHIC_DEF(), CLIP_DEF()] });
+    else if (layout === 'hsplit') Object.assign(base, { ratio: 0.5, line: 'none', lc: 'accent', zones: [GRAPHIC_DEF(), CLIP_DEF()] });
+    else if (layout === 'grid') Object.assign(base, { rows: 2, cols: 2, gap: 12, scroll: { dir: 'off', speed: 120 }, zones: [CLIP_DEF(), CLIP_DEF(), CLIP_DEF(), CLIP_DEF()] });
+    else Object.assign(base, { zones: [CLIP_DEF(), CARD_DEF()] });
+    api.addMain(base); api.renderPanel();
+    A.toast({ vsplit: 'Split container added: a graphic card on top, footage below. Pick the footage for the bottom half in the panel on the right.', hsplit: 'Side-by-side added: a graphic card on the left, footage on the right. Pick the footage for the right half in the panel on the right.', grid: 'Grid added: four empty cells. Pick the footage for each cell in the panel on the right.', overlay: 'Overlay card added: pick the footage underneath, then drag the card on the preview to place it.' }[layout] || 'Container added.', 6000);
+  }
+  // the inspector for a selected container (called from nx-editor.js renderInspector)
+  function containerInsp(box, o) {
+    const t = TL(), i = t.main.indexOf(o), lay = o.layout || 'vsplit';
+    const LAYNAME = { vsplit: 'Split container', hsplit: 'Side-by-side', grid: 'Grid', overlay: 'Overlay card' };
+    const b = api.F() && api.F().M ? api.F().M.find(m => m.id === o.id) : null;
+    api.head(box, LAYNAME[lay] || 'Container', (b ? b.d.toFixed(1) : o.d) + ' s on the timeline · ' + (o.zones || []).length + ' zone' + ((o.zones || []).length === 1 ? '' : 's'));
+    const g0 = api.grp(box, 'Layout');
+    g0.appendChild(api.segRow('Type', [['vsplit', 'Split'], ['hsplit', 'Side-by-side'], ['grid', 'Grid'], ['overlay', 'Overlay card']], lay, v => {
+      api.upd(o.id, x => {
+        x.layout = v;
+        if (v === 'overlay' && x.zones[1] && x.zones[1].kind === 'graphic' && x.zones[1].x === undefined) Object.assign(x.zones[1], { x: 90, y: 1250, w: 900, h: 420, frame: 'rounded' });
+        if ((v === 'vsplit' || v === 'hsplit') && x.ratio === undefined) x.ratio = 0.5;
+        if (v === 'grid') { if (x.rows === undefined) x.rows = 2; if (x.cols === undefined) x.cols = 2; if (x.gap === undefined) x.gap = 12; if (!x.scroll) x.scroll = { dir: 'off', speed: 120 }; }
+      }); api.renderInspector();
+    }));
+    if (lay === 'vsplit' || lay === 'hsplit') {
+      g0.appendChild(api.rangeRow(lay === 'vsplit' ? 'Top half' : 'Left half', 20, 80, 1, Math.round((o.ratio || 0.5) * 100), v => api.upd(o.id, x => { x.ratio = Math.round(v) / 100; }, 'cr'), v => Math.round(v) + '%'));
+      g0.appendChild(el('p', 'hint', 'Or drag the seam on the preview.'));
+      g0.appendChild(api.segRow('Seam', [['none', 'None'], ['line', 'Thin line'], ['bar', 'Thick bar']], o.line || 'none', v => api.upd(o.id, x => { x.line = v; })));
+      if (o.line && o.line !== 'none') g0.appendChild(api.segRow('Seam colour', [['accent', 'Brand'], ['white', 'White'], ['ink', 'Ink']], o.lc || 'accent', v => api.upd(o.id, x => { x.lc = v; })));
+    }
+    if (lay === 'grid') {
+      g0.appendChild(api.rangeRow('Rows', 1, 4, 1, o.rows || 2, v => api.upd(o.id, x => { x.rows = v; }, 'gr'), v => String(v)));
+      g0.appendChild(api.rangeRow('Columns', 1, 4, 1, o.cols || 2, v => api.upd(o.id, x => { x.cols = v; }, 'gc'), v => String(v)));
+      g0.appendChild(api.rangeRow('Gap', 0, 40, 2, o.gap || 0, v => api.upd(o.id, x => { x.gap = v; }, 'gg'), v => v + ' px'));
+      const sc = o.scroll || {};
+      g0.appendChild(api.segRow('Scroll', [['off', 'Still'], ['up', 'Up'], ['down', 'Down'], ['left', 'Left'], ['right', 'Right']], sc.dir || 'off', v => { api.upd(o.id, x => { x.scroll = x.scroll || {}; x.scroll.dir = v; }); api.renderInspector(); }));
+      if (sc.dir && sc.dir !== 'off') g0.appendChild(api.rangeRow('Scroll speed', 0, 300, 10, sc.speed || 120, v => api.upd(o.id, x => { x.scroll = x.scroll || {}; x.scroll.speed = v; }, 'gs'), v => v + ' px/s'));
+      g0.appendChild(el('p', 'hint', 'Scroll loops: cells wrap around, so the grid never runs out. More cells than the grid shows scroll into view.'));
+    }
+    const zones = o.zones || [];
+    const zlabels = lay === 'vsplit' ? ['Top', 'Bottom'] : lay === 'hsplit' ? ['Left', 'Right'] : lay === 'overlay' ? ['Footage', 'Card'] : zones.map((z, j) => 'Cell ' + (j + 1));
+    const zi = Math.min(ED.selZone || 0, Math.max(0, zones.length - 1));
+    const gz = api.grp(box, 'Zones');
+    if (zones.length > 1) gz.appendChild(api.segRow('Zone', zlabels.map((n, j) => [String(j), n]), String(zi), v => { ED.selZone = +v; api.renderInspector(); api.drawOv(); }));
+    if (zones[zi]) zoneInsp(gz, o, zi, zones[zi], lay);
+    if (lay === 'grid') api.acts(gz, [['Add a cell', () => { if ((o.zones || []).length >= 16) { A.toast('16 cells is the most a grid holds.'); return; } api.upd(o.id, x => { x.zones = x.zones || []; x.zones.push(CLIP_DEF()); }); ED.selZone = (o.zones || []).length; api.renderInspector(); }], ['Remove this cell', () => { if ((o.zones || []).length <= 1) return; api.upd(o.id, x => { x.zones.splice(zi, 1); }); ED.selZone = Math.max(0, zi - 1); api.renderInspector(); }, 'danger']]);
+    const gl = api.grp(box, 'Length');
+    gl.appendChild(api.rangeRow('Plays for', 0.5, 30, 0.1, o.d, v => api.upd(o.id, x => { x.d = Math.round(v * 10) / 10; }, 'cd'), v => v.toFixed(1) + ' s'));
+    if (i > 0) api.trRow(box, o);
+    api.acts(box, [['Split', api.split], ['Duplicate', api.duplicate], ['Delete', api.del, 'danger']]);
+  }
+  function zoneInsp(g, o, zi, z, lay) {
+    const kind = z.kind || 'clip';
+    g.appendChild(api.segRow('Holds', [['clip', 'Footage / photo'], ['card', 'Colour panel'], ['graphic', 'Graphic card']], kind, v => {
+      api.upd(o.id, x => { const s = x.zones[zi]; s.kind = v; if (v === 'card' && !s.card) s.card = 'accent'; if (v === 'graphic' && s.headline === undefined) Object.assign(s, { bg: 'paper', headline: 'YOUR HEADLINE', hi: '', badge: '', label: '', art: 'none' }); });
+      api.renderInspector();
+    }));
+    if (kind === 'clip') {
+      const r = z.c && NX.CLIPS.get(z.c);
+      if (z.c) {
+        g.appendChild(el('p', 'note', r ? r.name : 'Removed footage'));
+        g.appendChild(api.segRow('Show it', [['fill', 'Fill the zone'], ['blur', 'Whole, blur behind'], ['fit', 'Whole, plain']], z.fit || 'fill', v => api.upd(o.id, x => { x.zones[zi].fit = v; })));
+        if ((z.fit || 'fill') === 'fill') {
+          g.appendChild(api.rangeRow('Zoom', 1, 3, 0.05, Math.max(1, +z.z || 1), v => api.upd(o.id, x => { x.zones[zi].z = Math.round(v * 100) / 100; if (x.zones[zi].z <= 1.001) delete x.zones[zi].z; }, 'zz' + zi), v => v.toFixed(2) + '×'));
+          g.appendChild(api.rangeRow('Left / right', 0, 100, 1, Math.round((z.fx === undefined ? 0.5 : +z.fx) * 100), v => api.upd(o.id, x => { x.zones[zi].fx = Math.round(v) / 100; }, 'zx' + zi), v => Math.round(v) + '%'));
+          g.appendChild(api.rangeRow('Up / down', 0, 100, 1, Math.round((z.fy === undefined ? 0.5 : +z.fy) * 100), v => api.upd(o.id, x => { x.zones[zi].fy = Math.round(v) / 100; }, 'zy' + zi), v => Math.round(v) + '%'));
+        }
+        const m = z.c && NX.META[z.c];
+        if (m) g.appendChild(api.rangeRow('Starts in the clip at', 0, Math.max(0, m.n / 30 - 0.3), 0.05, +z.in || 0, v => api.upd(o.id, x => { x.zones[zi].in = api.r3(v); }, 'zin' + zi), v => v.toFixed(2) + ' s'));
+        if (r && r.audio) g.appendChild(api.segRow('Clip sound', [['on', 'On'], ['off', 'Off']], z.sound === false ? 'off' : 'on', v => api.upd(o.id, x => { if (v === 'off') x.zones[zi].sound = false; else delete x.zones[zi].sound; })));
+        api.acts(g, [['Replace footage', () => { ED.replace = { cid: o.id, zone: zi }; ED.panel = 'media'; api.renderPanel(); A.toast('Pick the new footage on the left.'); }], ['Remove footage', () => api.upd(o.id, x => { delete x.zones[zi].c; delete x.zones[zi].in; })]]);
+      } else {
+        g.appendChild(el('p', 'note', 'Nothing here yet — this zone shows “ADD FOOTAGE” until you pick a clip.'));
+        api.acts(g, [['Pick footage', () => { ED.replace = { cid: o.id, zone: zi }; ED.panel = 'media'; api.renderPanel(); A.toast('Pick the footage on the left.'); }]]);
+      }
+    } else if (kind === 'card') {
+      g.appendChild(api.segRow('Colour', [['accent', 'Brand'], ['ink', 'Ink'], ['paper', 'Paper'], ['white', 'White']], z.card || 'accent', v => api.upd(o.id, x => { x.zones[zi].card = v; })));
+    } else {
+      g.appendChild(api.textRow('Headline', z.headline || '', v => api.upd(o.id, x => { x.zones[zi].headline = v; }, 'gh'), { up: true, max: 60, lint: true }));
+      g.appendChild(api.textRow('Highlight part', z.hi || '', v => api.upd(o.id, x => { x.zones[zi].hi = v; }, 'gi'), { up: true, max: 30, hint: 'The words of the headline drawn in the brand colour. Leave empty for one colour.' }));
+      g.appendChild(api.textRow('Badge', z.badge || '', v => api.upd(o.id, x => { x.zones[zi].badge = v; }, 'gb'), { up: true, max: 20, hint: 'The small dark pill at the top, e.g. 3D MODELS. Empty hides it.' }));
+      g.appendChild(api.textRow('Label', z.label || '', v => api.upd(o.id, x => { x.zones[zi].label = v; }, 'gl'), { up: true, max: 30, hint: 'The box at the bottom, e.g. PROPERTY DEED. Empty hides it.' }));
+      g.appendChild(api.segRow('Background', [['paper', 'Paper'], ['ink', 'Ink'], ['accent', 'Brand'], ['white', 'White']], z.bg || 'paper', v => api.upd(o.id, x => { x.zones[zi].bg = v; })));
+      g.appendChild(api.segRow('Picture', [['house', 'House'], ['none', 'None']], z.art || 'none', v => api.upd(o.id, x => { x.zones[zi].art = v; })));
+      if (lay === 'overlay' && zi === 1) {
+        g.appendChild(api.segRow('Frame', [['rounded', 'Rounded'], ['solid', 'Square'], ['outline', 'Outline']], z.frame || 'rounded', v => api.upd(o.id, x => { x.zones[zi].frame = v; })));
+        g.appendChild(api.rangeRow('Left', 0, 1080, 5, z.x || 0, v => api.upd(o.id, x => { x.zones[zi].x = v; }, 'cx'), v => v + ' px'));
+        g.appendChild(api.rangeRow('Top', 0, 1920, 5, z.y || 0, v => api.upd(o.id, x => { x.zones[zi].y = v; }, 'cy'), v => v + ' px'));
+        g.appendChild(api.rangeRow('Width', 120, 1080, 5, z.w || 600, v => api.upd(o.id, x => { x.zones[zi].w = v; }, 'cw'), v => v + ' px'));
+        g.appendChild(api.rangeRow('Height', 80, 1920, 5, z.h || 300, v => api.upd(o.id, x => { x.zones[zi].h = v; }, 'ch'), v => v + ' px'));
+        g.appendChild(el('p', 'hint', 'Or drag the card on the preview to move it; drag a corner to resize it.'));
+      }
+    }
+  }
+  XT.containerInsp = containerInsp;
+
   // ------------------------------------------------------------------ captions: where they sit
   const CAPPOS = [['top', 'Top', 330], ['upper', 'Upper third', 640], ['mid', 'Middle', 960], ['seam', 'Split line', null], ['lower', 'Lower third', 1280], ['bottom', 'Bottom', 1400]];
   const posY = (k, t) => (k === 'seam' ? seamY(t) : (CAPPOS.find(x => x[0] === k) || CAPPOS[4])[2]);
@@ -184,6 +291,14 @@
         ck.onclick = e => { e.stopPropagation(); if (SP.pick.has(r.id)) SP.pick.delete(r.id); else SP.pick.add(r.id); api.renderPanel(); }; b.appendChild(ck); }
       g.appendChild(b);
     }
+    // containers: one block on the main track with zones inside it
+    h.sec('Containers');
+    h.note('A container is one block on the main track with zones inside it: top and bottom, left and right, a grid of cells, or footage with a card on top. Each zone holds footage, a photo, a colour panel or a graphic card.');
+    const cg = el('div', 'ep-grid');
+    for (const [lay, name, sub] of [['vsplit', 'Split container', 'Graphic on top, footage below'], ['hsplit', 'Side-by-side', 'Graphic left, footage right'], ['grid', 'Grid 2×2', 'Four cells, scrolls'], ['overlay', 'Overlay card', 'A card over footage']]) {
+      const b = el('button', 'ep-btn'); b.type = 'button'; b.appendChild(document.createTextNode(name)); b.appendChild(el('small', '', sub)); b.onclick = () => addContainer(lay); cg.appendChild(b);
+    }
+    box.appendChild(cg);
     // captions
     h.sec('Captions');
     const caps = t.layers.filter(L => L.cap).length;

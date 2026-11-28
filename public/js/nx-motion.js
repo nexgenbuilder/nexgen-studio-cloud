@@ -126,7 +126,7 @@ XT.inspect.layer = (box, o, legacy) => {
   else if (ED.itab === 'style') typeStyle(body, o);
   else if (ED.itab === 'anim') animTab(body, o, kind);
   else keysTab(body, o, kind);
-  if (ED.itab !== 'edit' || kind !== 'legacy') { const a = [['Duplicate', api.duplicate], ['Delete', api.del, 'danger']]; if (NX.CLIB && NX.CLIB.savePreset && kind !== 'legacy') a.unshift(['Save as preset', () => NX.CLIB.savePreset(o)]); acts(box, a); }
+  if (ED.itab !== 'edit' || kind !== 'legacy') { const a = [['Duplicate', api.duplicate], ...api.layerOrderActs(), ['Delete', api.del, 'danger']]; if (NX.CLIB && NX.CLIB.savePreset && kind !== 'legacy') a.unshift(['Save as preset', () => NX.CLIB.savePreset(o)]); acts(box, a); }
   return true;
 };
 function transformGrp(box, o) {

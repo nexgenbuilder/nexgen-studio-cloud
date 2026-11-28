@@ -126,6 +126,186 @@ STUDIO_REG['free'] = (() => {
     }
     ctx.restore();
   }
+  // ---------------- containers ----------------
+  // One model for every container: a main-track item {type:'container', layout, zones}.
+  // layout: 'vsplit' (top over bottom) | 'hsplit' (left beside right) | 'grid' (rows x cols of cells) | 'overlay'
+  // (footage with a card on top). A zone is a slot: {kind:'clip', c, in, fit, fx, fy, z} (footage or a still image)
+  // | {kind:'card', card} (a solid colour) | {kind:'graphic', bg, headline, hi, badge, label, art} (a graphic/text card,
+  // like the reference's top half: headline with a highlighted part, a badge pill, a label box, a vector picture).
+  // Grid scroll is a time-driven property: offset = speed * local time, wrapped so the grid never runs out of cells —
+  // preview and export both read the same function of time. containerZones() exposes every zone's rect at a time, so
+  // the editor (and the next chunk: element motion, transitions) can address zones by position and time.
+  function containerZones(it, lt) {
+    const lay = it.layout || 'vsplit', zones = Array.isArray(it.zones) ? it.zones : [];
+    const at = i => zones[i] || null;
+    if (lay === 'hsplit') {
+      const r = clamp(+it.ratio || 0.5, 0.2, 0.8), lw = Math.round(W * r);
+      return { zones: [{ key: 'left', rect: [0, 0, lw, H], slot: at(0) }, { key: 'right', rect: [lw, 0, W - lw, H], slot: at(1) }], seam: { x: lw, horiz: false } };
+    }
+    if (lay === 'grid') return { zones: gridCells(it, lt), seam: null };
+    if (lay === 'overlay') {
+      const c = at(1) || {};
+      return { zones: [{ key: 'base', rect: [0, 0, W, H], slot: at(0) }, { key: 'card', rect: [clamp(+c.x || 0, 0, W - 40), clamp(+c.y || 0, 0, H - 40), clamp(+c.w || 600, 40, W), clamp(+c.h || 300, 40, H)], slot: c }], seam: null };
+    }
+    const r = clamp(+it.ratio || 0.5, 0.2, 0.8), th = Math.round(H * r);
+    return { zones: [{ key: 'top', rect: [0, 0, W, th], slot: at(0) }, { key: 'bottom', rect: [0, th, W, H - th], slot: at(1) }], seam: { y: th, horiz: true } };
+  }
+  function gridCells(it, lt) {
+    const zones = Array.isArray(it.zones) ? it.zones : [];
+    const C = clamp(Math.round(+it.cols || 2), 1, 4), R = clamp(Math.round(+it.rows || 2), 1, 4), g = clamp(+it.gap || 0, 0, 60);
+    const cw = (W - (C + 1) * g) / C, ch = (H - (R + 1) * g) / R, N = zones.length, totalRows = Math.max(1, Math.ceil(N / C));
+    const sc = it.scroll && typeof it.scroll === 'object' ? it.scroll : {}, dir = sc.dir || 'off', sp = Math.max(0, +sc.speed || 0);
+    const out = [];
+    const cell = (r, c, x, y) => { const idx = r * C + c; out.push({ key: 'cell' + idx, cell: idx, rect: [x, y, cw, ch], slot: idx < N ? zones[idx] : null }); };
+    if (dir === 'up' || dir === 'down') {
+      const oy = (dir === 'up' ? -1 : 1) * sp * lt, period = totalRows * (ch + g), K = oy === 0 ? 0 : Math.ceil(H / period) + 1;
+      for (let k = -K; k <= K; k++) for (let r = 0; r < totalRows; r++) { const y = g + k * period + oy + r * (ch + g); if (y >= H || y + ch <= 0) continue; for (let c = 0; c < C; c++) cell(r, c, g + c * (cw + g), y); }
+    } else if (dir === 'left' || dir === 'right') {
+      const ox = (dir === 'left' ? -1 : 1) * sp * lt, period = C * (cw + g), K = ox === 0 ? 0 : Math.ceil(W / period) + 1;
+      for (let k = -K; k <= K; k++) for (let c = 0; c < C; c++) { const x = g + k * period + ox + c * (cw + g); if (x >= W || x + cw <= 0) continue; for (let r = 0; r < totalRows; r++) { const y = g + r * (ch + g); if (y >= H || y + ch <= 0) continue; cell(r, c, x, y); } }
+    } else for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) cell(r, c, g + c * (cw + g), g + r * (ch + g));
+    return out;
+  }
+  function zonePlaceholder(R, txt) {
+    if (VID.collecting) return; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#17141F'; ctx.fillRect(R[0], R[1], R[2], R[3]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 2; ctx.setLineDash([12, 10]); ctx.strokeRect(R[0] + 8, R[1] + 8, R[2] - 16, R[3] - 16); ctx.setLineDash([]);
+    caps(txt, R[0] + R[2] / 2, R[1] + R[3] / 2, Math.min(34, R[2] * 0.06), 1, 0, { col: 'rgba(255,255,255,0.5)', fam: 'Mono' }); ctx.restore();
+  }
+  // a card zone's background: solid fill, or an outline when the overlay card says so
+  function cardFill(slot, R) {
+    const c0 = slot.card === 'paper' ? PAPER : slot.card === 'ink' ? BLK : slot.card === 'white' ? WHT : OR;
+    if (slot.frame === 'outline') { ctx.strokeStyle = c0; ctx.lineWidth = 4; rrect(R[0] + 2, R[1] + 2, R[2] - 4, R[3] - 4, 14); ctx.stroke(); return; }
+    if (slot.frame === 'rounded') { ctx.fillStyle = c0; rrect(R[0], R[1], R[2], R[3], 18); ctx.fill(); return; }
+    ctx.fillStyle = c0; ctx.fillRect(R[0], R[1], R[2], R[3]);
+  }
+  function drawZone(slot, R, lt) {
+    if (R[2] < 2 || R[3] < 2) return;
+    if (!slot || !slot.kind || slot.kind === 'none') { zonePlaceholder(R, 'ADD CONTENT'); return; }
+    if (slot.kind === 'card') { if (!VID.collecting) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); cardFill(slot, R); ctx.restore(); } return; }
+    if (slot.kind === 'graphic') { drawGraphicCard(slot, R); return; }
+    if (!slot.c) { zonePlaceholder(R, 'ADD FOOTAGE'); return; }
+    const m = VID.meta(slot.c);
+    if (!m) { if (!VID.collecting) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#1E1B18'; ctx.fillRect(R[0], R[1], R[2], R[3]); caps('FOOTAGE REMOVED', R[0] + R[2] / 2, R[1] + R[3] / 2, 34, 1, 0, { col: 'rgba(255,255,255,0.6)', fam: 'Mono' }); ctx.restore(); } return; }
+    const lib = window.NX && NX.CLIPS && (NX.CLIPS.get(slot.c) || {}).src === 'lib';
+    const ts = clamp((+slot.in || 0) + Math.max(0, lt), 0, (m.n - 1.5) / 30);
+    drawInto(slot.c, ts, R, slot.fit || (lib ? 'blur' : 'fill'), slot.fx, slot.fy, slot.z, slot.bg);
+  }
+  // a graphic/text card inside a zone: background, badge pill, headline with a
+  // highlighted part, a vector picture, and a label box at the bottom — the
+  // reference's top half. Everything scales to the zone, so the same card
+  // works full-width, in a grid cell, or as the overlay card.
+  function drawGraphicCard(slot, R) {
+    if (VID.collecting) return;
+    const bg = slot.bg === 'ink' ? BLK : slot.bg === 'accent' ? OR : slot.bg === 'white' ? WHT : PAPER;
+    const fg = lum(bg) > 0.36 ? BLK : WHT;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (slot.frame === 'outline') { ctx.strokeStyle = fg; ctx.lineWidth = 4; rrect(R[0] + 2, R[1] + 2, R[2] - 4, R[3] - 4, 14); ctx.stroke(); }
+    else if (slot.frame === 'rounded') { ctx.fillStyle = bg; rrect(R[0], R[1], R[2], R[3], 18); ctx.fill(); }
+    else { ctx.fillStyle = bg; ctx.fillRect(R[0], R[1], R[2], R[3]); }
+    const pad = Math.max(18, R[2] * 0.055), cx = R[0] + R[2] / 2;
+    let y = R[1] + pad;
+    // a tall narrow zone (e.g. side-by-side): centre the whole composition instead of
+    // pinning the label to the bottom, or the middle sits empty
+    const tall = R[3] / R[2] > 1.6;
+    let artBottom = 0;
+    if (tall) {
+      const bH = slot.badge ? clamp(R[2] * 0.042, 18, 44) * 2.1 + pad * 0.7 : 0;
+      const hLines = slot.headline ? String(slot.headline).split('\n').slice(0, 2) : [];
+      let hSize = hLines.length ? clamp(R[2] * 0.085, 26, 96) : 0;
+      if (hLines.length) hSize = Math.min(hSize, ...hLines.map(l => fitSize(l, 900, R[2] - pad * 2, hSize, 'Mont', -1.5)));
+      const hH = hLines.length ? hSize * 0.9 + (hLines.length - 1) * hSize * 1.08 + pad * 0.6 : 0;
+      const lH = slot.label ? clamp(R[2] * 0.05, 20, 56) * 1.9 + pad * 0.5 : 0;
+      const sMax = Math.min((R[2] - pad * 2) / 4.1, R[3] * 0.16);
+      const aH = slot.art === 'house' && sMax > 24 ? sMax * 2.1 : 0;
+      const total = bH + hH + aH + lH + pad * 0.5;
+      if (total < R[3] - pad * 2) y = R[1] + (R[3] - total) / 2;
+    }
+    // badge: a dark pill with a cube glyph, top-left
+    if (slot.badge) {
+      const bs = clamp(R[2] * 0.042, 18, 44), bf = F(800, bs, 'Mont'), btw = textW(String(slot.badge).toUpperCase(), bf, 2.5);
+      const bw = btw + bs * 3.1, bh = bs * 2.1, bx = R[0] + pad, by = y;
+      ctx.fillStyle = '#22315C'; rrect(bx, by, bw, bh, bh / 2); ctx.fill();
+      const s = bs * 0.42, gx = bx + bs * 0.95, gy = by + bh / 2;
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(1.5, bs * 0.06); ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(gx, gy - s); ctx.lineTo(gx + s * 0.9, gy - s * 0.45); ctx.lineTo(gx, gy + s * 0.1); ctx.lineTo(gx - s * 0.9, gy - s * 0.45); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(gx - s * 0.9, gy - s * 0.45); ctx.lineTo(gx - s * 0.9, gy + s * 0.45); ctx.lineTo(gx, gy + s); ctx.lineTo(gx, gy + s * 0.1); ctx.moveTo(gx + s * 0.9, gy - s * 0.45); ctx.lineTo(gx + s * 0.9, gy + s * 0.45); ctx.lineTo(gx, gy + s); ctx.stroke();
+      setF(bf, 2.5); ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(slot.badge).toUpperCase(), bx + bs * 1.9, by + bh / 2 + 1);
+      y += bh + pad * 0.7;
+    }
+    // headline: one or two lines, the highlighted part in the brand colour
+    const head = String(slot.headline || ''), hi = String(slot.hi || '');
+    if (head.trim()) {
+      const lines = head.toUpperCase().split('\n').slice(0, 2);
+      let size = clamp(R[2] * 0.085, 26, 96);
+      size = Math.min(size, ...lines.map(l => fitSize(l, 900, R[2] - pad * 2, size, 'Mont', -1.5)));
+      const f = F(900, size, 'Mont'), lh = size * 1.08;
+      ctx.textBaseline = 'alphabetic';
+      lines.forEach((ln, li) => {
+        const ly = y + size * 0.9 + li * lh, hiAt = hi ? ln.indexOf(hi.toUpperCase()) : -1;
+        setF(f, -1.5);
+        if (hiAt < 0) { ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.fillText(ln, cx, ly); return; }
+        const pre = ln.slice(0, hiAt), htxt = hi.toUpperCase(), post = ln.slice(hiAt + htxt.length);
+        const wPre = textW(pre, f, -1.5), wHi = textW(htxt, f, -1.5), wPost = textW(post, f, -1.5);
+        let x = cx - (wPre + wHi + wPost) / 2; ctx.textAlign = 'left';
+        ctx.fillStyle = fg; ctx.fillText(pre, x, ly); x += wPre;
+        ctx.fillStyle = OR; ctx.fillText(htxt, x, ly); x += wHi;
+        ctx.fillStyle = fg; ctx.fillText(post, x, ly);
+      });
+      y += size * 0.9 + (lines.length - 1) * lh + pad * 0.6;
+    }
+    // picture: a vector house with three people beside it, like the reference
+    if (slot.art === 'house') {
+      const navy = '#22315C', brown = '#7A5230';
+      const labH = slot.label ? clamp(R[2] * 0.05, 20, 56) * 1.9 + pad * 0.5 : 0;
+      const availH = R[1] + R[3] - pad - labH - y;
+      const s = Math.min((R[2] - pad * 2) / 4.1, availH / 2.1, R[3] * 0.16);
+      if (s > 24) {
+        const ax = cx - s * 0.94, base = y + s * 2.1; artBottom = base;
+        ctx.fillStyle = navy;
+        ctx.beginPath(); ctx.moveTo(ax - s * 1.08, base - s * 1.05); ctx.lineTo(ax, base - s * 1.85); ctx.lineTo(ax + s * 1.08, base - s * 1.05); ctx.closePath(); ctx.fill();
+        ctx.fillRect(ax + s * 0.55, base - s * 1.95, s * 0.22, s * 0.5);
+        ctx.fillStyle = '#FBF8F1'; ctx.fillRect(ax - s * 0.85, base - s * 1.05, s * 1.7, s * 1.05);
+        ctx.strokeStyle = 'rgba(34,49,92,0.3)'; ctx.lineWidth = 2; ctx.strokeRect(ax - s * 0.85, base - s * 1.05, s * 1.7, s * 1.05);
+        ctx.fillStyle = navy;
+        ctx.fillRect(ax - s * 0.62, base - s * 0.82, s * 0.34, s * 0.34); ctx.fillRect(ax + s * 0.28, base - s * 0.82, s * 0.34, s * 0.34);
+        ctx.fillStyle = '#FBF8F1';
+        ctx.fillRect(ax - s * 0.62 + s * 0.15, base - s * 0.82, s * 0.04, s * 0.34); ctx.fillRect(ax - s * 0.62, base - s * 0.82 + s * 0.15, s * 0.34, s * 0.04);
+        ctx.fillRect(ax + s * 0.28 + s * 0.15, base - s * 0.82, s * 0.04, s * 0.34); ctx.fillRect(ax + s * 0.28, base - s * 0.82 + s * 0.15, s * 0.34, s * 0.04);
+        ctx.fillStyle = brown; ctx.fillRect(ax - s * 0.16, base - s * 0.48, s * 0.32, s * 0.48);
+        ctx.fillStyle = '#E8C86A'; ctx.beginPath(); ctx.arc(ax + s * 0.1, base - s * 0.24, s * 0.035, 0, 7); ctx.fill();
+        for (let i = 0; i < 3; i++) {
+          const ps = s * (1 - i * 0.16), px = ax + s * (1.5 + i * 0.62);
+          ctx.fillStyle = brown;
+          ctx.beginPath(); ctx.arc(px, base - ps * 0.72, ps * 0.16, 0, 7); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(px - ps * 0.22, base); ctx.quadraticCurveTo(px - ps * 0.2, base - ps * 0.52, px, base - ps * 0.55); ctx.quadraticCurveTo(px + ps * 0.2, base - ps * 0.52, px + ps * 0.22, base); ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+    // label: a white box at the bottom
+    if (slot.label) {
+      const ls = clamp(R[2] * 0.05, 20, 56), lf = F(800, ls, 'Mont');
+      const ltw = textW(String(slot.label).toUpperCase(), lf, 3);
+      const lw = Math.min(ltw + ls * 1.8, R[2] - pad * 2), lh = ls * 1.9;
+      const lx = cx - lw / 2, ly = tall ? (artBottom || y) + pad * 0.5 : R[1] + R[3] - pad - lh;
+      ctx.fillStyle = '#FFFFFF'; rrect(lx, ly, lw, lh, 10); ctx.fill();
+      setF(lf, 3); ctx.fillStyle = BLK; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(slot.label).toUpperCase(), cx, ly + lh / 2 + ls * 0.04);
+    }
+    ctx.restore();
+  }
+  function drawContainer(it, lt) {
+    const cz = containerZones(it, lt);
+    for (const z of cz.zones) drawZone(z.slot, z.rect, lt);
+    if (cz.seam && it.line && it.line !== 'none' && !VID.collecting) {
+      const c = col(it.lc === 'white' || it.lc === 'ink' || it.lc === 'paper' ? it.lc : 'accent');
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = c;
+      if (cz.seam.horiz) { const h = it.line === 'bar' ? 18 : 6; ctx.fillRect(0, cz.seam.y - h / 2, W, h); }
+      else { const w = it.line === 'bar' ? 18 : 6; ctx.fillRect(cz.seam.x - w / 2, 0, w, H); }
+      ctx.restore();
+    }
+  }
   function blitMain(sc, R, round) {   // the main track's frame, framed into its section
     if (R[3] < 2) return;
     const fit = SPL.mfit === 'fit', z = Math.max(1, +SPL.mz || 1);
@@ -189,11 +369,12 @@ STUDIO_REG['free'] = (() => {
     K3.outro(st, lt, tag);
   }
   function drawItem(it, t) {
-    if (MAINR && (it.type === 'tpl' || it.type === 'end')) { const R = MAINR; MAINR = null; let sc; try { sc = K4.into('splitItem', () => drawItem(it, t)); } finally { MAINR = R; } if (!VID.collecting) blitMain(sc, R, false); return; }   // a template or ending: its whole frame, framed into the half
+    if (MAINR && (it.type === 'tpl' || it.type === 'end' || it.type === 'container')) { const R = MAINR; MAINR = null; let sc; try { sc = K4.into('splitItem', () => drawItem(it, t)); } finally { MAINR = R; } if (!VID.collecting) blitMain(sc, R, false); return; }   // a template, an ending or a container: its whole frame, framed into the half
     const lt = t - it.start; t0g = t;
     if (it.type === 'clip') drawClip(it, lt);
     else if (it.type === 'tpl') { if (!VID.collecting) fillScreen(it.dir.bg || BLK); it.dir.render(clamp(lt, 0, it.dir.dur - 1 / 30)); }
     else if (it.type === 'end') drawEnd(it, lt, t);
+    else if (it.type === 'container') drawContainer(it, lt);
     else drawCard(it, lt, t);
   }
   // every transition comes from the transition studio (kit10, KT): the same code draws the editor preview, the library previews
@@ -478,6 +659,6 @@ STUDIO_REG['free'] = (() => {
     if (TL.glow) K13.glow(TL.glow);
     finish(t, fin);
   }
-  window.FREE = { M, LAY, DUR, BLOCKS, bbox, at, missing, split: { SPL, SEG, RUNS, k: splitK, rects: splitRects } };
+  window.FREE = { M, LAY, DUR, BLOCKS, bbox, at, missing, split: { SPL, SEG, RUNS, k: splitK, rects: splitRects }, containerZones };
   DIR = { dur: DUR, bg: TL.bg ? col(TL.bg) : BLK, finish: { vig: 0, grain: 0 }, edl: [], shakes, preload: () => K3.init(), render, cues: () => ({ dur: DUR, beds: [], events: [] }) };
 });

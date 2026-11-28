@@ -33,6 +33,19 @@ STUDIO_REG['nx9'] = (() => {
   const EL = (typeof window !== 'undefined' && window.__NX_BLOCK_EL) || null;
   const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
   const posOf = (o, d) => (o && typeof o.x === 'number' && isFinite(o.x) && typeof o.y === 'number' && isFinite(o.y)) ? [o.x, o.y] : d;
+  // In-block element order: el.order is the block's persisted draw order
+  // (first = bottom, last = on top), written by the editor's order buttons.
+  // Absent = the template's own order. Elements missing from the list keep
+  // their natural place at the end, so a new duplicate still lands on top.
+  const orderEls = list => {
+    const ord = EL && Array.isArray(EL.order) ? EL.order : null;
+    if (!ord) return list;
+    const pos = new Map(ord.map((id, i) => [id, i]));
+    return list.slice().sort((a, b) => {
+      const pa = pos.has(a.id) ? pos.get(a.id) : 1e9, pb = pos.has(b.id) ? pos.get(b.id) : 1e9;
+      return pa - pb;
+    });
+  };
   const { TAU, pk, up, seg, SP, SS, SB, onAcc, INKD, CARD, MUTE, tx, fit, rr, logoImg, shot, pic, touch, stage, words, pillBtn, close, closeCues, bed } = SHOWKIT();
   const dash = s => !s || String(s).trim() === '-';
   const CAT = BRAND.cat || BRAND.industry || 'general', NAME = BRAND.name || 'Your business';
@@ -85,7 +98,7 @@ STUDIO_REG['nx9'] = (() => {
     // spec card box (inner texts follow the card unless dragged on their own)
     const CH0 = SPV.length ? 330 : 230, CX = num(EL && EL.box && EL.box.x, 60), CY = num(EL && EL.box && EL.box.y, 1130), CW = num(EL && EL.box && EL.box.w, 960), CH = num(EL && EL.box && EL.box.h, CH0);
     const elP = id => (EL && EL.pos && EL.pos[id]) || null;
-    function elements() { const p = (id, d) => posOf(elP(id), d), tagP = p('tag', [CX + 970, CY + 6]), fineP = p('fine', [540, 1478]), nmP = p('name', [CX + 56, CY + 104]), suP = p('sub', [CX + 58, CY + 158]), stP = p('stock', [CX + 58, CY + 196]), spP = p('specs', [CX + 56, CY + CH - 66]), bdP = p('badge', [250, 380]); return [
+    function elements() { const p = (id, d) => posOf(elP(id), d), tagP = p('tag', [CX + 970, CY + 6]), fineP = p('fine', [540, 1478]), nmP = p('name', [CX + 56, CY + 104]), suP = p('sub', [CX + 58, CY + 158]), stP = p('stock', [CX + 58, CY + 196]), spP = p('specs', [CX + 56, CY + CH - 66]), bdP = p('badge', [250, 380]); return orderEls([
       { id: 'card', kind: 'box', label: 'Spec card', x: CX, y: CY, w: CW, h: CH, t0: 0.5, d: DUR - 0.5, box: [CX, CY, CW, CH], dup: false, del: false },
       { id: 'name', kind: 'pos', label: NM, x: nmP[0], y: nmP[1], t0: 0.5, d: DUR - 0.5, box: [nmP[0], nmP[1] - 104, 560, 120], dup: false, del: false },
       { id: 'sub', kind: 'pos', label: SUB, x: suP[0], y: suP[1], t0: 0.5, d: DUR - 0.5, box: [suP[0], suP[1] - 31, 600, 50], dup: false, del: false },
@@ -94,7 +107,7 @@ STUDIO_REG['nx9'] = (() => {
       { id: 'badge', kind: 'pos', label: BD, x: bdP[0], y: bdP[1], t0: 0.9, d: DUR - 0.9, box: [bdP[0] - 240, bdP[1] - 42, 480, 84], dup: false, del: false },
       { id: 'tag', kind: 'pos', label: 'Price tag', x: tagP[0], y: tagP[1], t0: 1.25, d: DUR - 1.25, box: [tagP[0] - 330, tagP[1] - 84, 330, 168], dup: false, del: false },
       { id: 'fine', kind: 'pos', label: 'Terms', x: fineP[0], y: fineP[1], t0: 2.2, d: DUR - 2.2, box: [fineP[0] - 450, fineP[1] - 84, 900, 84], dup: false, del: false },
-    ].filter(e => e.id !== 'sub' || !dash(SUB)).filter(e => e.id !== 'stock' || !dash(STK)).filter(e => e.id !== 'specs' || SPV.length).filter(e => e.id !== 'badge' || !dash(BD)).filter(e => e.id !== 'fine' || !dash(FINE)); }
+    ].filter(e => e.id !== 'sub' || !dash(SUB)).filter(e => e.id !== 'stock' || !dash(STK)).filter(e => e.id !== 'specs' || SPV.length).filter(e => e.id !== 'badge' || !dash(BD)).filter(e => e.id !== 'fine' || !dash(FINE))); }
     function render(t) {
       stage(t); const c = ctx, i = t < CUT[0] ? 0 : t < CUT[1] ? 1 : 2, st = [0, CUT[0], CUT[1]];
       SH3.forEach((s, j) => { if (j !== i) touch(s, t - st[j]); });
@@ -126,13 +139,13 @@ STUDIO_REG['nx9'] = (() => {
     const END = TX('end', dealer ? 'SEE THE FULL INVENTORY' : 'THERE’S MORE TO SEE', { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
     const T0 = 1.5, LEN = 3.0, OUT = T0 + LEN * 3, DUR = OUT + 4.1;
     const elP = id => (EL && EL.pos && EL.pos[id]) || null;
-    function elements() { const p = (id, d) => posOf(elP(id), d), tiP = p('title', [540, 960]), coP = p('count', [96, 1210]), nmP = p('name', [96, 1320]), deP = p('detail', [98, 1380]), prP = p('price', [1010, 1120]); return [
+    function elements() { const p = (id, d) => posOf(elP(id), d), tiP = p('title', [540, 960]), coP = p('count', [96, 1210]), nmP = p('name', [96, 1320]), deP = p('detail', [98, 1380]), prP = p('price', [1010, 1120]); return orderEls([
       { id: 'title', kind: 'pos', label: TITLE, x: tiP[0], y: tiP[1], t0: 0, d: T0 + 0.3, box: [tiP[0] - 470, tiP[1] - 170, 940, 170], dup: false, del: false },
       { id: 'count', kind: 'pos', label: 'Item counter', x: coP[0], y: coP[1], t0: T0, d: OUT - T0, box: [coP[0], coP[1] - 150, 240, 170], dup: false, del: false },
       { id: 'name', kind: 'pos', label: 'Item name', x: nmP[0], y: nmP[1], t0: T0, d: OUT - T0, box: [nmP[0], nmP[1] - 110, 880, 130], dup: false, del: false },
       { id: 'detail', kind: 'pos', label: 'Item detail', x: deP[0], y: deP[1], t0: T0, d: OUT - T0, box: [deP[0], deP[1] - 30, 860, 50], dup: false, del: false },
       { id: 'price', kind: 'pos', label: 'Price tag', x: prP[0], y: prP[1], t0: T0 + 0.6, d: OUT - T0 - 0.6, box: [prP[0] - 330, prP[1] - 84, 330, 168], dup: false, del: false },
-    ]; }
+    ]); }
     function render(t) {
       stage(t); const c = ctx, i = clamp(Math.floor((t - T0) / LEN), 0, 2), lt = t - T0 - i * LEN;
       IT.forEach((it, j) => { if (j !== i) touch(it.sh, 0); });
@@ -168,7 +181,7 @@ STUDIO_REG['nx9'] = (() => {
       OFF.forEach(([o, s], i) => { const ofP = p('offer' + (i + 1), [540, by + 10 + i * 196]); els.push({ id: 'offer' + (i + 1), kind: 'pos', label: o, x: ofP[0], y: ofP[1], t0: 1.6 + i * 0.5, d: DUR - (1.6 + i * 0.5), box: [ofP[0] - 470, ofP[1], 940, dash(s) ? 130 : 170], dup: false, del: false }); });
       if (!dash(DATES)) els.push({ id: 'dates', kind: 'pos', label: DATES, x: daP[0], y: daP[1], t0: 1.9 + OFF.length * 0.5, d: DUR - (1.9 + OFF.length * 0.5), box: [daP[0] - 450, daP[1] - 50, 900, 100], dup: false, del: false });
       if (!dash(FINE)) els.push({ id: 'fine', kind: 'pos', label: 'Terms', x: fiP[0], y: fiP[1], t0: 3.0, d: DUR - 3.0, box: [fiP[0] - 450, fiP[1] - 84, 900, 84], dup: false, del: false });
-      return els; }
+      return orderEls(els); }
     function render(t) {
       stage(t); const c = ctx; whole(SH, t, 0, 0, W, H, { py: 0.3, dim: 0.5 }); if (VID.collecting) return;
       shade(0, H, 0.25, 0.25); shade(700, 1650, 0, 0.72);
@@ -213,18 +226,22 @@ STUDIO_REG['nx9'] = (() => {
       c.beginPath(); c.moveTo(px + (left ? 18 : -18), py - 12); c.lineTo(lerp(px, lx, rk), py - 12 - 58 * rk); c.stroke();
       c.translate(lx + (left ? w / 2 - 20 : -w / 2 + 20), py - 112); c.scale(0.6 + 0.4 * e, 0.6 + 0.4 * e); shadow(c, 20, 8, 0.4); c.fillStyle = CARD; rr(-w / 2, -40, w, 80, 16); c.fill(); noShadow(c); c.fillStyle = OR; rr(-w / 2, -40, 12, 80, 6); c.fill();
       tx(s, 6, fs * 0.36, { size: fs, wt: 800, ls: 2, col: INKD }); c.restore(); }
-    function elements() { const nmP = posOf(EL && EL.pos && EL.pos.name, [80, 1340]), tgP = posOf(EL && EL.pos && EL.pos.tag, [1020, 1196]); return items.map(it => ({ id: it.id, kind: 'callout', label: it.text, x: it.x, y: it.y, t0: it.t0, d: STEP + 0.25, box: calloutBox(it.text, it.x, it.y), dup: true, del: true })).concat([
+    function elements() { const nmP = posOf(EL && EL.pos && EL.pos.name, [80, 1340]), tgP = posOf(EL && EL.pos && EL.pos.tag, [1020, 1196]); return orderEls(items.map(it => ({ id: it.id, kind: 'callout', label: it.text, x: it.x, y: it.y, t0: it.t0, d: STEP + 0.25, box: calloutBox(it.text, it.x, it.y), dup: true, del: true })).concat([
       { id: 'name', kind: 'pos', label: NM, x: nmP[0], y: nmP[1], t0: 0.6, d: DUR - 0.6, box: [nmP[0], nmP[1] - 104, 580, 120], dup: false, del: false },
       { id: 'tag', kind: 'pos', label: 'Price tag', x: tgP[0], y: tgP[1], t0: 1.1, d: DUR - 1.1, box: [tgP[0] - 330, tgP[1] - 84, 330, 168], dup: false, del: false },
-    ]).filter(e => e.id !== 'tag' || !dash(PR)); }
+    ]).filter(e => e.id !== 'tag' || !dash(PR))); }
     function render(t) {
       stage(t); const c = ctx, box = whole(SH, t, 0, 0, W, H, { py: 0.36 }); if (VID.collecting) return;
       shade(1040, 1620, 0, 0.6); bar(t, 0.15);
-      items.forEach(it => { const lt = t - it.t0; if (lt < 0 || lt > STEP + 0.25) return; drawCallout(it, lt); });
-      const e = SP(t, 0.6, 0.8), a = clamp((t - 0.6) * 6); if (a > 0) { c.save(); c.globalAlpha *= a; c.translate(0, (1 - e) * 200);
+      // Draw order is el.order (first = bottom, last = on top): the callouts,
+      // the name and the price tag interleave in that order. With no el.order
+      // this is the template's natural order, so existing renders are unchanged.
+      const drawName = () => { const e = SP(t, 0.6, 0.8), a = clamp((t - 0.6) * 6); if (a <= 0) return; c.save(); c.globalAlpha *= a; c.translate(0, (1 - e) * 200);
         const [nmx, nmy] = posOf(EL && EL.pos && EL.pos.name, [80, 1340]);
         tx(NM, nmx, nmy, { size: fit(NM, 400, 'Bebas', dash(PR) ? 920 : 580, 104, 2), wt: 400, fam: 'Bebas', ls: 2, col: WHT, align: 'left', shadow: 'rgba(0,0,0,0.55)' }); c.fillStyle = OR; c.fillRect(nmx + 2, nmy + 28, 150 * E.outC(seg(t, 0.9, 0.5)), 8);
-        if (FT.length) tx((clamp(Math.floor((t - T0) / STEP), 0, FT.length - 1) + 1) + ' OF ' + FT.length, nmx + 2, nmy + 80, { size: 28, wt: 700, ls: 3, col: WA(0.85), align: 'left', a: seg(t, T0, 0.3) }); c.restore(); const [tgx, tgy] = posOf(EL && EL.pos && EL.pos.tag, [1020, 1196]); tag(PL, PR, tgx, tgy + (1 - e) * 200, t, 1.1); }
+        if (FT.length) tx((clamp(Math.floor((t - T0) / STEP), 0, FT.length - 1) + 1) + ' OF ' + FT.length, nmx + 2, nmy + 80, { size: 28, wt: 700, ls: 3, col: WA(0.85), align: 'left', a: seg(t, T0, 0.3) }); c.restore(); };
+      const drawTag = () => { const e = SP(t, 0.6, 0.8), a = clamp((t - 0.6) * 6); if (a <= 0) return; const [tgx, tgy] = posOf(EL && EL.pos && EL.pos.tag, [1020, 1196]); tag(PL, PR, tgx, tgy + (1 - e) * 200, t, 1.1); };
+      orderEls(items.map(it => ({ id: it.id, run: () => { const lt = t - it.t0; if (lt < 0 || lt > STEP + 0.25) return; drawCallout(it, lt); } })).concat([{ id: 'name', run: drawName }, { id: 'tag', run: drawTag }])).forEach(d => d.run());
       close(t, OUT, END);
     }
     return { dur: DUR, render, elements, cues() { const ev = [['whoosh', 0.2, 0.24, 0], ['pop', 1.15, 0.28, 0.4]]; FT.forEach((s, i) => ev.push(['pop', T0 + i * STEP, 0.3, i % 2 ? 0.4 : -0.4], ['tick', T0 + i * STEP + 0.2, 0.24, 0])); closeCues(ev, OUT); return { dur: DUR, beds: [bed('lounge', DUR)], events: ev }; } };
@@ -238,11 +255,11 @@ STUDIO_REG['nx9'] = (() => {
     const END = TX('end', pk({ general: 'YOURS COULD BE NEXT', auto: 'YOUR CAR IS NEXT', home: 'YOUR HOME IS NEXT' }), { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
     const SA = shot('s1', 'Before', 8, 'l'), SBf = shot('s2', 'After', 8, 'l'), TW = 2.6, WD = 1.5, OUT = 7.6, DUR = OUT + 4.1;
     const BX0 = [60, 470, 960, 900], BX = EL && EL.box ? [num(EL.box.x, BX0[0]), num(EL.box.y, BX0[1]), num(EL.box.w, BX0[2]), num(EL.box.h, BX0[3])] : BX0;
-    function elements() { const tiP = posOf(EL && EL.pos && EL.pos.title, [540, 330]), joP = posOf(EL && EL.pos && EL.pos.job, [540, 1480]); return [
+    function elements() { const tiP = posOf(EL && EL.pos && EL.pos.title, [540, 330]), joP = posOf(EL && EL.pos && EL.pos.job, [540, 1480]); return orderEls([
       { id: 'box', kind: 'box', label: 'Before / After frame', x: BX[0], y: BX[1], w: BX[2], h: BX[3], t0: 0, d: DUR, box: [BX[0] - 14, BX[1] - 14, BX[2] + 28, BX[3] + 28], dup: false, del: false },
       { id: 'title', kind: 'pos', label: TITLE, x: tiP[0], y: tiP[1], t0: 0, d: DUR, box: [tiP[0] - 470, tiP[1] - 120, 940, 120], dup: false, del: false },
       { id: 'job', kind: 'pos', label: JOB, x: joP[0], y: joP[1], t0: 1.2, d: DUR - 1.2, box: [joP[0] - 450, joP[1] - 50, 900, 100], dup: false, del: false },
-    ].filter(e => e.id !== 'job' || !dash(JOB)); }
+    ].filter(e => e.id !== 'job' || !dash(JOB))); }
     function render(t) {
       stage(t); const c = ctx, [x, y, w, h] = BX, e = SP(t, 0.2, 0.85), k = E.inOutC(seg(t, TW, WD)), wx = x + w * k;
       c.save(); c.translate(0, (1 - e) * 700 + 5 * Math.sin(t * 1.1)); c.globalAlpha *= clamp((t - 0.2) * 6);
@@ -271,10 +288,10 @@ STUDIO_REG['nx9'] = (() => {
     const TITLE = TX('title', photo ? 'THROUGH OUR LENS' : pk({ general: 'A CLOSER LOOK', auto: 'UP CLOSE' }), { label: 'Title', group: 'Title', upper: true, max: 22 }), END = TX('end', photo ? 'BOOK YOUR SESSION' : 'SEE MORE OF OUR WORK', { label: 'Ending line', group: 'Ending', upper: true, max: 30 });
     const SH4 = [1, 2, 3, 4].map(i => shot('s' + i, 'Shot ' + i, 3, 'l')), T0 = 1.4, LEN = 2.2, OUT = T0 + LEN * 4, DUR = OUT + 4.1;
     const FX0 = [[540, 780], [430, 900], [640, 700], [540, 860]], FX = FX0.map((p, i) => posOf(EL && EL.fx && EL.fx[String(i + 1)], p));
-    function elements() { const tiP = posOf(EL && EL.pos && EL.pos.title, [540, 980]), lbP = posOf(EL && EL.pos && EL.pos.label, [540, 1400]); return FX.map((p, i) => ({ id: 'fx' + (i + 1), kind: 'focus', label: 'Focus point · shot ' + (i + 1), x: p[0], y: p[1], t0: T0 + i * LEN, d: LEN, box: [p[0] - 90, p[1] - 90, 180, 180], dup: false, del: false })).concat([
+    function elements() { const tiP = posOf(EL && EL.pos && EL.pos.title, [540, 980]), lbP = posOf(EL && EL.pos && EL.pos.label, [540, 1400]); return orderEls(FX.map((p, i) => ({ id: 'fx' + (i + 1), kind: 'focus', label: 'Focus point · shot ' + (i + 1), x: p[0], y: p[1], t0: T0 + i * LEN, d: LEN, box: [p[0] - 90, p[1] - 90, 180, 180], dup: false, del: false })).concat([
       { id: 'title', kind: 'pos', label: TITLE, x: tiP[0], y: tiP[1], t0: 0, d: T0, box: [tiP[0] - 460, tiP[1] - 150, 920, 150], dup: false, del: false },
       { id: 'label', kind: 'pos', label: 'Shot label', x: lbP[0], y: lbP[1], t0: T0, d: DUR - T0, box: [lbP[0] - 450, lbP[1] - 62, 900, 124], dup: false, del: false },
-    ]); }
+    ])); }
     function render(t) {
       stage(t); const c = ctx, i = clamp(Math.floor((t - T0) / LEN), 0, 3), lt = t - T0 - i * LEN, pre = t < T0;
       SH4.forEach((s, j) => { if (j !== i) touch(s, 0); });
@@ -312,7 +329,7 @@ STUDIO_REG['nx9'] = (() => {
     const SH3 = [shot('s1', 'Outside', 4.4, 'l'), shot('s2', 'Inside', 4.6, 'l'), shot('s3', 'A detail', 4.2, 'l')], CUT = [4.2, 8.6], OUT = 12.6, DUR = OUT + 4.1;
     const Y0 = num(EL && EL.card && EL.card.y, 930), CH = num(EL && EL.card && EL.card.h, 500);
     const elP = id => (EL && EL.pos && EL.pos[id]) || null;
-    function elements() { const p = (id, d) => posOf(elP(id), d), nmP = p('name', [116, Y0 + 96]), prP = p('prices', [100, Y0 + 128]), feP = p('features', [116, Y0 + 150]), deP = p('details', [116, Y0 + 200]), viP = p('vin', [116, Y0 + 330]), skP = p('stock', [116, Y0 + 420]), fiP = p('fine', [540, 1478]); return [
+    function elements() { const p = (id, d) => posOf(elP(id), d), nmP = p('name', [116, Y0 + 96]), prP = p('prices', [100, Y0 + 128]), feP = p('features', [116, Y0 + 150]), deP = p('details', [116, Y0 + 200]), viP = p('vin', [116, Y0 + 330]), skP = p('stock', [116, Y0 + 420]), fiP = p('fine', [540, 1478]); return orderEls([
       { id: 'card', kind: 'card', label: 'Listing card', x: 60, y: Y0, w: 960, h: CH, t0: 0, d: DUR, box: [60, Y0, 960, CH], dup: false, del: false },
       { id: 'name', kind: 'pos', label: NM, x: nmP[0], y: nmP[1], t0: 0.5, d: DUR - 0.5, box: [nmP[0], nmP[1] - 96, 860, 110], dup: false, del: false },
       { id: 'prices', kind: 'pos', label: 'Price rows', x: prP[0], y: prP[1], t0: 1.0, d: 3.2, box: [prP[0], prP[1], 880, 282], dup: false, del: false },
@@ -321,7 +338,7 @@ STUDIO_REG['nx9'] = (() => {
       { id: 'vin', kind: 'pos', label: VIN, x: viP[0], y: viP[1], t0: CUT[1], d: OUT - CUT[1], box: [viP[0], viP[1] - 38, 860, 60], dup: false, del: false },
       { id: 'stock', kind: 'pos', label: 'STOCK ' + STK, x: skP[0], y: skP[1], t0: CUT[1], d: OUT - CUT[1], box: [skP[0], skP[1] - 28, 400, 40], dup: false, del: false },
       { id: 'fine', kind: 'pos', label: 'Terms', x: fiP[0], y: fiP[1], t0: 2.2, d: DUR - 2.2, box: [fiP[0] - 450, fiP[1] - 84, 900, 84], dup: false, del: false },
-    ].filter(e => e.id !== 'prices' || !dash(PR)).filter(e => e.id !== 'vin' || !dash(VIN)).filter(e => e.id !== 'stock' || !dash(STK)).filter(e => e.id !== 'fine' || !dash(FINE)); }
+    ].filter(e => e.id !== 'prices' || !dash(PR)).filter(e => e.id !== 'vin' || !dash(VIN)).filter(e => e.id !== 'stock' || !dash(STK)).filter(e => e.id !== 'fine' || !dash(FINE))); }
     function render(t) {
       stage(t); const c = ctx, i = t < CUT[0] ? 0 : t < CUT[1] ? 1 : 2, st = [0, CUT[0], CUT[1]], en = [CUT[0], CUT[1], OUT + 1];
       SH3.forEach((s, j) => { if (j !== i) touch(s, t - st[j]); });
